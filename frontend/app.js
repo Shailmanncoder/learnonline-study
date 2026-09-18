@@ -4447,7 +4447,7 @@ function configureChatTools() {
             row.className = 'grok-msg-row grok-msg-ai';
             row.innerHTML = `<div class="grok-ai-bubble">
                 <div class="grok-response-body">${escapeHtml(res.result || '')}</div>
-                ${window.ChatToolsUI.render(res)}
+                ${window.ChatToolsUI.render(res, { showSteps: true })}
             </div>`;
             grokChatStream.appendChild(row);
             window.ChatToolsUI.wire(row);
@@ -7620,11 +7620,20 @@ document.getElementById('player-result-done-btn')?.addEventListener('click', () 
 // Restores the last thread so context survives a refresh, and lists
 // recent conversations so a student can pick one back up.
 // ================================================================
-async function restoreChatThread() {
+// `onlyIfIdle` is for the automatic restore after page load. It ran 2.2s
+// after load and replaced the whole stream — so a student who had already
+// asked something lost the answer on screen, and a worksheet card was swapped
+// for a copy whose buttons were never wired. It now leaves a conversation
+// that is already under way alone. Choosing a chat still replaces the view.
+const hasLiveTurns = () => Boolean(grokChatStream && grokChatStream.querySelector('.grok-msg-row'));
+async function restoreChatThread({ onlyIfIdle = false } = {}) {
     if (!authToken || !activeChatThreadId || !grokChatStream) return;
+    if (onlyIfIdle && hasLiveTurns()) return;
     try {
         const data = await api.getChatThread(authToken, activeChatThreadId);
         if (!data || !data.success || !data.messages || data.messages.length === 0) return;
+        // The student may have started chatting while this was loading.
+        if (onlyIfIdle && hasLiveTurns()) return;
 
         setGrokWelcomeVisible(false);
         // Keep the welcome node in the DOM so New Chat can bring it back.
@@ -7640,10 +7649,19 @@ async function restoreChatThread() {
             } else {
                 row.className = 'grok-msg-row grok-msg-ai';
                 const body = renderAiMarkdown(m.content);
-                row.innerHTML = `<div class="grok-ai-bubble">${body}</div>`;
+                // The card the reply came with — worksheet, quiz, source cards —
+                // was saved beside the text; draw it again, working.
+                const saved = m.attachments || {};
+                const toolHtml = saved.tool && window.ChatToolsUI ? window.ChatToolsUI.render({ tool: saved.tool }) : '';
+                const libraryHtml = saved.library && window.SourceLibraryUI ? window.SourceLibraryUI.render({ library: saved.library }) : '';
+                row.innerHTML = `<div class="grok-ai-bubble"><div class="grok-response-body">${body}</div>${toolHtml}${libraryHtml}</div>`;
             }
             grokChatStream.appendChild(row);
-            if (m.role !== 'user') renderChatMath(row);
+            if (m.role !== 'user') {
+                renderChatMath(row);
+                if (window.ChatToolsUI) window.ChatToolsUI.wire(row);
+                if (window.SourceLibraryUI) window.SourceLibraryUI.wire(row);
+            }
         });
 
         grokChatStream.scrollTop = grokChatStream.scrollHeight;
@@ -7700,7 +7718,7 @@ async function renderRecentChats() {
 // Restore once the app has a session.
 setTimeout(() => {
     if (authToken) {
-        restoreChatThread();
+        restoreChatThread({ onlyIfIdle: true });
         renderRecentChats();
     }
 }, 2200);

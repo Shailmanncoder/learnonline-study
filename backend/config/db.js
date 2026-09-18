@@ -373,6 +373,9 @@ async function initMysql() {
         INDEX idx_messages_thread (thread_id),
         FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE
     ) ENGINE=InnoDB`);
+    // The interactive card a reply carried (worksheet, quiz, source cards), so
+    // reopening a chat brings the card back instead of only its caption.
+    await ensureColumn('chat_messages', 'attachments', 'MEDIUMTEXT DEFAULT NULL');
     await pool.query(`CREATE TABLE IF NOT EXISTS user_memory (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
@@ -685,6 +688,11 @@ async function initSqlite() {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE
     )`);
+    // The interactive card a reply carried (worksheet, quiz, source cards), so
+    // reopening a chat brings the card back instead of only its caption.
+    try {
+        await exec(`ALTER TABLE chat_messages ADD COLUMN attachments TEXT DEFAULT NULL`);
+    } catch (ignore) {}
     // Durable facts the tutor should remember across every conversation.
     await exec(`CREATE TABLE IF NOT EXISTS user_memory (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

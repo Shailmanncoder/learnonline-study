@@ -194,7 +194,9 @@ const HISTORY_TURNS = 16;
 
 // Store the exchange and keep the thread title meaningful — the first
 // user message makes a far better label than "New chat".
-async function appendTurn(thread, userId, userText, assistantText) {
+// `attachments` is the card that came with the reply — { tool } or { library } —
+// stored beside the text so a reopened chat can draw it again.
+async function appendTurn(thread, userId, userText, assistantText, attachments = null) {
     try {
         if (userText) {
             await db.run(
@@ -203,9 +205,18 @@ async function appendTurn(thread, userId, userText, assistantText) {
             );
         }
         if (assistantText) {
+            let stored = null;
+            if (attachments) {
+                try {
+                    const json = JSON.stringify(attachments);
+                    // A card is at most a few tens of KB; anything bigger is not
+                    // worth bloating every reload of this chat for.
+                    if (json.length <= 400000) stored = json;
+                } catch (e) { stored = null; }
+            }
             await db.run(
-                'INSERT INTO chat_messages (thread_id, user_id, role, content) VALUES (?, ?, ?, ?)',
-                [thread.id, userId, 'assistant', String(assistantText)]
+                'INSERT INTO chat_messages (thread_id, user_id, role, content, attachments) VALUES (?, ?, ?, ?, ?)',
+                [thread.id, userId, 'assistant', String(assistantText), stored]
             );
         }
         const isDefaultTitle = !thread.title || thread.title === 'New chat';
@@ -252,10 +263,14 @@ router.get('/threads/:id', auth, async (req, res) => {
     try {
         const t = await db.get('SELECT * FROM chat_threads WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
         if (!t) return res.status(404).json({ success: false, msg: 'Thread not found' });
-        const messages = await db.all(
-            'SELECT role, content, created_at FROM chat_messages WHERE thread_id = ? ORDER BY id ASC LIMIT 200',
+        const rows = await db.all(
+            'SELECT role, content, attachments, created_at FROM chat_messages WHERE thread_id = ? ORDER BY id ASC LIMIT 200',
             [t.id]
         );
+        const messages = rows.map(({ attachments, ...m }) => {
+            if (!attachments) return m;
+            try { return { ...m, attachments: JSON.parse(attachments) }; } catch (e) { return m; }
+        });
         res.json({ success: true, thread: t, messages });
     } catch (err) {
         res.status(500).json({ success: false, msg: err.message });
@@ -386,7 +401,7 @@ router.post('/generate', auth, async (req, res) => {
                     const payload = { result: lib.reply, library: lib.library, steps: progress.stepsOf(rid) };
                     if (thread) {
                         payload.threadId = thread.id;
-                        await appendTurn(thread, req.user.id, prompt, lib.reply);
+                        await appendTurn(thread, req.user.id, prompt, lib.reply, { library: lib.library });
                     }
                     return res.json(payload);
                 }
@@ -408,15 +423,16 @@ router.post('/generate', auth, async (req, res) => {
                 const ran = await runChatTool(prompt, {
                     facts: toolFacts,
                     weakTopics: await require('../services/studyMemory').getWeakTopics(req.user.id).catch(() => []),
-                    remember: (key, value) => rememberFact(req.user.id, key, value)
+                    remember: (key, value) => rememberFact(req.user.id, key, value),
+                    // Each step reaches the chat's live panel as it happens.
+                    step
                 });
                 if (ran) {
-                    ran.steps.forEach(step);
                     progress.finish(rid);
                     const payload = { result: ran.reply, tool: ran.tool, steps: progress.stepsOf(rid) };
                     if (thread) {
                         payload.threadId = thread.id;
-                        await appendTurn(thread, req.user.id, prompt, ran.reply);
+                        await appendTurn(thread, req.user.id, prompt, ran.reply, { tool: ran.tool });
                     }
                     return res.json(payload);
                 }
@@ -825,14 +841,19 @@ router.post('/generate', auth, async (req, res) => {
 // @desc   Re-run a chat tool from the card's own controls ("5 more", "harder")
 router.post('/tool/run', auth, async (req, res) => {
     try {
-        const { tool, topic = '', count, difficulty, classLevel, seenIds } = req.body || {};
+        const { tool, topic = '', count, difficulty, classLevel, seenIds, type, requestId, followUp = true } = req.body || {};
         if (!tool) return res.status(400).json({ msg: 'Which tool should I run?' });
+        // The card polls /progress/:rid while this runs, so its own panel
+        // shows the steps live too.
+        const rid = progress.start(requestId, req.user.id);
         const facts = await getFacts(req.user.id).catch(() => []);
-        const ran = await runToolSpec({ tool, topic, count, difficulty, classLevel, seenIds, followUp: true }, {
+        const ran = await runToolSpec({ tool, topic, count, difficulty, classLevel, seenIds, type, followUp: Boolean(followUp) }, {
             facts,
             weakTopics: await require('../services/studyMemory').getWeakTopics(req.user.id).catch(() => []),
-            remember: (key, value) => rememberFact(req.user.id, key, value)
+            remember: (key, value) => rememberFact(req.user.id, key, value),
+            step: (text) => progress.step(rid, text)
         });
+        progress.finish(rid);
         if (!ran) return res.status(502).json({ msg: "I couldn't build that just now — please try again." });
         res.json({ result: ran.reply, tool: ran.tool, steps: ran.steps });
     } catch (err) {
@@ -850,7 +871,9 @@ router.post('/tool/grade', auth, async (req, res) => {
         const marked = await gradeWorksheet({
             items: items.slice(0, 20).map(i => ({
                 questionText: String(i.questionText || '').slice(0, 1200),
-                studentAnswer: String(i.studentAnswer || '').slice(0, 1200)
+                studentAnswer: String(i.studentAnswer || '').slice(0, 1200),
+                options: Array.isArray(i.options) ? i.options.slice(0, 4).map(o => String(o).slice(0, 300)) : [],
+                correctAnswer: i.correctAnswer ? String(i.correctAnswer).slice(0, 600) : null
             })),
             classLevel: classLevel || null
         });

@@ -76,3 +76,14 @@ test('a question to be answered never becomes a catalogue tool', async () => {
     assert.equal(await runCatalogTool('who discovered the electron', { facts: [] }), null);
     assert.equal(await runCatalogTool('tell me about the Ganga chapter', { facts: [] }), null);
 });
+
+test('library options are split out only for real multiple-choice questions', () => {
+    const { _splitOptions: split } = require('../services/chatTools');
+    const mcq = split('Which of the following statements is not true? (a) When two positive integers are added, we get a positive integer. (b) When two negative integers are added we always get a negative integer. (c) Both. (d) Neither.', 'Multiple Choice Questions');
+    assert.equal(mcq.options.length, 4);
+    assert.match(mcq.stem, /^Which of the following/);
+    // Parts of one question are not options.
+    assert.equal(split('Write the following: (a) a positive integer whose sum is negative (b) a negative integer whose sum is positive', null), null);
+    assert.equal(split('(a) Write a positive integer (b) Write a negative integer', 'Multiple Choice Questions'), null);
+    assert.equal(split('Evaluate: (a) 3 × 4 (b) 5 × 6 (c) 7 × 8', null), null);
+});

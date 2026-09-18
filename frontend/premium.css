@@ -3991,3 +3991,65 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
     .ct-field { flex: 1 1 calc(50% - 5px); }
     .ct-controls .ct-btn { flex: 1 1 100%; justify-content: center; }
 }
+
+/* ── Chat worksheet/quiz in the Worksheet Generator's own layout ────── */
+/* The generator's classes set their own display; [hidden] must still win. */
+.ct-tool [hidden] { display: none !important; }
+.ct-tool--paper { border: 0; background: none; overflow: visible; }
+.ct-tool--paper .ct-controls {
+    border: 1px solid var(--hairline, var(--border-color)); border-radius: var(--r-lg, 14px);
+    background: var(--surface, var(--card-bg)); margin-bottom: 12px;
+}
+.ct-tool--paper .ws-paper-card, .ct-tool--paper .ws-result-card { margin: 0; }
+.ct-paper-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ct-tool--paper .ct-chips { margin-top: 8px; }
+.ct-paper-bottom { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ct-tool--paper .ws-question-card .vsl-block,
+.ct-tool--paper .ws-question-card .ct-prov { margin-top: 12px; }
+.ct-tool--paper .ct-hint-btn { margin-top: 8px; }
+.ct-instant { margin-top: 10px; }
+.ct-quiz-score { margin-top: 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+/* Quiz verdicts on the generator's option rows. */
+.ws-option-pill.ct-opt-correct {
+    border-color: var(--success-color, #16a34a) !important;
+    background: color-mix(in srgb, var(--success-color, #16a34a) 12%, transparent) !important;
+}
+.ws-option-pill.ct-opt-wrong {
+    border-color: var(--danger-color, #dc2626) !important;
+    background: color-mix(in srgb, var(--danger-color, #dc2626) 10%, transparent) !important;
+}
+.ws-option-pill:has(.ws-radio-input:disabled) { cursor: default; }
+
+/* What the tool is doing, live, while a card rebuilds. */
+.ct-working {
+    margin: 0 0 12px; padding: 12px 14px; border-radius: 12px;
+    border: 1px dashed var(--hairline, var(--border-color));
+    background: color-mix(in srgb, var(--accent, #6366f1) 6%, transparent);
+}
+.ct-working .grok-live-list { margin: 0; }
+
+@media (max-width: 560px) {
+    .ct-paper-actions .tool-act-btn span { display: none; }
+    .ct-paper-bottom > * { flex: 1 1 100%; justify-content: center; }
+}
+/* A long source label wraps as text, not as a stretched pill. */
+.ct-chip { border-radius: 8px; line-height: 1.35; align-items: flex-start; white-space: normal; }
+.ct-chip i { margin-top: 2px; }
+/* The finished steps, on every card — fast runs finish before a live poll. */
+.ct-steps { margin: 0 0 10px; font-size: .8rem; color: var(--text-secondary); }
+.ct-steps summary { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
+    border-radius: 99px; border: 1px solid var(--hairline, var(--border-color)); list-style: none; }
+.ct-steps summary::-webkit-details-marker { display: none; }
+.ct-steps[open] summary { margin-bottom: 8px; }
+/* Inside a chat bubble the paper is already framed; the Worksheets screen's
+   generous padding left options 184px wide on a phone. */
+.ct-tool--paper .ws-paper-card { padding: 22px; }
+.ct-tool--paper .ws-question-card { padding: 18px; }
+.ct-tool--paper .ws-result-card { padding: 22px; }
+@media (max-width: 640px) {
+    .ct-tool--paper .ws-paper-card, .ct-tool--paper .ws-result-card { padding: 12px; }
+    .ct-tool--paper .ws-question-card { padding: 12px; }
+    .ct-tool--paper .ws-paper-header { gap: 10px; }
+    .ct-tool--paper .ws-option-pill { padding: 12px; gap: 10px; }
+}
