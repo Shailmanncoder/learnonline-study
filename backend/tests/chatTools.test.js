@@ -60,3 +60,19 @@ test('a tool with no topic follows the chapter the chat is on', () => {
     assert.equal(ctx.chapter, 'Integers');
     assert.equal(ctx.subject, 'Mathematics');
 });
+
+test('the 50-tool catalogue is readable, with a prompt for every tool', () => {
+    const { CATALOG } = require('../services/chatTools');
+    assert.ok(CATALOG.length >= 40, `only ${CATALOG.length} tools loaded`);
+    assert.equal(CATALOG.filter(t => typeof t.promptTemplate !== 'function').length, 0);
+    assert.ok(CATALOG.some(t => t.id === 'math-solver'));
+});
+
+test('a question to be answered never becomes a catalogue tool', async () => {
+    const { runCatalogTool } = require('../services/chatTools');
+    // These return before any model is consulted: no verb asking for work.
+    assert.equal(await runCatalogTool('what is photosynthesis?', { facts: [] }), null);
+    assert.equal(await runCatalogTool('why does the moon change shape', { facts: [] }), null);
+    assert.equal(await runCatalogTool('who discovered the electron', { facts: [] }), null);
+    assert.equal(await runCatalogTool('tell me about the Ganga chapter', { facts: [] }), null);
+});

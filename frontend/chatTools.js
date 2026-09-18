@@ -31,7 +31,7 @@ window.ChatToolsUI = (function () {
         const bits = [m.classLevel ? `Class ${m.classLevel}` : '', m.subject || '', m.chapter || '', m.difficulty || '']
             .filter(Boolean).map(esc).join(' · ');
         return `<header class="ct-head">
-            <div class="ct-title"><i class="fa-solid ${ICONS[payload.tool] || 'fa-wand-magic-sparkles'}"></i> ${esc(payload.title || payload.tool)}</div>
+            <div class="ct-title"><i class="${esc(payload.icon || ('fa-solid ' + (ICONS[payload.tool] || 'fa-wand-magic-sparkles')))}"></i> ${esc(payload.title || payload.tool)}</div>
             ${bits ? `<div class="ct-sub">${bits}</div>` : ''}
             <div class="ct-chips">${sourceChip(m)}</div>
         </header>`;
@@ -45,6 +45,31 @@ window.ChatToolsUI = (function () {
                 : '';
         }
         return '';
+    }
+
+    // The Worksheet Generator's own controls, inside the card: change the
+    // class, how many questions or the difficulty and rebuild in place,
+    // without going to another screen or retyping the request.
+    function controls(payload) {
+        const m = payload.meta || {};
+        const classes = Array.from({ length: 12 }, (_, i) => String(i + 1));
+        const counts = payload.tool === 'quiz' ? [3, 5, 10, 15] : [5, 8, 10, 15, 20];
+        const opt = (v, cur, label) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(label || v)}</option>`;
+        return `<div class="ct-controls">
+            <label class="ct-field"><span>Class</span>
+                <select class="ct-set-class">${['', ...classes].map(c => opt(c, m.classLevel, c || 'Any')).join('')}</select>
+            </label>
+            <label class="ct-field"><span>Questions</span>
+                <select class="ct-set-count">${counts.map(c => opt(c, m.count)).join('')}</select>
+            </label>
+            <label class="ct-field"><span>Difficulty</span>
+                <select class="ct-set-difficulty">${['Easy', 'Medium', 'Hard'].map(d => opt(d, m.difficulty)).join('')}</select>
+            </label>
+            <label class="ct-field ct-field-grow"><span>Topic</span>
+                <input type="text" class="ct-set-topic" value="${esc(m.chapter || '')}" placeholder="chapter or topic">
+            </label>
+            <button type="button" class="ct-btn is-primary ct-rebuild"><i class="fa-solid fa-rotate"></i> Rebuild</button>
+        </div>`;
     }
 
     function worksheet(payload, id) {
@@ -61,7 +86,8 @@ window.ChatToolsUI = (function () {
                 <p class="ct-hint" hidden>${br(it.hint)}</p>` : ''}
                 ${provenance(it)}
             </li>`).join('');
-        return `<ol class="ct-list">${rows}</ol>
+        return `${controls(payload)}
+            <ol class="ct-list">${rows}</ol>
             <div class="ct-score" hidden></div>
             <footer class="ct-foot">
                 <button type="button" class="ct-btn is-primary ct-check"><i class="fa-solid fa-check-double"></i> Check my answers</button>
@@ -83,7 +109,8 @@ window.ChatToolsUI = (function () {
                 </div>
                 <div class="ct-feedback" hidden></div>
             </li>`).join('');
-        return `<ol class="ct-list">${rows}</ol>
+        return `${controls(payload)}
+            <ol class="ct-list">${rows}</ol>
             <div class="ct-score" hidden></div>
             <footer class="ct-foot">
                 <button type="button" class="ct-btn ct-more"><i class="fa-solid fa-plus"></i> More questions</button>
@@ -139,7 +166,20 @@ window.ChatToolsUI = (function () {
             </footer>`;
     }
 
-    const BODIES = { worksheet, quiz, flashcards, notes, mindmap };
+    // Any other tool of the Tools screen: its own output, rendered the way the
+    // chat renders an answer, with the same actions the tool screen offers.
+    function generic(payload) {
+        const body = window.renderAiMarkdown ? window.renderAiMarkdown(payload.output || '') : br(payload.output || '');
+        return `<div class="ct-generic grok-response-body">${body}</div>
+            <footer class="ct-foot">
+                <button type="button" class="ct-btn ct-save-note"><i class="fa-solid fa-bookmark"></i> Save to Notes</button>
+                <button type="button" class="ct-btn ct-copy"><i class="fa-regular fa-copy"></i> Copy</button>
+                <button type="button" class="ct-btn ct-print"><i class="fa-solid fa-print"></i> Print</button>
+                <button type="button" class="ct-btn ct-open-tool"><i class="fa-solid fa-up-right-from-square"></i> Open in ${esc(payload.title || 'the tool')}</button>
+            </footer>`;
+    }
+
+    const BODIES = { worksheet, quiz, flashcards, notes, mindmap, generic };
 
     function render(res) {
         const payload = res && res.tool;
@@ -159,6 +199,14 @@ window.ChatToolsUI = (function () {
     let deps = {};
     function configure(options) { deps = Object.assign(deps, options || {}); }
 
+    // The card should work even if the app has not handed it a token getter
+    // yet: the token is where the app itself keeps it.
+    const token = () => (typeof deps.authToken === 'function' ? deps.authToken() : null)
+        || (() => { try { return localStorage.getItem('authToken'); } catch (e) { return null; } })();
+    // api.js declares `const api`, which lives in the shared global scope of
+    // classic scripts rather than on `window`.
+    const client = () => deps.api || (typeof api !== 'undefined' ? api : null);
+
     const toast = (msg, kind) => (typeof deps.showToast === 'function' ? deps.showToast(msg, kind) : undefined);
 
     function verdictClass(v) {
@@ -176,7 +224,7 @@ window.ChatToolsUI = (function () {
         const original = btn.innerHTML;
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Checking…';
         try {
-            const marked = await deps.api.gradeChatWorksheet(deps.authToken(), items, (payload.meta || {}).classLevel);
+            const marked = await client().gradeChatWorksheet(token(), items, (payload.meta || {}).classLevel);
             (marked.results || []).forEach((r) => {
                 const li = root.querySelector(`.ct-q[data-n="${r.n}"]`);
                 if (!li) return;
@@ -232,24 +280,35 @@ window.ChatToolsUI = (function () {
         if (window.renderChatMath) window.renderChatMath(li);
     }
 
-    async function rerun(root, payload, change) {
+    async function rerun(root, payload, change, overrides) {
         const meta = payload.meta || {};
-        const btn = root.querySelector(change === 'harder' ? '.ct-harder' : '.ct-more');
+        const sel = change === 'harder' ? '.ct-harder' : change === 'rebuild' ? '.ct-rebuild' : '.ct-more';
+        const btn = root.querySelector(sel);
         const original = btn ? btn.innerHTML : '';
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Working…'; }
         try {
-            const next = await deps.api.runChatTool(deps.authToken(), {
+            const next = await client().runChatTool(token(), {
                 tool: payload.tool,
-                topic: meta.chapter || '',
-                count: meta.count,
-                difficulty: change === 'harder' ? 'Hard' : meta.difficulty,
-                classLevel: meta.classLevel,
-                // What this card already showed, so "More questions" brings new ones.
-                seenIds: (payload.items || []).map(i => i.id).filter(Boolean)
+                topic: (overrides && overrides.topic !== undefined ? overrides.topic : meta.chapter) || '',
+                count: (overrides && overrides.count) || meta.count,
+                difficulty: change === 'harder' ? 'Hard' : (overrides && overrides.difficulty) || meta.difficulty,
+                classLevel: overrides && 'classLevel' in overrides ? overrides.classLevel : meta.classLevel,
+                // What this card already showed, so "More questions" brings new
+                // ones. A rebuild is a fresh start, so nothing is excluded.
+                seenIds: change === 'rebuild' ? [] : (payload.items || []).map(i => i.id).filter(Boolean)
             });
+            // Changing the settings replaces this card; asking for more adds one.
+            if (change === 'rebuild' && next && next.tool) {
+                const holder = document.createElement('div');
+                holder.innerHTML = render(next);
+                const fresh = holder.firstElementChild;
+                root.replaceWith(fresh);
+                wire(fresh);
+                return;
+            }
             if (typeof deps.onFollowUp === 'function') deps.onFollowUp(next);
         } catch (e) {
-            toast(e.message || "Couldn't build another one just now.", 'error');
+            toast(e.message || "Couldn't build that just now.", 'error');
         } finally {
             if (btn) { btn.disabled = false; btn.innerHTML = original; }
         }
@@ -270,6 +329,8 @@ window.ChatToolsUI = (function () {
                 lines.push('', 'Commonly got wrong');
                 payload.mistakes.forEach(m => lines.push(`• ${m}`));
             }
+        } else if (payload.tool === 'generic') {
+            lines.push('', payload.output || '');
         } else if (payload.tool === 'mindmap') {
             lines.push('', payload.mermaid || '');
         } else {
@@ -305,7 +366,7 @@ window.ChatToolsUI = (function () {
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
         try {
             const title = payload.title || 'Flashcards from chat';
-            await deps.api.saveChatDeck(deps.authToken(), title, (payload.items || []).map(c => ({ question: c.question, answer: c.answer })));
+            await client().saveChatDeck(token(), title, (payload.items || []).map(c => ({ question: c.question, answer: c.answer })));
             btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved to your decks';
             toast('Saved — it will come up in your flashcard revision.', 'success');
         } catch (e) {
@@ -315,40 +376,84 @@ window.ChatToolsUI = (function () {
         }
     }
 
-    function wire(root) {
-        (root || document).querySelectorAll('.ct-tool').forEach((el) => {
-            if (el.dataset.ctWired) return;
-            el.dataset.ctWired = '1';
+    // Clicks are handled by ONE delegated listener, not by listeners bound to
+    // each card. The chat re-renders a bubble's HTML after a turn is saved,
+    // which silently replaced every wired node and left the buttons dead.
+    // Delegation survives that, because it never holds a reference to a node.
+    let delegated = false;
+    function installDelegation() {
+        if (delegated) return;
+        delegated = true;
+        document.addEventListener('click', (e) => {
+            const el = e.target.closest ? e.target.closest('.ct-tool') : null;
+            if (!el) return;
             const payload = store.get(el.dataset.ctId);
-            if (!payload) return;
+            const hit = (sel) => e.target.closest(sel);
 
-            el.querySelector('.ct-check')?.addEventListener('click', () => checkWorksheet(el, payload));
-            el.querySelector('.ct-more')?.addEventListener('click', () => rerun(el, payload, 'more'));
-            el.querySelector('.ct-harder')?.addEventListener('click', () => rerun(el, payload, 'harder'));
-            el.querySelector('.ct-print')?.addEventListener('click', () => printCard(el, payload));
-            el.querySelector('.ct-save-deck')?.addEventListener('click', () => saveDeck(el, payload));
-
-            el.querySelector('.ct-copy')?.addEventListener('click', async () => {
-                try { await navigator.clipboard.writeText(plainText(payload)); toast('Copied.', 'success'); }
-                catch (e) { toast('Copy failed — select and copy manually.', 'error'); }
-            });
-
-            el.querySelector('.ct-save-note')?.addEventListener('click', () => {
-                if (typeof deps.onSaveNote === 'function') deps.onSaveNote(payload.title || 'Notes from chat', plainText(payload));
-            });
-
-            el.querySelectorAll('.ct-hint-btn').forEach((btn) => {
-                btn.addEventListener('click', () => {
-                    const hint = btn.parentElement.querySelector('.ct-hint');
-                    if (hint) hint.hidden = !hint.hidden;
+            if (hit('.ct-hint-btn')) {
+                const hint = hit('.ct-hint-btn').parentElement.querySelector('.ct-hint');
+                if (hint) hint.hidden = !hint.hidden;
+                return;
+            }
+            if (hit('.ct-card')) {
+                const card = hit('.ct-card');
+                const q = card.querySelector('.ct-card-q');
+                const a = card.querySelector('.ct-card-a');
+                const showAnswer = !a.hidden;
+                q.hidden = !showAnswer;
+                a.hidden = showAnswer;
+                card.setAttribute('aria-pressed', String(!showAnswer));
+                return;
+            }
+            if (hit('.ct-flip-all')) {
+                const anyQuestion = [...el.querySelectorAll('.ct-card-q')].some(q => !q.hidden);
+                el.querySelectorAll('.ct-card').forEach((card) => {
+                    card.querySelector('.ct-card-q').hidden = anyQuestion;
+                    card.querySelector('.ct-card-a').hidden = !anyQuestion;
+                    card.setAttribute('aria-pressed', String(anyQuestion));
                 });
-            });
+                return;
+            }
 
-            el.querySelectorAll('.ct-option').forEach((opt) => {
-                opt.addEventListener('click', () => answerQuiz(el, payload, opt.closest('.ct-q'), Number(opt.dataset.i)));
-            });
+            // Everything below needs the payload this card was built from.
+            // After a page reload a restored card no longer has one, so it says
+            // so instead of doing nothing.
+            if (!payload) {
+                if (hit('.ct-btn') || hit('.ct-option')) toast('Ask for this again to get a fresh, working card.', 'info');
+                return;
+            }
 
-            el.querySelector('.ct-retry')?.addEventListener('click', () => {
+            if (hit('.ct-option')) { answerQuiz(el, payload, hit('.ct-q'), Number(hit('.ct-option').dataset.i)); return; }
+            if (hit('.ct-check')) { checkWorksheet(el, payload); return; }
+            if (hit('.ct-more')) { rerun(el, payload, 'more'); return; }
+            if (hit('.ct-harder')) { rerun(el, payload, 'harder'); return; }
+            if (hit('.ct-print')) { printCard(el, payload); return; }
+            if (hit('.ct-save-deck')) { saveDeck(el, payload); return; }
+            if (hit('.ct-open-tool')) {
+                if (typeof deps.onOpenTool === 'function') deps.onOpenTool(payload.toolId, payload.inputs || {});
+                return;
+            }
+            if (hit('.ct-save-note')) {
+                if (typeof deps.onSaveNote === 'function') deps.onSaveNote(payload.title || 'Notes from chat', plainText(payload));
+                return;
+            }
+            if (hit('.ct-copy')) {
+                navigator.clipboard.writeText(plainText(payload))
+                    .then(() => toast('Copied.', 'success'))
+                    .catch(() => toast('Copy failed — select and copy manually.', 'error'));
+                return;
+            }
+            if (hit('.ct-rebuild')) {
+                const read = (sel) => el.querySelector(sel)?.value || '';
+                rerun(el, payload, 'rebuild', {
+                    classLevel: read('.ct-set-class') || null,
+                    count: Number(read('.ct-set-count')) || (payload.meta || {}).count,
+                    difficulty: read('.ct-set-difficulty') || (payload.meta || {}).difficulty,
+                    topic: read('.ct-set-topic').trim()
+                });
+                return;
+            }
+            if (hit('.ct-retry')) {
                 el.querySelectorAll('.ct-q').forEach((li) => {
                     if (li.querySelector('.ct-feedback.is-correct')) return;
                     delete li.dataset.answered;
@@ -358,29 +463,18 @@ window.ChatToolsUI = (function () {
                 });
                 el.querySelector('.ct-score').hidden = true;
                 el.querySelector('.ct-retry').hidden = true;
-            });
+            }
+        });
+    }
 
-            el.querySelectorAll('.ct-card').forEach((card) => {
-                card.addEventListener('click', () => {
-                    const q = card.querySelector('.ct-card-q');
-                    const a = card.querySelector('.ct-card-a');
-                    const showAnswer = !a.hidden;
-                    q.hidden = !showAnswer;
-                    a.hidden = showAnswer;
-                    card.setAttribute('aria-pressed', String(!showAnswer));
-                });
-            });
-
-            el.querySelector('.ct-flip-all')?.addEventListener('click', () => {
-                const anyQuestion = [...el.querySelectorAll('.ct-card-q')].some(q => !q.hidden);
-                el.querySelectorAll('.ct-card').forEach((card) => {
-                    card.querySelector('.ct-card-q').hidden = anyQuestion;
-                    card.querySelector('.ct-card-a').hidden = !anyQuestion;
-                    card.setAttribute('aria-pressed', String(anyQuestion));
-                });
-            });
-
-            // Mind maps are drawn by the same pinned Mermaid the rest of the app uses.
+    // Drawing, not behaviour: mind maps and maths are rendered once per card.
+    function wire(root) {
+        installDelegation();
+        const scope = root || document;
+        const cards = scope.classList && scope.classList.contains('ct-tool')
+            ? [scope]
+            : [...scope.querySelectorAll('.ct-tool')];
+        cards.forEach((el) => {
             const map = el.querySelector('.ct-mermaid');
             if (map && window.mermaid && !map.dataset.drawn) {
                 map.dataset.drawn = '1';
@@ -389,7 +483,6 @@ window.ChatToolsUI = (function () {
                     .then(({ svg }) => { map.innerHTML = svg; })
                     .catch(() => { map.innerHTML = `<pre class="ct-map-fallback">${esc(src)}</pre>`; });
             }
-
             if (window.renderChatMath) window.renderChatMath(el);
         });
     }

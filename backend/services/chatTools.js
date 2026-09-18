@@ -13,7 +13,16 @@
 //     carries a book, page or question number.
 // Grading and explanations are always the model's, and say so.
 // ================================================================
-const { generateJSON } = require('./ai');
+const { generateJSON, generateText } = require('./ai');
+// The 50 tools of the Tools screen, with the prompt each one already uses.
+// Requiring the catalogue keeps one definition per tool instead of a second
+// copy that drifts from the screen the student sees.
+let CATALOG = [];
+try {
+    CATALOG = require('../../frontend/data.js').toolsData || [];
+} catch (e) {
+    console.warn('[CHAT TOOL] tool catalogue unavailable:', e.message);
+}
 const { searchQuestions } = require('./sourceLibrary/search');
 const { toCard } = require('./sourceLibrary/libraryAnswer');
 
@@ -391,8 +400,9 @@ const OPENERS = {
 async function runChatTool(text, ctx = {}) {
     const facts = ctx.facts || [];
     const spec = detectTool(text, { lastTool: lastToolOf(facts) });
-    if (!spec) return null;
-    return runToolSpec(spec, ctx);
+    if (spec) return runToolSpec(spec, ctx);
+    // Not one of the five interactive tools — try the rest of the catalogue.
+    return runCatalogTool(String(text || ''), ctx);
 }
 
 /** Run a tool from an explicit spec — the card's own "5 more" / "harder" buttons. */
@@ -470,4 +480,95 @@ ${lines}`,
     return { results: marked, score, total: marked.length, checkedBy: 'AI-checked — compare with your textbook if something looks off' };
 }
 
-module.exports = { detectTool, runChatTool, runToolSpec, gradeWorksheet, contextOf, lastToolOf, LAST_TOOL_KEY };
+// ── Any of the other tools ──────────────────────────────────────────
+// The five above have their own interactive cards. The rest of the Tools
+// screen — Math Solver, Translator, Essay Writer, Formula Generator, Code
+// Explainer and so on — is reached by matching the message against the
+// catalogue. A tool runs ONLY when the student asked for something to be
+// done ("solve", "translate", "write"); a plain question stays with the
+// tutor, which has the textbook behind it.
+const INTERACTIVE = new Set(Object.keys(BUILDERS));
+const TOOL_VERB = /\b(write|draft|compose|solve|calculate|translate|summari[sz]e|paraphrase|rephrase|rewrite|explain\s+this\s+code|debug|fix|generate|create|make|build|design|plan|schedule|cite|convert|list|brainstorm|compare|analyse|analyze|breakdown|break\s+down)\b/i;
+const BARE_QUESTION = /^\s*(what|why|who|when|where|which|whose|is|are|was|were|does|do|did|can|could|should|would)\b/i;
+const CATALOG_SKIP = new Set(['worksheet-generator', 'flashcard-gen', 'mindmap-gen', 'ai-tutor', 'snap-and-solve', 'image-summarizer', 'video-summarizer', 'pdf-summarizer']);
+
+function catalogSummary() {
+    return CATALOG.filter(t => !CATALOG_SKIP.has(t.id)).map(t => ({
+        id: t.id,
+        name: t.name,
+        does: t.desc,
+        needs: (t.inputs || []).map(i => i.id)
+    }));
+}
+
+/** Ask the model which catalogue tool this is, and what to put in its fields. */
+async function pickCatalogTool(text, ctx) {
+    const options = catalogSummary();
+    if (!options.length) return null;
+    const picked = await generateJSON(
+        `A student wrote: "${String(text).slice(0, 600)}"
+
+Which of these tools does that ask for, and what goes in its fields?
+${JSON.stringify(options)}
+
+Rules:
+- Answer {"toolId": null} if the student is asking a question to be answered or explained rather than asking for something to be produced. That is the common case; prefer null when unsure.
+- Use only a tool id from the list, and fill every field it needs from what the student wrote. Never invent facts they did not give.
+Respond ONLY with JSON: {"toolId": "id-or-null", "inputs": {"fieldId": "value"}}`,
+        'You route a student request to the right study tool. Respond ONLY with valid JSON.',
+        { task: 'fast', maxTokens: 600 }, null);
+
+    const id = picked && typeof picked.toolId === 'string' ? picked.toolId : null;
+    const tool = id && CATALOG.find(t => t.id === id && !CATALOG_SKIP.has(t.id));
+    if (!tool) return null;
+    const inputs = picked.inputs && typeof picked.inputs === 'object' ? picked.inputs : {};
+    // Every field the tool declares must have something in it, or its prompt
+    // would read "Translate the following into undefined".
+    const filled = {};
+    for (const field of tool.inputs || []) {
+        const v = inputs[field.id];
+        filled[field.id] = v === undefined || v === null || String(v).trim() === '' ? '' : String(v).slice(0, 4000);
+    }
+    const primary = (tool.inputs || [])[0];
+    if (primary && !filled[primary.id]) filled[primary.id] = String(text).slice(0, 2000);
+    return { tool, inputs: filled };
+}
+
+async function runCatalogTool(text, ctx) {
+    if (!TOOL_VERB.test(text) || BARE_QUESTION.test(text)) return null;
+    const hit = await pickCatalogTool(text, ctx);
+    if (!hit) return null;
+    const { tool, inputs } = hit;
+
+    let prompt;
+    try {
+        prompt = tool.promptTemplate(inputs);
+    } catch (e) {
+        return null;
+    }
+    const context = contextOf(ctx.facts || []);
+    const system = tool.systemMessage
+        || `You are the ${tool.name} of a study app for Indian school students. ${levelLine(context.classLevel)}`;
+    const output = await generateText(prompt, system, { task: 'general' });
+    if (!output || !output.trim()) return null;
+
+    return {
+        reply: `Ran **${tool.name}** for you.`,
+        tool: {
+            tool: 'generic',
+            toolId: tool.id,
+            title: tool.name,
+            icon: tool.icon || 'fa-solid fa-wand-magic-sparkles',
+            meta: { classLevel: context.classLevel, subject: context.subject || null, chapter: context.chapter || null,
+                    count: 1, difficulty: null, source: 'ai', sourceLabel: `AI-written by ${tool.name} — check anything you will be marked on` },
+            inputs,
+            output,
+            items: [],
+            notice: null,
+            steps: []
+        },
+        steps: [`Opened ${tool.name} from your tools`, 'Wrote the answer with the tool\'s own instructions']
+    };
+}
+
+module.exports = { detectTool, runChatTool, runToolSpec, runCatalogTool, gradeWorksheet, contextOf, lastToolOf, CATALOG, LAST_TOOL_KEY };

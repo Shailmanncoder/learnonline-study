@@ -4408,7 +4408,11 @@ document.querySelectorAll('.grok-chip-btn').forEach(chip => {
 // ── Study tools inside the chat ─────────────────────────────────────
 // The card owns its own behaviour; the app hands it the things only the
 // app has: the API, the token, toasts, and where a follow-up card goes.
-if (window.ChatToolsUI) {
+// Runs on DOMContentLoaded, not at parse time: chatTools.js is a deferred
+// script loaded AFTER this file, so window.ChatToolsUI does not exist yet
+// while app.js is still executing.
+function configureChatTools() {
+    if (!window.ChatToolsUI) return false;
     window.ChatToolsUI.configure({
         api,
         authToken: () => authToken,
@@ -4421,6 +4425,19 @@ if (window.ChatToolsUI) {
             } catch (err) {
                 showToast('Failed to save note', 'error');
             }
+        },
+        // The chat is a way into the full tool, not a dead end: open the tool
+        // screen with the fields the chat already worked out.
+        onOpenTool: (toolId, inputs) => {
+            const tool = (typeof toolsData !== 'undefined' ? toolsData : []).find(t => t.id === toolId);
+            if (!tool) { showToast('That tool is not in your tools list.', 'info'); return; }
+            openTool(tool);
+            requestAnimationFrame(() => {
+                Object.entries(inputs || {}).forEach(([id, value]) => {
+                    const field = document.getElementById(`input-${id}`);
+                    if (field && value) { field.value = value; field.dispatchEvent(new Event('input')); }
+                });
+            });
         },
         // "More questions" / "Harder" answer in the conversation, so the new
         // card lands in the stream like any other reply.
@@ -4437,6 +4454,16 @@ if (window.ChatToolsUI) {
             row.scrollIntoView({ block: 'nearest' });
         }
     });
+    return true;
+}
+// chatTools.js is a deferred script that loads AFTER this file, and the page
+// can already be past DOMContentLoaded when app.js runs — so a single attempt
+// here quietly found nothing to configure, and every button on a card did
+// nothing. Keep trying until it is there.
+if (!configureChatTools()) {
+    document.addEventListener('DOMContentLoaded', configureChatTools, { once: true });
+    window.addEventListener('load', configureChatTools, { once: true });
+    setTimeout(configureChatTools, 0);
 }
 
 // Attach Document simulation

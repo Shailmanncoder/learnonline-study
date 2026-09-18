@@ -354,3 +354,8 @@ const toolsData = [
       promptTemplate: (v) => `Here is a problem (possibly OCR-transcribed from a photo — please correct any obvious transcription errors before solving):\n\n${v.problemImage || v.problemText}\n\nRestate it cleanly, then solve it step by step.`
     }
 ];
+
+// Single source of truth for the 50 tools: the browser reads `toolsData` as a
+// global, and the chat's tool router requires this same file so a tool's
+// prompt is never written twice (backend/services/chatTools.js).
+if (typeof module !== 'undefined' && module.exports) module.exports = { toolsData };
