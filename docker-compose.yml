@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: helpstudent-studyhub
+    ports:
+      - "5001:5001"
+    env_file:
+      - ./backend/.env
+    environment:
+      PORT: 5001
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - studyhub-data:/app/backend/database
+    restart: unless-stopped
+
+volumes:
+  studyhub-data:

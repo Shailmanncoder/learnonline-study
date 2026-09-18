@@ -1,0 +1,398 @@
+/* ================================================================
+   Study tools inside the chat
+   ----------------------------------------------------------------
+   Renders the `tool` block of a Companion reply as a working tool —
+   a worksheet you can answer and have marked, a quiz that scores
+   itself, flashcards you can flip, notes you can save, a mind map.
+   Everything a card shows about where a question came from is the
+   server's citation object (see sourceLibrary.js); this file never
+   invents a source, and labels anything the model wrote as such.
+   ================================================================ */
+window.ChatToolsUI = (function () {
+    const esc = (v) => String(v ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const br = (v) => esc(v).replace(/\n/g, '<br>');
+
+    let seq = 0;
+    const store = new Map();          // card id -> the tool payload it was built from
+
+    const ICONS = { worksheet: 'fa-file-pen', quiz: 'fa-circle-question', flashcards: 'fa-layer-group', notes: 'fa-note-sticky', mindmap: 'fa-diagram-project' };
+
+    function sourceChip(meta) {
+        const library = meta && meta.source === 'library';
+        return `<span class="ct-chip ${library ? 'is-verified' : 'is-ai'}">
+            <i class="fa-solid ${library ? 'fa-circle-check' : 'fa-wand-magic-sparkles'}"></i> ${esc(meta && meta.sourceLabel ? meta.sourceLabel : '')}
+        </span>`;
+    }
+
+    function head(payload, id) {
+        const m = payload.meta || {};
+        const bits = [m.classLevel ? `Class ${m.classLevel}` : '', m.subject || '', m.chapter || '', m.difficulty || '']
+            .filter(Boolean).map(esc).join(' · ');
+        return `<header class="ct-head">
+            <div class="ct-title"><i class="fa-solid ${ICONS[payload.tool] || 'fa-wand-magic-sparkles'}"></i> ${esc(payload.title || payload.tool)}</div>
+            ${bits ? `<div class="ct-sub">${bits}</div>` : ''}
+            <div class="ct-chips">${sourceChip(m)}</div>
+        </header>`;
+    }
+
+    // A library question carries its verified citation; an AI-written one says so.
+    function provenance(item) {
+        if (item.provenance === 'library' && item.citation) {
+            return window.SourceLibraryUI
+                ? `<div class="ct-prov">${window.SourceLibraryUI.renderCitation(item.citation)}</div>`
+                : '';
+        }
+        return '';
+    }
+
+    function worksheet(payload, id) {
+        const rows = (payload.items || []).map(it => `
+            <li class="ct-q" data-n="${it.n}">
+                <div class="ct-q-head">
+                    <span class="ct-q-num">${it.n}</span>
+                    ${it.marks ? `<span class="ct-marks">${esc(it.marks)} mark${Number(it.marks) === 1 ? '' : 's'}</span>` : ''}
+                </div>
+                <div class="ct-q-text">${br(it.questionText)}</div>
+                <textarea class="ct-answer" rows="2" placeholder="Your answer…" aria-label="Answer to question ${it.n}"></textarea>
+                <div class="ct-feedback" hidden></div>
+                ${it.hint ? `<button type="button" class="ct-btn is-quiet ct-hint-btn"><i class="fa-regular fa-lightbulb"></i> Hint</button>
+                <p class="ct-hint" hidden>${br(it.hint)}</p>` : ''}
+                ${provenance(it)}
+            </li>`).join('');
+        return `<ol class="ct-list">${rows}</ol>
+            <div class="ct-score" hidden></div>
+            <footer class="ct-foot">
+                <button type="button" class="ct-btn is-primary ct-check"><i class="fa-solid fa-check-double"></i> Check my answers</button>
+                <button type="button" class="ct-btn ct-more"><i class="fa-solid fa-plus"></i> More questions</button>
+                <button type="button" class="ct-btn ct-harder"><i class="fa-solid fa-arrow-trend-up"></i> Harder</button>
+                <button type="button" class="ct-btn ct-print"><i class="fa-solid fa-print"></i> Print</button>
+            </footer>`;
+    }
+
+    function quiz(payload) {
+        const rows = (payload.items || []).map(it => `
+            <li class="ct-q" data-n="${it.n}">
+                <div class="ct-q-head"><span class="ct-q-num">${it.n}</span></div>
+                <div class="ct-q-text">${br(it.questionText)}</div>
+                <div class="ct-options" role="group" aria-label="Options for question ${it.n}">
+                    ${it.options.map((opt, i) => `<button type="button" class="ct-option" data-i="${i}">
+                        <span class="ct-option-key">${String.fromCharCode(65 + i)}</span> ${esc(opt)}
+                    </button>`).join('')}
+                </div>
+                <div class="ct-feedback" hidden></div>
+            </li>`).join('');
+        return `<ol class="ct-list">${rows}</ol>
+            <div class="ct-score" hidden></div>
+            <footer class="ct-foot">
+                <button type="button" class="ct-btn ct-more"><i class="fa-solid fa-plus"></i> More questions</button>
+                <button type="button" class="ct-btn ct-harder"><i class="fa-solid fa-arrow-trend-up"></i> Harder</button>
+                <button type="button" class="ct-btn ct-retry" hidden><i class="fa-solid fa-rotate-right"></i> Try the ones I missed</button>
+            </footer>`;
+    }
+
+    function flashcards(payload) {
+        const cards = (payload.items || []).map((c, i) => `
+            <button type="button" class="ct-card" data-i="${i}" aria-pressed="false">
+                <span class="ct-card-face ct-card-q">${br(c.question)}</span>
+                <span class="ct-card-face ct-card-a" hidden>${br(c.answer)}</span>
+                <span class="ct-card-flip">tap to flip</span>
+            </button>`).join('');
+        return `<div class="ct-deck">${cards}</div>
+            <footer class="ct-foot">
+                <button type="button" class="ct-btn ct-flip-all"><i class="fa-solid fa-repeat"></i> Flip all</button>
+                <button type="button" class="ct-btn ct-save-deck"><i class="fa-solid fa-floppy-disk"></i> Save to my deck</button>
+                <button type="button" class="ct-btn ct-more"><i class="fa-solid fa-plus"></i> More cards</button>
+            </footer>`;
+    }
+
+    function notes(payload) {
+        const sections = (payload.sections || []).map(s => `
+            <section class="ct-note-sec">
+                <h4>${esc(s.heading)}</h4>
+                <ul>${(s.points || []).map(p => `<li>${br(p)}</li>`).join('')}</ul>
+            </section>`).join('');
+        const terms = (payload.terms || []).length ? `
+            <section class="ct-note-sec">
+                <h4>Key terms</h4>
+                <dl class="ct-terms">${payload.terms.map(t => `<dt>${esc(t.term)}</dt><dd>${esc(t.meaning)}</dd>`).join('')}</dl>
+            </section>` : '';
+        const mistakes = (payload.mistakes || []).length ? `
+            <section class="ct-note-sec">
+                <h4>Commonly got wrong</h4>
+                <ul>${payload.mistakes.map(m => `<li>${br(m)}</li>`).join('')}</ul>
+            </section>` : '';
+        return `<div class="ct-notes">${sections}${terms}${mistakes}</div>
+            <footer class="ct-foot">
+                <button type="button" class="ct-btn ct-save-note"><i class="fa-solid fa-bookmark"></i> Save to Notes</button>
+                <button type="button" class="ct-btn ct-copy"><i class="fa-regular fa-copy"></i> Copy</button>
+                <button type="button" class="ct-btn ct-print"><i class="fa-solid fa-print"></i> Print</button>
+            </footer>`;
+    }
+
+    function mindmap(payload, id) {
+        return `<div class="ct-mermaid" id="ct-map-${id}">${esc(payload.mermaid || '')}</div>
+            <footer class="ct-foot">
+                <button type="button" class="ct-btn ct-copy"><i class="fa-regular fa-copy"></i> Copy source</button>
+                <button type="button" class="ct-btn ct-print"><i class="fa-solid fa-print"></i> Print</button>
+            </footer>`;
+    }
+
+    const BODIES = { worksheet, quiz, flashcards, notes, mindmap };
+
+    function render(res) {
+        const payload = res && res.tool;
+        if (!payload || !payload.tool || !BODIES[payload.tool]) return '';
+        const id = `${Date.now().toString(36)}-${++seq}`;
+        store.set(id, payload);
+        return `<div class="ct-tool" data-ct-id="${id}" data-ct-tool="${esc(payload.tool)}">
+            ${head(payload, id)}
+            ${payload.notice ? `<p class="ct-notice">${esc(payload.notice)}</p>` : ''}
+            ${BODIES[payload.tool](payload, id)}
+        </div>`;
+    }
+
+    // ── Interactivity ───────────────────────────────────────────────
+    // `deps` carries what the app owns: api, the auth token, toasts, and
+    // the hook that drops a follow-up card into the chat stream.
+    let deps = {};
+    function configure(options) { deps = Object.assign(deps, options || {}); }
+
+    const toast = (msg, kind) => (typeof deps.showToast === 'function' ? deps.showToast(msg, kind) : undefined);
+
+    function verdictClass(v) {
+        return v === 'correct' ? 'is-correct' : v === 'partial' ? 'is-partial' : 'is-wrong';
+    }
+
+    async function checkWorksheet(root, payload) {
+        const btn = root.querySelector('.ct-check');
+        const items = [...root.querySelectorAll('.ct-q')].map((li, i) => ({
+            questionText: (payload.items[i] || {}).questionText || '',
+            studentAnswer: li.querySelector('.ct-answer')?.value || ''
+        }));
+        if (!items.some(i => i.studentAnswer.trim())) { toast('Write at least one answer first.', 'info'); return; }
+        btn.disabled = true;
+        const original = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Checking…';
+        try {
+            const marked = await deps.api.gradeChatWorksheet(deps.authToken(), items, (payload.meta || {}).classLevel);
+            (marked.results || []).forEach((r) => {
+                const li = root.querySelector(`.ct-q[data-n="${r.n}"]`);
+                if (!li) return;
+                const box = li.querySelector('.ct-feedback');
+                box.className = `ct-feedback ${verdictClass(r.verdict)}`;
+                box.innerHTML = `<div class="ct-verdict">${r.verdict === 'correct' ? '✅ Correct' : r.verdict === 'partial' ? '🟡 Partly right' : '❌ Not right yet'}</div>
+                    ${r.correctAnswer ? `<div class="ct-correct"><strong>Answer:</strong> ${br(r.correctAnswer)}</div>` : ''}
+                    ${r.feedback ? `<div class="ct-tip">${br(r.feedback)}</div>` : ''}`;
+                box.hidden = false;
+            });
+            const score = root.querySelector('.ct-score');
+            score.innerHTML = `<strong>${marked.score} / ${marked.total}</strong>
+                <span class="ct-checked-by">${esc(marked.checkedBy || '')}</span>`;
+            score.hidden = false;
+            if (window.renderChatMath) window.renderChatMath(root);
+        } catch (e) {
+            toast(e.message || "Couldn't check your answers just now.", 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
+    }
+
+    function answerQuiz(root, payload, li, chosen) {
+        const n = Number(li.dataset.n);
+        const item = (payload.items || []).find(i => i.n === n);
+        if (!item || li.dataset.answered) return;
+        li.dataset.answered = '1';
+        const right = item.correctIndex;
+        li.querySelectorAll('.ct-option').forEach((opt) => {
+            const i = Number(opt.dataset.i);
+            opt.disabled = true;
+            if (i === right) opt.classList.add('is-correct');
+            else if (i === chosen) opt.classList.add('is-wrong');
+        });
+        const box = li.querySelector('.ct-feedback');
+        const ok = chosen === right;
+        box.className = `ct-feedback ${ok ? 'is-correct' : 'is-wrong'}`;
+        box.innerHTML = `<div class="ct-verdict">${ok ? '✅ Correct' : `❌ The answer is ${String.fromCharCode(65 + right)}`}</div>
+            ${item.explanation ? `<div class="ct-tip">${br(item.explanation)}</div>` : ''}`;
+        box.hidden = false;
+
+        const answered = root.querySelectorAll('.ct-q[data-answered]').length;
+        const total = (payload.items || []).length;
+        if (answered === total) {
+            const correct = [...root.querySelectorAll('.ct-q')].filter(q => q.querySelector('.ct-feedback.is-correct')).length;
+            const score = root.querySelector('.ct-score');
+            score.innerHTML = `<strong>${correct} / ${total}</strong> <span class="ct-checked-by">Scored against this quiz's own answer key</span>`;
+            score.hidden = false;
+            const retry = root.querySelector('.ct-retry');
+            if (retry && correct < total) retry.hidden = false;
+        }
+        if (window.renderChatMath) window.renderChatMath(li);
+    }
+
+    async function rerun(root, payload, change) {
+        const meta = payload.meta || {};
+        const btn = root.querySelector(change === 'harder' ? '.ct-harder' : '.ct-more');
+        const original = btn ? btn.innerHTML : '';
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Working…'; }
+        try {
+            const next = await deps.api.runChatTool(deps.authToken(), {
+                tool: payload.tool,
+                topic: meta.chapter || '',
+                count: meta.count,
+                difficulty: change === 'harder' ? 'Hard' : meta.difficulty,
+                classLevel: meta.classLevel,
+                // What this card already showed, so "More questions" brings new ones.
+                seenIds: (payload.items || []).map(i => i.id).filter(Boolean)
+            });
+            if (typeof deps.onFollowUp === 'function') deps.onFollowUp(next);
+        } catch (e) {
+            toast(e.message || "Couldn't build another one just now.", 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = original; }
+        }
+    }
+
+    function plainText(payload) {
+        const lines = [payload.title || ''];
+        if (payload.tool === 'notes') {
+            (payload.sections || []).forEach(s => {
+                lines.push('', s.heading);
+                (s.points || []).forEach(p => lines.push(`• ${p}`));
+            });
+            if ((payload.terms || []).length) {
+                lines.push('', 'Key terms');
+                payload.terms.forEach(t => lines.push(`• ${t.term}: ${t.meaning}`));
+            }
+            if ((payload.mistakes || []).length) {
+                lines.push('', 'Commonly got wrong');
+                payload.mistakes.forEach(m => lines.push(`• ${m}`));
+            }
+        } else if (payload.tool === 'mindmap') {
+            lines.push('', payload.mermaid || '');
+        } else {
+            (payload.items || []).forEach(it => lines.push('', `${it.n}. ${it.questionText || it.question || ''}`));
+        }
+        return lines.join('\n').trim();
+    }
+
+    function printCard(root, payload) {
+        const win = window.open('', '_blank', 'width=820,height=900');
+        if (!win) { toast('Allow pop-ups to print this.', 'info'); return; }
+        const body = root.cloneNode(true);
+        body.querySelectorAll('.ct-foot, .ct-hint, .ct-feedback').forEach(el => el.remove());
+        win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(payload.title || 'Worksheet')}</title>
+            <style>
+                body { font: 15px/1.6 system-ui, sans-serif; margin: 32px; color: #111; }
+                .ct-q { margin: 0 0 18px; }
+                .ct-q-num { font-weight: 700; margin-right: 6px; }
+                .ct-answer, .ct-mermaid { display: block; width: 100%; min-height: 48px; border: 1px solid #bbb; border-radius: 6px; }
+                .ct-chip, .ct-sub { font-size: 12px; color: #555; }
+                .ct-option { display: block; margin: 2px 0; }
+                ol { padding-left: 18px; }
+            </style></head><body>${body.innerHTML}</body></html>`);
+        win.document.close();
+        win.focus();
+        win.print();
+    }
+
+    async function saveDeck(root, payload) {
+        const btn = root.querySelector('.ct-save-deck');
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+        try {
+            const title = payload.title || 'Flashcards from chat';
+            await deps.api.saveChatDeck(deps.authToken(), title, (payload.items || []).map(c => ({ question: c.question, answer: c.answer })));
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved to your decks';
+            toast('Saved — it will come up in your flashcard revision.', 'success');
+        } catch (e) {
+            btn.disabled = false;
+            btn.innerHTML = original;
+            toast(e.message || "Couldn't save the deck.", 'error');
+        }
+    }
+
+    function wire(root) {
+        (root || document).querySelectorAll('.ct-tool').forEach((el) => {
+            if (el.dataset.ctWired) return;
+            el.dataset.ctWired = '1';
+            const payload = store.get(el.dataset.ctId);
+            if (!payload) return;
+
+            el.querySelector('.ct-check')?.addEventListener('click', () => checkWorksheet(el, payload));
+            el.querySelector('.ct-more')?.addEventListener('click', () => rerun(el, payload, 'more'));
+            el.querySelector('.ct-harder')?.addEventListener('click', () => rerun(el, payload, 'harder'));
+            el.querySelector('.ct-print')?.addEventListener('click', () => printCard(el, payload));
+            el.querySelector('.ct-save-deck')?.addEventListener('click', () => saveDeck(el, payload));
+
+            el.querySelector('.ct-copy')?.addEventListener('click', async () => {
+                try { await navigator.clipboard.writeText(plainText(payload)); toast('Copied.', 'success'); }
+                catch (e) { toast('Copy failed — select and copy manually.', 'error'); }
+            });
+
+            el.querySelector('.ct-save-note')?.addEventListener('click', () => {
+                if (typeof deps.onSaveNote === 'function') deps.onSaveNote(payload.title || 'Notes from chat', plainText(payload));
+            });
+
+            el.querySelectorAll('.ct-hint-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const hint = btn.parentElement.querySelector('.ct-hint');
+                    if (hint) hint.hidden = !hint.hidden;
+                });
+            });
+
+            el.querySelectorAll('.ct-option').forEach((opt) => {
+                opt.addEventListener('click', () => answerQuiz(el, payload, opt.closest('.ct-q'), Number(opt.dataset.i)));
+            });
+
+            el.querySelector('.ct-retry')?.addEventListener('click', () => {
+                el.querySelectorAll('.ct-q').forEach((li) => {
+                    if (li.querySelector('.ct-feedback.is-correct')) return;
+                    delete li.dataset.answered;
+                    li.querySelectorAll('.ct-option').forEach((o) => { o.disabled = false; o.classList.remove('is-correct', 'is-wrong'); });
+                    const box = li.querySelector('.ct-feedback');
+                    box.hidden = true; box.innerHTML = '';
+                });
+                el.querySelector('.ct-score').hidden = true;
+                el.querySelector('.ct-retry').hidden = true;
+            });
+
+            el.querySelectorAll('.ct-card').forEach((card) => {
+                card.addEventListener('click', () => {
+                    const q = card.querySelector('.ct-card-q');
+                    const a = card.querySelector('.ct-card-a');
+                    const showAnswer = !a.hidden;
+                    q.hidden = !showAnswer;
+                    a.hidden = showAnswer;
+                    card.setAttribute('aria-pressed', String(!showAnswer));
+                });
+            });
+
+            el.querySelector('.ct-flip-all')?.addEventListener('click', () => {
+                const anyQuestion = [...el.querySelectorAll('.ct-card-q')].some(q => !q.hidden);
+                el.querySelectorAll('.ct-card').forEach((card) => {
+                    card.querySelector('.ct-card-q').hidden = anyQuestion;
+                    card.querySelector('.ct-card-a').hidden = !anyQuestion;
+                    card.setAttribute('aria-pressed', String(anyQuestion));
+                });
+            });
+
+            // Mind maps are drawn by the same pinned Mermaid the rest of the app uses.
+            const map = el.querySelector('.ct-mermaid');
+            if (map && window.mermaid && !map.dataset.drawn) {
+                map.dataset.drawn = '1';
+                const src = map.textContent;
+                window.mermaid.render(`ctmap${Date.now().toString(36)}`, src)
+                    .then(({ svg }) => { map.innerHTML = svg; })
+                    .catch(() => { map.innerHTML = `<pre class="ct-map-fallback">${esc(src)}</pre>`; });
+            }
+
+            if (window.renderChatMath) window.renderChatMath(el);
+        });
+    }
+
+    return { render, wire, configure };
+})();

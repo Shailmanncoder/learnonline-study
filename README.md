@@ -1,0 +1,68 @@
+# StudyHub
+
+StudyHub provides AI study tools, NCERT retrieval, notes, worksheets, classrooms, and progress tracking. All tools are available to signed-in users without payment, subscriptions, trials, or tool selection. Teacher/classroom authorization still applies.
+
+## Local setup
+
+1. Install Node.js 20 or newer, then run `cd backend && npm ci`.
+2. Copy `backend/.env.example` to `backend/.env` (or `.env.example` to `.env` if already in `backend`).
+3. Generate `JWT_SECRET` with `openssl rand -hex 32`. Missing, short, or known fallback secrets prevent startup. Rotating it signs out existing sessions.
+4. Set `DB_DRIVER=mysql` with your existing MySQL settings, or deliberately choose `DB_DRIVER=sqlite` for a local database. MySQL errors stop startup; the app never silently switches datasets. SQLite defaults to `backend/database/studyhub.db`; `SQLITE_PATH` overrides it.
+5. Set the AI provider keys you use. Without a provider the existing app returns simulated responses; that is not a live AI verification.
+6. Run `npm start` from `backend`, then open `http://localhost:5001` (the example environment sets that port).
+
+The MySQL initializer currently creates the database/tables, so its account needs the corresponding privileges. Do not switch `DB_DRIVER` on an existing deployment without deliberately migrating its data.
+
+## NCERT and source library
+
+NCERT semantic retrieval uses a separate PostgreSQL/pgvector database through `NCERT_PG_URL`. The existing `ncert.dump` is a custom-format PostgreSQL backup: inspect it with `pg_restore --list`, and restore only into an intentionally chosen database. Its contents are not automatically restored by startup or tests. OCR language files and `model-cache/` support document extraction and local embeddings.
+
+For Docker, set database hosts in `backend/.env` to reachable addresses (typically `host.docker.internal` for host services), then run `docker compose up --build`. Compose loads the private environment file instead of embedding secrets. SQLite data is persisted in the `studyhub-data` volume. The image excludes private environment files and existing local database contents.
+
+## Verified Source Library
+
+Practice questions are served from a database of real NCERT Exemplar questions
+rather than written by a model. The collector fetches only allowlisted official
+URLs (robots.txt respected, size and timeout limits, redirects revalidated),
+extracts each page with coordinates, and reads questions with a deterministic
+parser — no model is involved in deciding what a question is or where it came
+from. Every citation is built from stored database fields.
+
+A question is `AUTO_VERIFIED` only when nine checks pass, including that its
+text is present on the recorded page, that its number sits next to it, and that
+the chapter's numbering is intact up to that question. Where numbering breaks,
+the questions after the break are kept for human review instead of being
+trusted. The rule throughout: **a missing citation is acceptable, a fake
+citation never is.** Unverifiable sources show "Exact source not verified."
+
+Current coverage (Classes 6-12 English editions): 270 documents, 15,277
+questions, 14,438 auto-verified, 11,151 with a confirmed printed page number.
+Answer keys listed as chapters are excluded by both their listing label and the
+PDF's own opening heading, so an answer never becomes a question.
+
+Ingested PDFs are **not** committed: they are publisher material we are
+licensed to fetch and cite, not to redistribute. Rebuild a local copy with
+`node scripts/library-collect.js --class 7 --subject Mathematics --all-units`,
+and check coverage with `node scripts/library-coverage.js`. Admin review lives
+at `/admin/sources`, restricted to the usernames in `LIBRARY_ADMINS`.
+
+## Study tools in the chat
+
+Asking the Companion for a worksheet, quiz, flashcards, notes or a mind map
+runs the tool and returns an interactive card in the conversation
+(`backend/services/chatTools.js`, `frontend/chatTools.js`). Worksheets prefer
+verified library questions, each with its own citation and a link to the exact
+page; follow-ups such as "5 more" or "make it harder" continue the same tool
+and skip questions already given. Anything a model wrote is labelled as
+AI-written and carries no book, page or question number, and marking is
+labelled as AI-checked.
+
+## Verification
+
+`cd backend && npm test` uses disposable SQLite databases, disables provider credentials, and runs authentication, removed-payment-endpoint, source-library, memory, and NCERT tests. Tests requiring an ingested source library are skipped without that dataset. No test uses the real account database. `npm run test:ncert` runs just the NCERT suite in the same isolated setup.
+
+## Billing removal and credential cleanup
+
+The payment controller, Razorpay dependency, checkout script, pricing dialogs, upgrades, subscription API methods, and all paid-access gates have been removed. Former `/api/payment/*` routes return 404. Fresh databases no longer create billing tables or plan columns. Existing historical billing records are deliberately left untouched; no destructive database migration is run.
+
+The local JWT secret was replaced during remediation. The exposed provider key was removed from configuration, but deleting a key from files does **not** revoke it. Revoke the old key in its provider account and enter a new key in `backend/.env`. Never distribute `.env`, configuration backups, or user databases. The rebuilt distribution ZIP excludes those files and includes the current application code.

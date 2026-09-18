@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "f3iQr92SChW5e_MuZ_um8"
+uri = "file://exports/aistudyhub.zip"
+type = "unspecified"
+title = "AI Study Hub — Full Project (zip)"
