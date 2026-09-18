@@ -237,11 +237,15 @@ function worksheetType(raw) {
 async function buildWorksheet(spec, ctx, { facts, weakTopics, report }) {
     const { say } = report;
     const where = spec.topic || ctx.chapter || 'this class';
-    const query = [ctx.classLevel ? `class ${ctx.classLevel}` : '', ctx.subject, spec.topic || ctx.chapter, `${spec.count} questions`]
+    // A named topic decides the subject. Adding the profile's subject here
+    // turned "worksheet on photosynthesis" for a Maths student into five
+    // questions about angles and bar graphs.
+    const query = [ctx.classLevel ? `class ${ctx.classLevel}` : '', spec.topic ? '' : ctx.subject, spec.topic || ctx.chapter, `${spec.count} questions`]
         .filter(Boolean).join(' ');
     const seen = new Set((spec.seenIds || []).map(Number));
     let cards = [];
     let repeated = false;
+    let librarySubject = null;
     // A True/False or short-answer sheet asked for by type is written to that
     // format; the library supplies the rest.
     const wantsLibrary = spec.type !== 'truefalse';
@@ -251,7 +255,16 @@ async function buildWorksheet(spec, ctx, { facts, weakTopics, report }) {
             // Ask for enough to still have a full sheet after dropping the ones
             // this student has already been given: "5 more" must mean 5 new ones.
             const found = await searchQuestions(query, { facts, weakTopics, limit: spec.count + seen.size });
-            const all = (found.results || []).map(r => toCard(r.row, r.reasons));
+            // The search always returns its best rows, related or not. When the
+            // student named a topic that is not a chapter title, keep only
+            // questions that actually mention it — otherwise a worksheet
+            // labelled "verified" would be about something else entirely.
+            const onTopic = (r) => Boolean(found.chapter) || !spec.topic || (r.reasons || []).includes('Matches what you asked about');
+            const kept = (found.results || []).filter(onTopic);
+            // The subject shown on the card is the subject the questions are from.
+            const subjects = kept.map(r => r.row.subject).filter(Boolean);
+            librarySubject = subjects.sort((a, b) => subjects.filter(x => x === b).length - subjects.filter(x => x === a).length)[0] || null;
+            const all = kept.map(r => toCard(r.row, r.reasons));
             const fresh = all.filter(c => !seen.has(Number(c.id)));
             cards = fresh.length >= Math.min(3, spec.count) ? fresh : all;
             repeated = cards === all && seen.size > 0 && fresh.length < Math.min(3, spec.count);
@@ -284,7 +297,7 @@ async function buildWorksheet(spec, ctx, { facts, weakTopics, report }) {
         return {
             tool: 'worksheet',
             title: `${where.charAt(0).toUpperCase()}${where.slice(1)} worksheet`,
-            meta: { classLevel: ctx.classLevel, subject: ctx.subject || null, chapter: spec.topic || ctx.chapter || null,
+            meta: { classLevel: ctx.classLevel, subject: librarySubject || (spec.topic ? null : ctx.subject) || null, chapter: spec.topic || ctx.chapter || null,
                     count: items.length, difficulty: spec.difficulty, type: spec.type || 'mcq',
                     source: 'library', sourceLabel: LIBRARY_LABEL, engine: 'Verified NCERT Exemplar' },
             items,
@@ -322,7 +335,7 @@ Respond ONLY with JSON: {"questions":[{"question":"...","options":[...],"correct
     return {
         tool: 'worksheet',
         title: `${where.charAt(0).toUpperCase()}${where.slice(1)} worksheet`,
-        meta: { classLevel: ctx.classLevel, subject: ctx.subject || null, chapter: spec.topic || ctx.chapter || null,
+        meta: { classLevel: ctx.classLevel, subject: spec.topic ? null : (ctx.subject || null), chapter: spec.topic || ctx.chapter || null,
                 count: list.length, difficulty: spec.difficulty, type,
                 source: 'ai', sourceLabel: AI_LABEL, engine: 'GPT-OSS 120B' },
         items: list.slice(0, spec.count).map((q, i) => ({
