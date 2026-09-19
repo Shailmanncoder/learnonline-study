@@ -43,7 +43,7 @@ const TOOL_PATTERNS = [
 const SLASH = { '/quiz': 'quiz', '/flashcards': 'flashcards', '/notes': 'notes', '/summary': 'notes', '/worksheet': 'worksheet', '/mindmap': 'mindmap' };
 
 // "10 questions", and also "5 hard questions" / "8 practice problems".
-const COUNT = /\b(\d{1,2})\s+(?:[a-z]+\s+){0,2}?(?:questions?|ques|qs?|problems?|mcqs?|cards?|items?)\b|\b(\d{1,2})(?:questions?|qs?|cards?)\b/i;
+const COUNT = /\b(\d{1,2})\s+(?:[a-z]+\s+){0,2}?(?:questions?|ques|qs?|problems?|mcqs?|flash\s?cards?|cards?|items?|statements?)\b|\b(\d{1,2})(?:questions?|qs?|cards?)\b/i;
 const CLASS_IN_TEXT = /\b(?:class|grade|std|kaksha)\s*([1-9]|1[0-2])\b/i;
 const countIn = (text) => { const m = String(text || '').match(COUNT); return m ? (m[1] || m[2]) : undefined; };
 const DIFFICULTY = [
@@ -78,8 +78,10 @@ function topicOf(text, tool) {
     const pattern = TOOL_PATTERNS.find(p => p.tool === tool);
     let t = String(text || '')
         .replace(/^\/[a-z]+\s*/i, '')
-        .replace(new RegExp(pattern.re.source, 'gi'), ' ')
+        // The count first: "4 flashcards" loses its "4" only while the noun
+        // after it is still there.
         .replace(new RegExp(COUNT.source, 'gi'), ' ')
+        .replace(new RegExp(pattern.re.source, 'gi'), ' ')
         .replace(new RegExp(CLASS_IN_TEXT.source, 'gi'), ' ')
         .replace(new RegExp(MAKE.source, 'gi'), ' ')
         .replace(/\b(questions?|cards?|marks?|difficulty|level|easy|medium|hard|difficult|tough|challenging|advanced|simple|basic|mcqs?|multiple\s+choice|objective|true\s*(?:or|\/)?\s*false|short\s+answer)\b/gi, ' ')

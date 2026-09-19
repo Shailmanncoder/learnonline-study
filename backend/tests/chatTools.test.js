@@ -87,3 +87,11 @@ test('library options are split out only for real multiple-choice questions', ()
     assert.equal(split('(a) Write a positive integer (b) Write a negative integer', 'Multiple Choice Questions'), null);
     assert.equal(split('Evaluate: (a) 3 × 4 (b) 5 × 6 (c) 7 × 8', null), null);
 });
+
+test('"4 flashcards" is a count of 4, not part of the topic', () => {
+    const f = detectTool('make 4 flashcards on light');
+    assert.equal(f.tool, 'flashcards');
+    assert.equal(f.count, 4);
+    assert.equal(f.topic, 'light');
+    assert.equal(detectTool('give me 6 flash cards about magnets').count, 6);
+});

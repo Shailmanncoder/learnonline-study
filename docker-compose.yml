@@ -14,6 +14,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - studyhub-data:/app/backend/database
+      - ./model-cache:/app/backend/node_modules/@huggingface/transformers/.cache
     restart: unless-stopped
 
 volumes:
