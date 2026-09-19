@@ -5,7 +5,7 @@ name: Deploy StudyHub to AWS EC2
 on:
   push:
     branches:
-      - main
+      - updated-api
   workflow_dispatch:
 
 concurrency:
