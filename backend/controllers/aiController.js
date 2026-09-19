@@ -387,7 +387,14 @@ router.post('/generate', auth, async (req, res) => {
         // the questions and every citation come from database rows, and the
         // model — used only for explanations — never sees a page, a URL or a
         // source. See services/sourceLibrary/libraryAnswer.js.
-        if (typeof prompt === 'string' && prompt.trim() && !(Array.isArray(images) && images.length)) {
+        // Only a message typed into the Companion chat is answered with cards.
+        // The app's own features (Worksheet Generator, its grader, the Tools
+        // screen) call this same endpoint with prompts like "Generate a
+        // 5-question worksheet … return ONLY a JSON array" and need the model's
+        // raw answer — intercepting those broke the Worksheet Generator with
+        // "Error generating worksheet". Only the Companion sends useMemory.
+        const isChatTurn = useMemory === true && typeof prompt === 'string' && prompt.trim() && !(Array.isArray(images) && images.length);
+        if (isChatTurn) {
             try {
                 const libFacts = await getFacts(req.user.id).catch(() => []);
                 const lib = await answerLibraryQuestion(prompt, {
@@ -417,7 +424,7 @@ router.post('/generate', auth, async (req, res) => {
         // this chapter" run the real tool and come back as an interactive
         // card. Worksheets prefer verified library questions; anything the
         // model writes is labelled as AI-written. See services/chatTools.js.
-        if (typeof prompt === 'string' && prompt.trim() && !(Array.isArray(images) && images.length)) {
+        if (isChatTurn) {
             try {
                 const toolFacts = await getFacts(req.user.id).catch(() => []);
                 const ran = await runChatTool(prompt, {
