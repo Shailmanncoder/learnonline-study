@@ -1,5 +1,7 @@
-# Debian Trixie/Bookworm GLIBC_2.38 compatible image
-FROM node:22-slim
+# Debian Trixie (glibc 2.41). The sqlite3 prebuilt binary that npm install
+# fetches needs GLIBC_2.38; node:22-slim is Bookworm (glibc 2.36), and an
+# image built on it crash-looped on start with "GLIBC_2.38 not found".
+FROM node:22-trixie-slim
 
 WORKDIR /app
 
