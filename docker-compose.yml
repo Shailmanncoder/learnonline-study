@@ -15,7 +15,38 @@ services:
     volumes:
       - studyhub-data:/app/backend/database
       - ./model-cache:/app/backend/node_modules/@huggingface/transformers/.cache
+    depends_on:
+      - ncert-db
+    restart: unless-stopped
+
+  # NCERT textbook corpus (Postgres 16 + pgvector) for the tutor's semantic
+  # search. Reachable only from the app over the compose network — no port
+  # is published. Credentials come from backend/.env (POSTGRES_USER,
+  # POSTGRES_PASSWORD, POSTGRES_DB), and the app connects with
+  # NCERT_PG_URL=postgres://USER:PASSWORD@ncert-db:5432/DB.
+  # Tuned for an 8 GB host; shm_size lets the HNSW index build in parallel.
+  ncert-db:
+    image: pgvector/pgvector:pg16
+    container_name: studyhub-ncert-db
+    env_file:
+      - ./backend/.env
+    command: >
+      postgres
+      -c shared_buffers=1GB
+      -c effective_cache_size=4GB
+      -c maintenance_work_mem=1GB
+      -c work_mem=32MB
+      -c max_connections=40
+    shm_size: 1gb
+    volumes:
+      - ncert-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
 volumes:
   studyhub-data:
+  ncert-pgdata:
