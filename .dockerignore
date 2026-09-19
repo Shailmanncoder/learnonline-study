@@ -3,6 +3,11 @@ backend/.env
 .git
 .agents
 .replit
+backend/*.traineddata
+backend/scripts/
+backend/tests/
+backend/database/source-library/
+backend/database/ncert-resource-cache/
 
 backend/.env.*
 !backend/.env.example
