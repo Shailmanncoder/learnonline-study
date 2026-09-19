@@ -1,5 +1,6 @@
 name: Deploy StudyHub to AWS EC2
 # Triggered again after deployment setup
+# Deployment retry after EC2 environment setup
 
 on:
   push:
