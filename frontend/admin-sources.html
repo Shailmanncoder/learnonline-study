@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Source Library Admin · LearnOnline.study</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/premium.css">
+<style>
+    body.vsa { margin: 0; background: var(--bg-color); color: var(--text-primary); font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+    .vsa-wrap { max-width: 1280px; margin: 0 auto; padding: 24px clamp(14px, 3vw, 32px) 80px; }
+    .vsa-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .vsa-head h1 { font-size: 1.5rem; margin: 0; letter-spacing: -.02em; }
+    .vsa-head p { margin: 4px 0 0; color: var(--text-secondary); font-size: .88rem; }
+    .vsa-who { font-size: .8rem; color: var(--text-secondary); }
+    .vsa-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 22px; }
+    .vsa-stat { padding: 14px; border-radius: var(--r-md, 12px); border: 1px solid var(--hairline, var(--border-color)); background: var(--surface, var(--card-bg)); }
+    .vsa-stat b { display: block; font-size: 1.55rem; font-variant-numeric: tabular-nums; }
+    .vsa-stat span { font-size: .76rem; color: var(--text-secondary); }
+    .vsa-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 16px; border-bottom: 1px solid var(--hairline, var(--border-color)); }
+    .vsa-tab { padding: 10px 14px; border: 0; background: none; color: var(--text-secondary); font: inherit; font-weight: 600; font-size: .88rem; cursor: pointer; border-bottom: 2px solid transparent; }
+    .vsa-tab.is-active { color: var(--text-primary); border-color: var(--accent, var(--brand-500)); }
+    .vsa-panel[hidden] { display: none; }
+    .vsa-card { padding: 16px; border-radius: var(--r-lg, 14px); border: 1px solid var(--hairline, var(--border-color)); background: var(--surface, var(--card-bg)); margin-bottom: 14px; }
+    .vsa-card h2 { font-size: 1rem; margin: 0 0 10px; }
+    .vsa-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .vsa-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+    .vsa input[type=text], .vsa input[type=number], .vsa select, .vsa textarea {
+        padding: 8px 10px; border-radius: 8px; border: 1px solid var(--hairline, var(--border-color));
+        background: var(--bg-color); color: var(--text-primary); font: inherit; font-size: .86rem; min-width: 0;
+    }
+    .vsa textarea { width: 100%; min-height: 150px; resize: vertical; line-height: 1.5; }
+    .vsa label.vsa-field { display: flex; flex-direction: column; gap: 4px; font-size: .76rem; color: var(--text-secondary); }
+    .vsa-btn { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--hairline, var(--border-color)); background: var(--surface, var(--card-bg)); color: var(--text-primary); font: inherit; font-weight: 600; font-size: .84rem; cursor: pointer; }
+    .vsa-btn.is-primary { background: var(--accent, var(--brand-500)); border-color: transparent; color: #fff; }
+    .vsa-btn.is-good { background: var(--success-color, #16a34a); border-color: transparent; color: #fff; }
+    .vsa-btn.is-bad { color: var(--danger-color, #dc2626); }
+    .vsa-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .vsa-table-wrap { overflow-x: auto; }
+    .vsa-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+    .vsa-table th, .vsa-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--hairline, var(--border-color)); vertical-align: top; }
+    .vsa-table th { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
+    .vsa-table tr.is-clickable { cursor: pointer; }
+    .vsa-table tr.is-clickable:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+    .vsa-chip { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: .7rem; font-weight: 700; white-space: nowrap; }
+    .vsa-chip.s-AUTO_VERIFIED, .vsa-chip.s-processed, .vsa-chip.s-done { background: color-mix(in srgb, var(--success-color,#16a34a) 16%, transparent); color: var(--success-color,#16a34a); }
+    .vsa-chip.s-HUMAN_VERIFIED { background: color-mix(in srgb, var(--accent,#4f46e5) 18%, transparent); color: var(--accent,#4f46e5); }
+    .vsa-chip.s-UNVERIFIED, .vsa-chip.s-running, .vsa-chip.s-queued, .vsa-chip.s-fetched, .vsa-chip.s-discovered { background: color-mix(in srgb, var(--warning-color,#d97706) 16%, transparent); color: var(--warning-color,#d97706); }
+    .vsa-chip.s-REJECTED, .vsa-chip.s-failed, .vsa-chip.s-excluded, .vsa-chip.s-duplicate { background: color-mix(in srgb, var(--danger-color,#dc2626) 16%, transparent); color: var(--danger-color,#dc2626); }
+    .vsa-muted { color: var(--text-secondary); font-size: .8rem; }
+    .vsa-log { white-space: pre-wrap; font: .76rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 260px; overflow: auto; padding: 10px; border-radius: 8px; background: var(--bg-color); border: 1px solid var(--hairline, var(--border-color)); }
+    .vsa-bar { height: 6px; border-radius: 99px; background: color-mix(in srgb, var(--text-primary) 10%, transparent); overflow: hidden; min-width: 80px; }
+    .vsa-bar span { display: block; height: 100%; background: var(--accent, var(--brand-500)); }
+    /* verification view */
+    .vsa-verify { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .vsa-page { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--hairline, var(--border-color)); background: #fff; }
+    .vsa-page img { display: block; width: 100%; height: auto; }
+    .vsa-hl { position: absolute; border: 2px solid #f59e0b; background: rgba(245, 158, 11, .14); border-radius: 4px; pointer-events: none; }
+    .vsa-checks { list-style: none; margin: 8px 0 0; padding: 0; font-size: .8rem; }
+    .vsa-checks li { padding: 2px 0; }
+    .vsa-checks .ok { color: var(--success-color, #16a34a); }
+    .vsa-checks .no { color: var(--danger-color, #dc2626); }
+    .vsa-citation { margin-top: 12px; }
+    .vsa-denied { max-width: 520px; margin: 12vh auto; text-align: center; }
+    @media (max-width: 900px) { .vsa-verify { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body class="vsa">
+<div class="vsa-wrap" id="vsa-app">
+    <div class="vsa-denied" id="vsa-loading"><p class="vsa-muted">Checking admin access…</p></div>
+</div>
+<script src="/sourceLibrary.js"></script>
+<script src="/admin-sources.js"></script>
+</body>
+</html>

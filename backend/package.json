@@ -1,0 +1,44 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --require ./tests/setup.js --test tests/*.test.js",
+    "sync:ncert": "node scripts/sync-ncert.js",
+    "test:ncert": "node --require ./tests/setup.js --test tests/ncert.test.js",
+    "ncert:coverage": "node scripts/ncert-coverage.js",
+    "ncert:reindex": "node scripts/reindex-ncert.js",
+    "ncert:regrade": "node scripts/regrade-ncert.js",
+    "ncert:repair": "node scripts/repair-ncert.js",
+    "ncert:garbled": "node scripts/mark-garbled.js",
+    "ncert:ocr": "node scripts/ocr-ncert.js",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@huggingface/transformers": "^4.2.0",
+    "@napi-rs/canvas": "^1.0.9",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "groq-sdk": "^1.1.2",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.22.3",
+    "openai": "^6.36.0",
+    "pg": "^8.23.0",
+    "sqlite3": "^6.0.1",
+    "tesseract.js": "^7.0.0",
+    "unpdf": "^1.8.1"
+  },
+  "allowScripts": {
+    "onnxruntime-node@1.24.3": true,
+    "sharp@0.34.5": true,
+    "protobufjs@7.6.6": true
+  }
+}

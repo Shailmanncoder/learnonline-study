@@ -1,0 +1,37 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Local database
+backend/database/*.db
+backend/database/*.db-journal
+
+# Logs / OS noise
+*.log
+npm-debug.log*
+.DS_Store
+
+# Old configuration copies may contain credentials
+*.bak
+
+# Ingested source PDFs and caches — publisher material we are licensed to
+# fetch and cite, NOT to redistribute. The collector re-downloads these
+# from the official NCERT pages on demand.
+backend/database/source-library/
+backend/database/ncert-resource-cache/
+backend/database/ncert-sync-status.json
+
+# Students' own uploads
+backend/database/memory-docs/
+
+# Large local model files — installed, not committed
+model-cache/
+*.traineddata
+
+# Database dumps
+*.dump
+*.sql.gz

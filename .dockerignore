@@ -1,0 +1,10 @@
+backend/node_modules
+backend/.env
+.git
+.agents
+.replit
+
+backend/.env.*
+!backend/.env.example
+**/*.bak
+backend/database/
