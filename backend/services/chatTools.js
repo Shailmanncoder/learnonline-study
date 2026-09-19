@@ -605,7 +605,9 @@ ${lines}`,
 // tutor, which has the textbook behind it.
 const INTERACTIVE = new Set(Object.keys(BUILDERS));
 const TOOL_VERB = /\b(write|draft|compose|solve|calculate|translate|summari[sz]e|paraphrase|rephrase|rewrite|explain\s+this\s+code|debug|fix|generate|create|make|build|design|plan|schedule|cite|convert|list|brainstorm|compare|analyse|analyze|breakdown|break\s+down)\b/i;
-const BARE_QUESTION = /^\s*(what|why|who|when|where|which|whose|is|are|was|were|does|do|did|can|could|should|would)\b/i;
+// A question to be answered, including "how do plants make food?" — the verb
+// "make" inside a how-question is not a request for a tool.
+const BARE_QUESTION = /^\s*(what|why|who|when|where|which|whose|how|is|are|was|were|does|do|did|can|could|should|would|explain|describe|define|tell\s+me|kya|kaise|kyun|kyon|kab|kaun|kahan)\b|\?\s*$/i;
 const CATALOG_SKIP = new Set(['worksheet-generator', 'flashcard-gen', 'mindmap-gen', 'ai-tutor', 'snap-and-solve', 'image-summarizer', 'video-summarizer', 'pdf-summarizer']);
 
 function catalogSummary() {

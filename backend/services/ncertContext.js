@@ -248,9 +248,13 @@ function distinctiveTerms(question) {
 const BOOK_META = /\b(story|stories|poem|poems|poet|author|writer|character|characters|hero|heroine|moral|theme|summary|summarise|summarize|plot|lesson|chapter|chapters|unit|title|message|narrator|setting|ending|beginning|first|last|kahani|kavita|lekhak|kavi|patra|saar|sandesh)\b|कहानी|कविता|लेखक|कवि|पात्र|सारांश|संदेश|शीर्षक|पाठ/i;
 
 // Returns { block, sources } to inject, or null to leave the request alone.
-async function buildTextbookContext(facts, messages, prompt) {
+// `onStep` receives what the search is doing as it does it — the scope and
+// the question BEFORE searching, then each chapter and page it found — so the
+// chat's thinking panel shows the real search, not a summary of it.
+async function buildTextbookContext(facts, messages, prompt, { onStep } = {}) {
     load();
     if (disabled || !corpus) return null;
+    const say = (text) => { if (typeof onStep === 'function') onStep(text); };
 
     const question = latestQuestion(messages, prompt).slice(0, 3000);
     if (question.trim().length < 8) return null;   // greetings aren't lookups
@@ -259,6 +263,7 @@ async function buildTextbookContext(facts, messages, prompt) {
     const grade = shelf.grade;
     if (!grade) return null;                    // no class: nothing to scope to
     const subject = shelf.subject || undefined;
+    const quoted = `"${question.replace(/\s+/g, ' ').trim().slice(0, 90)}${question.length > 90 ? '…' : ''}"`;
 
     let hits;
     let forced = null;
@@ -273,10 +278,13 @@ async function buildTextbookContext(facts, messages, prompt) {
             // Explicit beats implicit: stay in the book they asked for, even
             // if a newer edition would score higher. The book id is the whole
             // scope — no subject filter can be allowed to exclude it.
+            say(`Searching only the book "${forced.name}" for ${quoted}`);
             hits = await corpus.search({ embedding, limit: MAX_CHUNKS, bookId: forced.id });
         } else {
+            say(`Searching NCERT ${grade}${subject ? ` ${subject}` : ''} textbooks${medium && medium !== 'English' ? ` (${medium} medium)` : ''}, current editions, for ${quoted}`);
             hits = await corpus.search({ embedding, grade, subject, medium, limit: MAX_CHUNKS, currentOnly: true });
             if (!hits.some(h => h.score >= MIN_SCORE)) {
+                say('Nothing close enough in the current editions — widening to older editions');
                 const wider = await corpus.search({ embedding, grade, subject, limit: MAX_CHUNKS });
                 if (wider.some(h => h.score >= MIN_SCORE)) hits = wider;
             }
@@ -284,6 +292,7 @@ async function buildTextbookContext(facts, messages, prompt) {
     } catch (e) {
         noteFailure(e);
         console.warn('[NCERT CONTEXT] search failed:', e.message);
+        say('The textbook search is unavailable right now');
         return null;
     }
     noteSuccess();
@@ -311,6 +320,9 @@ async function buildTextbookContext(facts, messages, prompt) {
     }
 
     if (!relevant.length) {
+        say(forced
+            ? `No passage in "${forced.name}" matches this question`
+            : `No passage matched closely enough — ${(hits || []).length} results were all below the relevance bar`);
         // The student chose this book. Answering from a different book — or
         // from general knowledge — while the sources say "your textbook" is
         // the misleading answer this replaces: say plainly it is not there.
@@ -348,6 +360,19 @@ async function buildTextbookContext(facts, messages, prompt) {
         });
     }
     if (!lines.length) return null;
+
+    // What was found, chapter by chapter, with the pages that will be read.
+    const byChapter = new Map();
+    for (const src of sources) {
+        const key = `${src.book} › ${src.chapter}`;
+        if (!byChapter.has(key)) byChapter.set(key, new Set());
+        byChapter.get(key).add(src.page);
+    }
+    say(`Found ${sources.length} passage${sources.length === 1 ? '' : 's'} in ${byChapter.size} chapter${byChapter.size === 1 ? '' : 's'}`);
+    for (const [where, pages] of [...byChapter].slice(0, 4)) {
+        const list = [...pages].sort((a, b) => a - b);
+        say(`Reading ${where} — page${list.length === 1 ? '' : 's'} ${list.join(', ')}`);
+    }
 
     const block = forced
         ? [

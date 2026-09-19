@@ -153,6 +153,7 @@ function handleAppRouting(initial = false) {
         'summarizers': 'summarizers',
         'leaderboard': 'leaderboard',
         'flashcards': 'flashcards',
+        'learning-hub': 'learning-hub',
         'quiz-generator': 'quiz-generator',
         'quiz': 'quiz-generator',
         'study-roadmap': 'study-roadmap',
@@ -4688,19 +4689,7 @@ Provide a clear, 2-sentence executive summary with recommended next steps.`;
         // The finished panel keeps the same real steps, collapsed.
         const steps = Array.isArray(res.steps) ? res.steps : [];
         const retrievedCount = Array.isArray(res.sources) ? res.sources.length : 0;
-        let thinkingHtml = '';
-        if (steps.length) {
-            thinkingHtml = `
-                <div class="grok-think-pill-toggle" id="toggle-think-${msgId}">
-                    <i class="fa-regular fa-lightbulb"></i> ${steps.length} step${steps.length === 1 ? '' : 's'} · ${elapsedSeconds}s <i class="fa-solid fa-chevron-down" style="font-size: 10px; margin-left: 4px;"></i>
-                </div>
-                <div class="grok-thinking-block" id="completed-think-${msgId}" style="display: none;">
-                    <ol class="grok-live-list is-done">
-                        ${steps.map(t => `<li class="grok-live-step">${escapeHtml(t)}</li>`).join('')}
-                    </ol>
-                </div>
-            `;
-        }
+        const thinkingHtml = renderThinking(steps, elapsedSeconds);
 
         // Real citations: these are the NCERT pages the server actually
         // retrieved and put in front of the model, not a decoration.
@@ -7430,7 +7419,7 @@ function renderWorksheetResult(data) {
         </div>
         <div class="ws-result-verdict">
             <h4>${verdict}</h4>
-            <p>${data.xpEarned ? `+${data.xpEarned} XP earned. ` : ''}Every question is marked below with the correct answer.</p>
+            <p>${data.pendingReview ? 'Provisional score — awaiting teacher review. ' : ''}${data.xpEarned ? `+${data.xpEarned} XP earned. ` : ''}Every question is marked below with the correct answer.</p>
         </div>`;
 
     const results = data.results || [];
@@ -7620,6 +7609,41 @@ document.getElementById('player-result-done-btn')?.addEventListener('click', () 
 // Restores the last thread so context survives a refresh, and lists
 // recent conversations so a student can pick one back up.
 // ================================================================
+// ── The thinking panel ─────────────────────────────────────────────
+// What the tutor actually did for an answer — the searches it ran and what
+// they found — stays OPEN under a "Thought for 4s" header once the answer
+// arrives, instead of folding away into a pill. A student who closes it
+// keeps it closed: the choice is remembered for later answers.
+const THINKING_PREF = 'grokThinkingOpen';
+function thinkingOpenByDefault() {
+    try { return localStorage.getItem(THINKING_PREF) !== '0'; } catch (e) { return true; }
+}
+function renderThinking(steps, seconds) {
+    const list = Array.isArray(steps) ? steps.filter(Boolean) : [];
+    if (!list.length) return '';
+    const open = thinkingOpenByDefault();
+    const secs = Number(seconds) > 0 ? `Thought for ${Math.round(Number(seconds))}s` : 'What I did';
+    return `<div class="grok-thought${open ? ' is-open' : ''}">
+        <button type="button" class="grok-thought-toggle" aria-expanded="${open}">
+            <i class="fa-regular fa-lightbulb"></i>
+            <span>${secs} · ${list.length} step${list.length === 1 ? '' : 's'}</span>
+            <i class="fa-solid fa-chevron-down grok-thought-chevron"></i>
+        </button>
+        <ol class="grok-thought-list">
+            ${list.map(t => `<li class="grok-thought-step">${escapeHtml(t)}</li>`).join('')}
+        </ol>
+    </div>`;
+}
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest ? e.target.closest('.grok-thought-toggle') : null;
+    if (!btn) return;
+    const box = btn.closest('.grok-thought');
+    const open = !box.classList.contains('is-open');
+    box.classList.toggle('is-open', open);
+    btn.setAttribute('aria-expanded', String(open));
+    try { localStorage.setItem(THINKING_PREF, open ? '1' : '0'); } catch (err) { /* private mode */ }
+});
+
 // `onlyIfIdle` is for the automatic restore after page load. It ran 2.2s
 // after load and replaced the whole stream — so a student who had already
 // asked something lost the answer on screen, and a worksheet card was swapped

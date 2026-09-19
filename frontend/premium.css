@@ -4053,3 +4053,53 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
     .ct-tool--paper .ws-paper-header { gap: 10px; }
     .ct-tool--paper .ws-option-pill { padding: 12px; gap: 10px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   38. THINKING PANEL — what the tutor did, kept open after the answer
+   A timeline: one dot per real step, joined by a line, so long steps
+   ("Reading Curiosity › Chapter 10 … — pages 4, 5, 8") wrap cleanly
+   instead of crowding each other.
+   ═══════════════════════════════════════════════════════════════════ */
+.grok-thought { margin: 0 0 14px; }
+.grok-thought-toggle {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--hairline, var(--border-color));
+    background: var(--surface-inset, color-mix(in srgb, var(--text-primary) 4%, transparent));
+    color: var(--text-secondary); font: inherit; font-size: 12.5px; font-weight: 600;
+}
+.grok-thought-toggle:hover { color: var(--text-primary); }
+.grok-thought-chevron { font-size: 10px; transition: transform .2s ease; }
+.grok-thought.is-open .grok-thought-chevron { transform: rotate(180deg); }
+
+.grok-thought-list {
+    list-style: none; margin: 10px 0 0 6px; padding: 0 0 0 16px;
+    border-left: 2px solid var(--hairline, var(--border-color));
+    display: none; gap: 8px;
+}
+.grok-thought.is-open .grok-thought-list { display: grid; }
+.grok-thought-step {
+    position: relative; font-size: 13px; line-height: 1.5;
+    color: var(--text-secondary); overflow-wrap: anywhere;
+}
+.grok-thought-step::before {
+    content: ''; position: absolute; left: -22px; top: .5em;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--bg-color, #fff);
+    border: 2px solid var(--accent, var(--brand-500));
+}
+/* The search steps are the ones that matter — let them read as such. */
+.grok-thought-step:last-child { color: var(--text-primary); }
+
+/* The live list while working uses the same timeline, so nothing jumps
+   when the answer arrives and the finished panel takes its place. */
+.grok-live-steps .grok-live-list {
+    margin: 0 0 10px 6px; padding-left: 16px; gap: 8px;
+    border-left: 2px solid var(--hairline, var(--border-color));
+}
+.grok-live-steps .grok-live-step { padding-left: 0; overflow-wrap: anywhere; }
+.grok-live-steps .grok-live-step::before {
+    left: -22px; top: .5em; width: 10px; height: 10px;
+    background: var(--bg-color, #fff); border: 2px solid var(--accent, var(--brand-500));
+}
+.grok-live-steps .grok-live-step:last-child::before { background: var(--accent, var(--brand-500)); }

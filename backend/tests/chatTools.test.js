@@ -95,3 +95,10 @@ test('"4 flashcards" is a count of 4, not part of the topic', () => {
     assert.equal(f.topic, 'light');
     assert.equal(detectTool('give me 6 flash cards about magnets').count, 6);
 });
+
+test('a how-question with "make" in it is answered, not routed to a tool', async () => {
+    const { runCatalogTool } = require('../services/chatTools');
+    assert.equal(await runCatalogTool('How do plants make their own food using sunlight?', { facts: [] }), null);
+    assert.equal(await runCatalogTool('explain how to calculate the area of a circle', { facts: [] }), null);
+    assert.equal(await runCatalogTool('pani ka cycle kaise banta hai?', { facts: [] }), null);
+});

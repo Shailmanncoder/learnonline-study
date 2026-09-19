@@ -186,7 +186,8 @@ const { answerLibraryQuestion } = require('../services/sourceLibrary/libraryAnsw
 const memoryDocs = require('../services/memoryDocs');
 const { runChatTool, runToolSpec, gradeWorksheet } = require('../services/chatTools');
 const { buildTextbookContext, buildSyllabusIndex, buildChapterLocator,
-        buildLockedContext, readingLevel, corpusHealthy, LOCK_KEY, LOCK_LABEL_KEY } = require('../services/ncertContext');
+        buildLockedContext, readingLevel, corpusHealthy, LOCK_KEY, LOCK_LABEL_KEY,
+        resolveBookSelection, applyBookToFacts, BOOK_KEY, BOOK_LABEL_KEY } = require('../services/ncertContext');
 
 // How many past turns to replay. Enough for real continuity, small enough
 // to stay inside the per-minute token budget.
@@ -352,6 +353,7 @@ router.post('/generate', auth, async (req, res) => {
         } = req.body;
         const rid = progress.start(requestId, req.user.id);
         const step = (text) => progress.step(rid, text);
+        const startedAt = Date.now();
 
         if (!prompt && !messages) {
             return res.status(400).json({ msg: 'Prompt or messages array is required' });
@@ -408,7 +410,7 @@ router.post('/generate', auth, async (req, res) => {
                     const payload = { result: lib.reply, library: lib.library, steps: progress.stepsOf(rid) };
                     if (thread) {
                         payload.threadId = thread.id;
-                        await appendTurn(thread, req.user.id, prompt, lib.reply, { library: lib.library });
+                        await appendTurn(thread, req.user.id, prompt, lib.reply, { library: lib.library, steps: progress.stepsOf(rid), seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)) });
                     }
                     return res.json(payload);
                 }
@@ -439,7 +441,7 @@ router.post('/generate', auth, async (req, res) => {
                     const payload = { result: ran.reply, tool: ran.tool, steps: progress.stepsOf(rid) };
                     if (thread) {
                         payload.threadId = thread.id;
-                        await appendTurn(thread, req.user.id, prompt, ran.reply, { tool: ran.tool });
+                        await appendTurn(thread, req.user.id, prompt, ran.reply, { tool: ran.tool, steps: progress.stepsOf(rid), seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)) });
                     }
                     return res.json(payload);
                 }
@@ -472,8 +474,9 @@ router.post('/generate', auth, async (req, res) => {
                 const factOf = (k) => (facts.find(f => f.mem_key === k) || {}).mem_value || '';
                 const questionText = String(prompt || (Array.isArray(messages)
                     ? ([...messages].reverse().find(m => m && m.role === 'user') || {}).content : '') || '');
-                step(factOf('class')
-                    ? `Read your study profile (Class ${factOf('class')}${factOf('subject') ? ', ' + factOf('subject') : ''})`
+                const classLabel = String(factOf('class') || '').replace(/^\s*class\s*/i, '');
+                step(classLabel
+                    ? `Read your study profile (Class ${classLabel}${factOf('subject') ? ', ' + factOf('subject') : ''})`
                     : 'Read your study profile');
 
                 // ── The student's own uploads come first ─────────────────
@@ -584,7 +587,7 @@ router.post('/generate', auth, async (req, res) => {
                         await forgetFact(req.user.id, LOCK_LABEL_KEY).catch(() => {});
                     }
                 const [found, index, located] = await Promise.all([
-                    buildTextbookContext(facts, messages, prompt),
+                    buildTextbookContext(facts, messages, prompt, { onStep: step }),
                     // Always supplied when a class is known: naming chapters
                     // is a catalog question that retrieval cannot answer, and
                     // without the real list the model recites whichever
@@ -600,16 +603,12 @@ router.post('/generate', auth, async (req, res) => {
                     // "Not in the book you chose" must sit closest to the
                     // question, after the chapter index, or the model reads
                     // the index and answers from it anyway.
+                    // The search itself reported what it looked through and
+                    // that nothing matched (see buildTextbookContext's onStep).
                     apiMessages.push({ role: 'system', content: found.block });
-                    step(`Searched "${found.book}" — nothing in it matches this question`);
                 } else if (found) {
                     apiMessages.unshift({ role: 'system', content: found.block });
                     textbookSources = found.sources;
-                    const books = [...new Set(found.sources.map(x => x.book))];
-                    const fp = [...new Set(found.sources.map(x => x.page))];
-                    step(`Searched ${selectedBook ? `"${selectedBook}"` : 'your NCERT textbooks'} — found ${found.sources.length} matching passage${found.sources.length > 1 ? 's' : ''} in ${books.join(', ')} (page${fp.length > 1 ? 's' : ''} ${fp.join(', ')})`);
-                } else if (corpusHealthy()) {
-                    step('Searched your NCERT textbooks — no passage matched this question');
                 }
                 // Order matters: the locator is unshifted last so it sits
                 // CLOSEST to the question. Placed before the chapter index it
@@ -820,7 +819,7 @@ router.post('/generate', auth, async (req, res) => {
             }
             if (thread) {
                 payload.threadId = thread.id;
-                await appendTurn(thread, req.user.id, prompt, answer);
+                await appendTurn(thread, req.user.id, prompt, answer, { steps: progress.stepsOf(rid), seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)) });
             }
             return res.json(payload);
         }
