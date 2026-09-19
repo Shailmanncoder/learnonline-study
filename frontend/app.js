@@ -1013,6 +1013,7 @@ function navigateToSection(target, updateUrl = true) {
     const targetSection = document.getElementById(target);
     if (targetSection) targetSection.classList.add('active');
 
+    if (target === 'learning-hub') window.loadLearningWorkspace?.();
     if (target === 'leaderboard') loadLeaderboard();
     if (target === 'tools') loadTools();
     if (target === 'notes') loadNotes();
@@ -4759,16 +4760,8 @@ Provide a clear, 2-sentence executive summary with recommended next steps.`;
         if (window.SourceLibraryUI) window.SourceLibraryUI.wire(bubbleEl);
         if (window.ChatToolsUI) window.ChatToolsUI.wire(bubbleEl);
 
-        // Toggle thinking step visibility
-        if (thinkingHtml) {
-            const toggleBtn = document.getElementById(`toggle-think-${msgId}`);
-            const thinkBox = document.getElementById(`completed-think-${msgId}`);
-            toggleBtn?.addEventListener('click', () => {
-                const isHidden = thinkBox.style.display === 'none';
-                thinkBox.style.display = isHidden ? 'block' : 'none';
-                toggleBtn.querySelector('.fa-chevron-down, .fa-chevron-up').className = isHidden ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down';
-            });
-        }
+        // Opening and closing the thinking panel is handled once, by delegation
+        // (see renderThinking), so it also works on chats reopened later.
 
         // Wire up response action buttons
         bubbleEl.querySelector('.grok-copy-btn')?.addEventListener('click', () => {
@@ -4963,6 +4956,7 @@ document.querySelectorAll('.teacher-nav-item').forEach(item => {
 });
 
 function switchTeacherTab(tabName, updateUrl = true) {
+    if (tabName === 'reviews') window.loadTeacherReviews?.();
     document.querySelectorAll('.teacher-nav-item').forEach(el => {
         el.classList.toggle('active', el.getAttribute('data-teacher-tab') === tabName);
     });
@@ -6565,6 +6559,7 @@ let qzQuestions = [];
 let qzAnswers = [];
 let qzCurrentIndex = 0;
 let qzTopic = '';
+let qzQuizId = null;
 
 function resetQuizUI() {
     document.getElementById('qz-setup-box').style.display = 'block';
@@ -6591,6 +6586,7 @@ document.getElementById('qz-generate-btn')?.addEventListener('click', async () =
     try {
         const res = await api.generateQuiz(authToken, { topic, sourceText, count, difficulty });
         qzQuestions = res.questions;
+        qzQuizId = res.quizId;
         qzAnswers = new Array(qzQuestions.length).fill(null);
         qzCurrentIndex = 0;
         qzTopic = res.topic;
@@ -6631,22 +6627,14 @@ function renderQuizQuestion() {
 function selectQuizAnswer(selectedIndex) {
     const q = qzQuestions[qzCurrentIndex];
     qzAnswers[qzCurrentIndex] = selectedIndex;
-    const isCorrect = selectedIndex === q.correctIndex;
-
     const optionsEl = document.getElementById('qz-options');
     optionsEl.querySelectorAll('.qz-option-btn').forEach((btn, i) => {
-        btn.disabled = true;
-        if (i === q.correctIndex) btn.classList.add('qz-option-correct');
-        else if (i === selectedIndex) btn.classList.add('qz-option-wrong');
+        btn.setAttribute('aria-pressed', String(i === selectedIndex));
+        btn.classList.toggle('qz-option-correct', i === selectedIndex);
     });
-
     const feedback = document.getElementById('qz-feedback');
     feedback.style.display = 'block';
-    feedback.className = isCorrect ? 'qz-feedback-correct' : 'qz-feedback-wrong';
-    feedback.innerHTML = isCorrect
-        ? `<i class="fa-solid fa-circle-check"></i> Nice one — that's correct! ${escapeHtml(q.explanation || '')}`
-        : `<i class="fa-solid fa-circle-info"></i> Not quite, but great try. ${escapeHtml(q.explanation || '')}`;
-
+    feedback.textContent = 'Answer selected. You can change it before continuing. Explanations appear after submission.';
     document.getElementById('qz-next-btn').style.display = 'block';
     document.getElementById('qz-next-btn').textContent = qzCurrentIndex < qzQuestions.length - 1 ? 'Next Question →' : 'See Results →';
 }
@@ -6665,7 +6653,8 @@ async function finishQuiz() {
     document.getElementById('qz-results-box').style.display = 'block';
 
     try {
-        const res = await api.submitQuiz(authToken, qzTopic, qzQuestions, qzAnswers);
+        const res = await api.submitQuiz(authToken, qzQuizId, qzAnswers);
+        qzQuestions = qzQuestions.map((q, i) => ({ ...q, ...res.results[i] }));
         const pct = Math.round((res.score / res.total) * 100);
 
         document.getElementById('qz-score-text').textContent = `${res.score}/${res.total}`;
@@ -6677,7 +6666,7 @@ async function finishQuiz() {
         const sub = document.getElementById('qz-results-sub');
         if (pct >= 80) {
             title.textContent = "Excellent work! 🌟";
-            sub.textContent = `You nailed ${res.score} out of ${res.total} — that's real mastery showing.`;
+            sub.textContent = `You nailed ${res.score} out of ${res.total} — review your explanations to strengthen retention.`;
         } else if (pct >= 50) {
             title.textContent = "Solid effort! 💪";
             sub.textContent = `${res.score} out of ${res.total} — you're building real understanding here.`;
@@ -6704,7 +6693,13 @@ async function finishQuiz() {
             `;
         }).join('');
     } catch (err) {
-        showToast("Quiz complete, but couldn't save your score.", 'info');
+        showToast(err.message || "Could not save your score. Please retry.", 'error');
+        document.getElementById('qz-results-title').textContent = 'Score not saved yet';
+        document.getElementById('qz-results-sub').textContent = 'Your answers are still here. Retry safely without earning duplicate rewards.';
+        const retry = document.createElement('button');
+        retry.className = 'btn btn-primary'; retry.textContent = 'Retry submission';
+        retry.onclick = () => { retry.remove(); finishQuiz(); };
+        document.getElementById('qz-results-sub').appendChild(retry);
     }
 }
 
@@ -7678,7 +7673,8 @@ async function restoreChatThread({ onlyIfIdle = false } = {}) {
                 const saved = m.attachments || {};
                 const toolHtml = saved.tool && window.ChatToolsUI ? window.ChatToolsUI.render({ tool: saved.tool }) : '';
                 const libraryHtml = saved.library && window.SourceLibraryUI ? window.SourceLibraryUI.render({ library: saved.library }) : '';
-                row.innerHTML = `<div class="grok-ai-bubble"><div class="grok-response-body">${body}</div>${toolHtml}${libraryHtml}</div>`;
+                const thinking = renderThinking(saved.steps, saved.seconds);
+                row.innerHTML = `<div class="grok-ai-bubble">${thinking}<div class="grok-response-body">${body}</div>${toolHtml}${libraryHtml}</div>`;
             }
             grokChatStream.appendChild(row);
             if (m.role !== 'user') {

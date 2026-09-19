@@ -719,33 +719,52 @@ const readyPromise = init().catch(err => {
     throw err;
 });
 
+// A transaction owns one MySQL connection. SQLite operations share a queue so
+// unrelated requests can never accidentally join another request's transaction.
+const { AsyncLocalStorage } = require('node:async_hooks');
+const transactionContext = new AsyncLocalStorage();
+let sqliteQueue = Promise.resolve();
+function serialized(work) {
+    const result = sqliteQueue.then(work, work);
+    sqliteQueue = result.catch(() => {});
+    return result;
+}
+async function query(mode, sql, params = []) {
+    await readyPromise;
+    const context = transactionContext.getStore();
+    if (dialect === 'mysql') {
+        const [result] = await (context?.connection || pool).execute(sql, params);
+        return mode === 'get' ? result[0] : mode === 'all' ? result : { lastID: result.insertId, changes: result.affectedRows };
+    }
+    return context ? runSqlite(sql, params, mode) : serialized(() => runSqlite(sql, params, mode));
+}
 const db = {
-    get: async (sql, params = []) => {
+    get: (sql, params) => query('get', sql, params),
+    all: (sql, params) => query('all', sql, params),
+    run: (sql, params) => query('run', sql, params),
+    transaction: async (work) => {
         await readyPromise;
+        if (transactionContext.getStore()) return work(db);
         if (dialect === 'mysql') {
-            const [rows] = await pool.execute(sql, params);
-            return rows[0];
+            const connection = await pool.getConnection();
+            try {
+                await connection.beginTransaction();
+                const value = await transactionContext.run({ connection }, () => work(db));
+                await connection.commit();
+                return value;
+            } catch (error) { await connection.rollback(); throw error; }
+            finally { connection.release(); }
         }
-        return runSqlite(sql, params, 'get');
-    },
-    all: async (sql, params = []) => {
-        await readyPromise;
-        if (dialect === 'mysql') {
-            const [rows] = await pool.execute(sql, params);
-            return rows;
-        }
-        return runSqlite(sql, params, 'all');
-    },
-    run: async (sql, params = []) => {
-        await readyPromise;
-        if (dialect === 'mysql') {
-            const [result] = await pool.execute(sql, params);
-            return { lastID: result.insertId, changes: result.affectedRows };
-        }
-        return runSqlite(sql, params, 'run');
+        return serialized(async () => {
+            await runSqlite('BEGIN IMMEDIATE', [], 'run');
+            try {
+                const value = await transactionContext.run({ sqlite: true }, () => work(db));
+                await runSqlite('COMMIT', [], 'run');
+                return value;
+            } catch (error) { await runSqlite('ROLLBACK', [], 'run'); throw error; }
+        });
     },
     ready: () => readyPromise,
     dialect: () => dialect
 };
-
 module.exports = db;

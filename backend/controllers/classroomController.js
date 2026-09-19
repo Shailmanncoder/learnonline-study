@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const db = require('../config/db');
+const learning = require('../services/learning');
+function studentWorksheet(row) {
+    let data; try { data = JSON.parse(row.worksheet_data); } catch { data = {}; }
+    return { ...row, worksheet_data: JSON.stringify({ title: data.title, instructions: data.instructions, subject: data.subject, questions: (data.questions || []).map(q => ({ id: q.id, type: q.type, question: q.question, options: q.options, marks: q.marks })) }) };
+}
 const { generateJSON } = require('../services/ai');
 
 // ── Grading ────────────────────────────────────────────────────────
@@ -405,7 +410,7 @@ router.get('/:id/feed', auth, requireEnrolledOrTeacher, async (req, res) => {
             stream: {
                 announcements,
                 homework,
-                worksheets,
+                worksheets: req.isTeacher ? worksheets : worksheets.map(studentWorksheet),
                 notes
             }
         });
@@ -461,10 +466,13 @@ router.post('/homework/:id/submit', auth, async (req, res) => {
             return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'You are not enrolled in this class' } });
         }
 
+        await learning.ready();
+        const xpEarned = await db.transaction(async () => {
+        await db.get('SELECT id FROM users WHERE id = ?' + (db.dialect() === 'mysql' ? ' FOR UPDATE' : ''), [req.user.id]);
         const existingSub = await db.get('SELECT id FROM homework_submissions WHERE homework_id = ? AND student_id = ?', [homeworkId, req.user.id]);
         if (existingSub) {
             await db.run(
-                "UPDATE homework_submissions SET content = ?, attachments = ?, status = 'submitted', submitted_at = CURRENT_TIMESTAMP WHERE id = ?",
+                "UPDATE homework_submissions SET content = ?, attachments = ?, status = 'submitted', marks = NULL, feedback = NULL, graded_at = NULL, graded_by = NULL, submitted_at = CURRENT_TIMESTAMP WHERE id = ?",
                 [content || '', attachments ? JSON.stringify(attachments) : null, existingSub.id]
             );
         } else {
@@ -474,15 +482,11 @@ router.post('/homework/:id/submit', auth, async (req, res) => {
             );
         }
 
-        // Award student XP for turning in assignment
-        await db.run('UPDATE users SET xp = xp + 30, time_spent = time_spent + 10 WHERE id = ?', [req.user.id]);
-        await db.run(
-            'INSERT INTO activity (user_id, tool_used, time_spent, xp_earned) VALUES (?, ?, 10, 30)',
-            [req.user.id, `Submitted: ${hw.title}`]
-        );
+        return existingSub ? 0 : learning.reward(req.user.id, 'homework:' + homeworkId, 30, `Submitted: ${hw.title}`);
+        });
 
         await logAudit(req.user.id, 'HOMEWORK_SUBMITTED', 'homework_submissions', homeworkId, { title: hw.title });
-        res.json({ success: true, message: 'Homework submitted successfully! +30 XP earned! 🚀' });
+        res.json({ success: true, xpEarned, message: `Homework submitted successfully!${xpEarned ? ' +30 XP earned!' : ''}` });
     } catch (err) {
         console.error('[SUBMIT HOMEWORK ERROR]', err);
         res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
@@ -506,7 +510,7 @@ router.get('/:id/worksheets', auth, requireEnrolledOrTeacher, async (req, res) =
              ORDER BY w.created_at DESC`,
             [studentId, studentId, classId]
         );
-        res.json({ success: true, worksheets: rows });
+        res.json({ success: true, worksheets: req.isTeacher ? rows : rows.map(studentWorksheet) });
     } catch (err) {
         res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
     }
@@ -526,6 +530,9 @@ router.post('/worksheets/:id/submit', auth, async (req, res) => {
         const ws = await db.get('SELECT * FROM class_worksheets WHERE id = ?', [wsId]);
         if (!ws) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Worksheet not found' } });
 
+        const enrolled = await db.get("SELECT 1 AS ok FROM class_enrollments e JOIN classrooms c ON c.id = e.class_id WHERE e.class_id = ? AND e.student_id = ? AND e.status = 'active' AND c.status = 'active'", [ws.class_id, req.user.id]);
+        if (!enrolled || ws.status !== 'published') return res.status(403).json({ success: false, error: { message: 'This worksheet is not available to you.' } });
+        if (answers.length > 100 || answers.some(a => !a || !['string', 'number'].includes(typeof a.id) || !['string', 'number'].includes(typeof a.answer) || String(a.answer).length > 10000)) return res.status(400).json({ success: false, error: { message: 'Invalid answers.' } });
         let parsedData = {};
         try {
             parsedData = JSON.parse(ws.worksheet_data);
@@ -533,26 +540,26 @@ router.post('/worksheets/:id/submit', auth, async (req, res) => {
             parsedData = { questions: [] };
         }
 
-        const totalPossible = ws.total_marks || 20;
         const questions = parsedData.questions || [];
+        if (!questions.length || questions.some(q => !Number.isFinite(Number(q.marks || 1)) || Number(q.marks || 1) <= 0)) return res.status(400).json({ success: false, error: { message: 'Worksheet needs teacher correction before it can be graded.' } });
+        const totalPossible = questions.reduce((n, q) => n + Number(q.marks || 1), 0);
 
         const answerMap = {};
         answers.forEach(a => { answerMap[a.id] = a.answer; });
 
         const { breakdown, score } = await gradeAttempt(questions, answerMap, totalPossible);
 
-        await db.run(
-            'INSERT INTO worksheet_attempts (worksheet_id, student_id, answers, score, total_marks, status, breakdown) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [wsId, req.user.id, JSON.stringify(answers), score, totalPossible, 'completed', JSON.stringify(breakdown)]
-        );
-
-        // Award student XP
-        const xpEarned = Math.round(score * 2.5) + 20;
-        await db.run('UPDATE users SET xp = xp + ?, time_spent = time_spent + ? WHERE id = ?', [xpEarned, ws.duration || 20, req.user.id]);
-        await db.run(
-            'INSERT INTO activity (user_id, tool_used, time_spent, xp_earned) VALUES (?, ?, ?, ?)',
-            [req.user.id, `Worksheet: ${ws.title}`, ws.duration || 20, xpEarned]
-        );
+        const pendingReview = breakdown.some(b => b.needsReview);
+        await learning.ready();
+        const xpEarned = await db.transaction(async () => {
+            await db.get('SELECT id FROM users WHERE id = ?' + (db.dialect() === 'mysql' ? ' FOR UPDATE' : ''), [req.user.id]);
+            const previous = await db.get('SELECT id FROM worksheet_attempts WHERE worksheet_id = ? AND student_id = ?', [wsId, req.user.id]);
+            await db.run(
+                'INSERT INTO worksheet_attempts (worksheet_id, student_id, answers, score, total_marks, status, breakdown) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [wsId, req.user.id, JSON.stringify(answers), score, totalPossible, pendingReview ? 'pending_review' : 'completed', JSON.stringify(breakdown)]
+            );
+            return pendingReview || previous ? 0 : learning.reward(req.user.id, 'worksheet:' + wsId, Math.round(score * 2.5) + 20, `Worksheet: ${ws.title}`);
+        });
 
         await logAudit(req.user.id, 'WORKSHEET_SUBMITTED', 'worksheet_attempts', wsId, { score, totalPossible });
 
@@ -561,10 +568,11 @@ router.post('/worksheets/:id/submit', auth, async (req, res) => {
             score,
             totalPossible,
             xpEarned,
+            pendingReview,
             // The per-question result is the point of grading — send it back so
             // the student sees *why*, not just a number.
             results: buildStudentResults(questions, breakdown),
-            message: `Worksheet completed! Scored ${score}/${totalPossible} (${xpEarned} XP earned!) 🌟`
+            message: pendingReview ? `Submitted for teacher review. Provisional score: ${score}/${totalPossible}.` : `Worksheet completed! Scored ${score}/${totalPossible} (${xpEarned} XP earned!)`
         });
     } catch (err) {
         console.error('[SUBMIT WORKSHEET ERROR]', err);
@@ -629,6 +637,7 @@ router.get('/worksheets/:id/my-result', auth, async (req, res) => {
         res.json({
             success: true,
             title: ws.title,
+            pendingReview: attempt.status === 'pending_review',
             score: attempt.score,
             totalPossible: attempt.total_marks,
             submitted_at: attempt.submitted_at,

@@ -635,13 +635,15 @@ const api = {
         return data;
     },
 
-    submitQuiz: async (token, topic, questions, answers) => {
+    submitQuiz: async (token, quizId, answers) => {
         const res = await fetch(`${API_BASE_URL}/study/quiz/submit`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ topic, questions, answers })
+            body: JSON.stringify({ quizId, answers })
         });
-        return res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Could not save quiz');
+        return data;
     },
 
     getQuizHistory: async (token) => {

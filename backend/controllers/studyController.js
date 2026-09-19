@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const db = require('../config/db');
+const learning = require('../services/learning');
 
 // --- Multi-Provider AI Helper (same pattern used for worksheet generation) ---
 async function generateAIJSON(prompt, systemInstruction = 'You are a helpful study assistant. Respond only with JSON.') {
@@ -224,7 +225,8 @@ router.get('/flashcards/due', auth, async (req, res) => {
 router.post('/flashcards/review', auth, async (req, res) => {
     try {
         const { cardId, quality } = req.body; // quality: 1 (Again), 3 (Hard), 4 (Good), 5 (Easy)
-        const q = Math.min(5, Math.max(0, parseInt(quality, 10)));
+        const q = Number(quality);
+        if (![1, 3, 4, 5].includes(q)) return res.status(400).json({ msg: 'Choose Again, Hard, Good, or Easy.' });
 
         const card = await db.get(
             `SELECT f.* FROM flashcards f JOIN flashcard_decks d ON d.id = f.deck_id WHERE f.id = ? AND d.user_id = ?`,
@@ -283,7 +285,7 @@ Respond ONLY with JSON in this exact shape:
             return res.status(502).json({ msg: "Couldn't generate a quiz right now — please try again in a moment." });
         }
 
-        res.json({ success: true, topic: subject, questions });
+        res.json({ success: true, ...await learning.createQuiz(req.user.id, subject, questions) });
     } catch (err) {
         console.error('Quiz generation error:', err.message);
         res.status(500).json({ msg: 'Server error while generating the quiz' });
@@ -294,35 +296,11 @@ Respond ONLY with JSON in this exact shape:
 // @desc   Grade a completed quiz, store the attempt, award XP
 router.post('/quiz/submit', auth, async (req, res) => {
     try {
-        const { topic, questions, answers } = req.body;
-        if (!Array.isArray(questions) || !Array.isArray(answers)) {
-            return res.status(400).json({ msg: 'Missing quiz data' });
-        }
-
-        let score = 0;
-        const results = questions.map((q, i) => {
-            const isCorrect = answers[i] === q.correctIndex;
-            if (isCorrect) score++;
-            return { isCorrect, correctIndex: q.correctIndex, explanation: q.explanation || '' };
-        });
-
-        await db.run(
-            'INSERT INTO quiz_attempts (user_id, topic, questions_json, answers_json, score, total) VALUES (?, ?, ?, ?, ?, ?)',
-            [req.user.id, topic || 'General', JSON.stringify(questions), JSON.stringify(answers), score, questions.length]
-        );
-
-        // Award XP proportional to performance — always something for trying, more for doing well
-        const xpEarned = 10 + Math.round((score / questions.length) * 30);
-        await db.run('UPDATE users SET xp = xp + ? WHERE id = ?', [xpEarned, req.user.id]);
-        await db.run(
-            'INSERT INTO activity (user_id, tool_used, time_spent, xp_earned) VALUES (?, ?, ?, ?)',
-            [req.user.id, 'AI Quiz Generator', 5, xpEarned]
-        );
-
-        res.json({ success: true, score, total: questions.length, results, xpEarned });
+        const { quizId, answers } = req.body;
+        if (typeof quizId !== 'string') return res.status(400).json({ msg: 'Generate a quiz before submitting answers.' });
+        res.json(await learning.submitQuiz(req.user.id, quizId, answers));
     } catch (err) {
-        console.error('Quiz submit error:', err.message);
-        res.status(500).json({ msg: 'Server error while grading the quiz' });
+        res.status(err.status || 500).json({ msg: err.status ? err.message : 'Could not save quiz. Please retry.' });
     }
 });
 

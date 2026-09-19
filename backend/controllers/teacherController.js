@@ -518,12 +518,13 @@ router.post('/homework/grade', auth, async (req, res) => {
             return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Submission ID and marks required' } });
         }
 
-        const sub = await db.get('SELECT hs.*, ch.class_id, ch.title FROM homework_submissions hs JOIN class_homework ch ON ch.id = hs.homework_id WHERE hs.id = ?', [submissionId]);
+        const sub = await db.get('SELECT hs.*, ch.class_id, ch.title, ch.max_marks FROM homework_submissions hs JOIN class_homework ch ON ch.id = hs.homework_id WHERE hs.id = ?', [submissionId]);
         if (!sub) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Submission not found' } });
 
         const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [sub.class_id, req.user.id]);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized' } });
 
+        if (!Number.isFinite(Number(marks)) || Number(marks) < 0 || Number(marks) > sub.max_marks) return res.status(400).json({ success: false, error: { message: 'Marks must be between zero and the assignment maximum.' } });
         await db.run(
             "UPDATE homework_submissions SET marks = ?, feedback = ?, status = 'graded', graded_at = CURRENT_TIMESTAMP, graded_by = ? WHERE id = ?",
             [marks, feedback || '', req.user.id, submissionId]

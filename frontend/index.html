@@ -30,6 +30,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+    <link rel="stylesheet" href="/learning.css">
 </head>
 <body>
     <!-- Particle Canvas (Landing) -->
@@ -607,6 +608,7 @@
                 <li class="nav-item" data-target="summarizers" title="AI Summarizers">
                     <i class="fa-solid fa-compress"></i> <span>AI Summarizers</span>
                 </li>
+                <li class="nav-item" data-target="learning-hub" title="My Learning"><i class="fa-solid fa-seedling"></i><span>My Learning</span></li>
                 <li class="nav-item" data-target="flashcards" title="Flashcards">
                     <i class="fa-solid fa-layer-group"></i> <span>Flashcards</span>
                 </li>
@@ -1944,10 +1946,15 @@
             </div>
 
             <!-- AI Quiz Generator Section -->
+            <section id="learning-hub" class="section-container">
+                <div class="lh-hero"><div><span class="lh-kicker">YOUR LEARNING, CONNECTED</span><h1>A little clearer. Every day.</h1><p>Know what to practise next, revisit your mistakes, and work steadily towards your goals.</p><button class="btn btn-secondary" data-lh-refresh>Refresh my plan</button></div><div class="lh-stats"></div></div>
+                <div class="lh-tabs" aria-label="Learning views"><button data-lh-tab="today" class="active">Today</button><button data-lh-tab="mistakes">Mistake notebook</button><button data-lh-tab="goals">Exam goals</button><button data-lh-tab="progress">Progress & export</button></div>
+                <p class="lh-status" role="status" aria-live="polite"></p><div class="lh-content"></div>
+            </section>
             <section id="quiz-generator" class="section-container">
                 <div class="section-header">
                     <h2>AI Quiz Generator</h2>
-                    <p>Turn any topic or your own notes into a graded practice quiz with instant, encouraging feedback on every answer.</p>
+                    <p>Turn any topic or your own notes into a graded practice quiz with explanations after submission and automatic mistake review.</p>
                 </div>
 
                 <div class="glass" style="padding: 28px; margin-bottom: 24px;" id="qz-setup-box">
@@ -2974,6 +2981,7 @@
                     <li class="teacher-nav-item" data-teacher-tab="announcements">
                         <i class="fa-solid fa-bullhorn"></i> <span>Announcements</span>
                     </li>
+                    <li class="teacher-nav-item" data-teacher-tab="reviews"><i class="fa-solid fa-clipboard-check"></i><span>Review queue</span></li>
                     <li class="teacher-nav-item" data-teacher-tab="people">
                         <i class="fa-solid fa-users"></i> <span>Students &amp; People</span>
                     </li>
@@ -2996,6 +3004,7 @@
 
             <!-- Main Workspace Area -->
             <main class="teacher-main-content">
+                <div id="teacher-tab-reviews" class="teacher-tab-pane" style="display:none"><p id="teacher-review-status" role="status"></p><div id="teacher-review-content"></div></div>
                 <!-- 1. Dashboard Tab -->
                 <div id="teacher-tab-dashboard" class="teacher-tab-pane active">
                     <section class="teacher-hero-banner">
@@ -3581,5 +3590,6 @@
     <script defer src="/sourceLibrary.js"></script>
     <script defer src="/chatTools.js"></script>
     <script defer src="/premium.js"></script>
+    <script defer src="/learning.js"></script>
 </body>
 </html>

@@ -27,6 +27,8 @@ app.use('/api/library',      require('./controllers/libraryController'));
 app.use('/api/teacher',      teacherRoutes);
 app.use('/api/classroom',    classroomRoutes);
 app.use('/api/study',        studyRoutes);
+app.use('/api/learning', require('./controllers/learningController'));
+app.use('/api/review', require('./controllers/reviewController'));
 app.use('/api/gamification', gamificationRoutes);
 
 // Verified Source Library admin screen. The page itself holds no data; every
