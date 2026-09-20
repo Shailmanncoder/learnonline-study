@@ -4,6 +4,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const { requireRole } = require('../middleware/auth');
 const { joinAttemptsExhausted, recordJoinAttempt } = require('../services/joinLimiter');
+const { validateWorksheet } = require('../services/assessments');
 const db = require('../config/db');
 
 // --- Multi-Provider AI Helper for Worksheet Generation ---
@@ -979,14 +980,36 @@ router.post('/worksheets/publish', async (req, res) => {
         // graded, but it takes no new material.
         if (tc.class_status !== 'active') return res.status(409).json({ success: false, error: { code: 'CLASS_NOT_ACTIVE', message: `This classroom is ${tc.class_status} and no longer accepts new work.` } });
 
+        // A worksheet that cannot be graded fairly is rejected here rather than
+        // reaching a class and failing one answer at a time: unique question
+        // ids, supported types, distinct options, a key that names one of them,
+        // and positive marks. The total comes from the questions, so a stale
+        // total_marks in the request cannot make a worksheet out of 20 that is
+        // really out of 35.
+        const check = validateWorksheet(worksheet_data);
+        if (!check.ok) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: 'INVALID_WORKSHEET',
+                    message: 'This worksheet cannot be published yet.',
+                    details: check.errors.slice(0, 10)
+                }
+            });
+        }
+
         const result = await db.run(
-            'INSERT INTO class_worksheets (class_id, teacher_id, title, subject, description, topic, difficulty, worksheet_data, total_marks, duration, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [classId, req.user.id, title.trim(), subject || 'General', description || '', topic || title, difficulty || 'Medium', typeof worksheet_data === 'string' ? worksheet_data : JSON.stringify(worksheet_data), total_marks || 20, duration || 30, status || 'published']
+            'INSERT INTO class_worksheets (class_id, teacher_id, title, subject, description, topic, difficulty, worksheet_data, total_marks, duration, status, opens_at, closes_at, max_attempts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [classId, req.user.id, title.trim(), subject || 'General', description || '', topic || title, difficulty || 'Medium',
+             JSON.stringify({ ...(typeof worksheet_data === 'object' && worksheet_data ? worksheet_data : {}), questions: check.questions }),
+             check.totalMarks, duration || 30, status || 'published',
+             req.body.opens_at || null, req.body.closes_at || null,
+             Number.isInteger(Number(req.body.max_attempts)) && Number(req.body.max_attempts) > 0 ? Number(req.body.max_attempts) : null]
         );
 
         const wsId = result.lastID;
         if (status !== 'draft') {
-            await notifyClassStudents(classId, 'worksheet', `New AI Worksheet: ${title}`, `${subject || 'General'} • ${total_marks || 20} Marks`, 'worksheet', wsId);
+            await notifyClassStudents(classId, 'worksheet', `New AI Worksheet: ${title}`, `${subject || 'General'} • ${check.totalMarks} Marks`, 'worksheet', wsId);
         }
 
         await logAudit(req.user.id, 'WORKSHEET_PUBLISHED', 'class_worksheets', wsId, { classId, title });

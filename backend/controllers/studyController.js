@@ -1,7 +1,9 @@
 const express = require('express');
+const crypto = require('node:crypto');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const db = require('../config/db');
+const { grantOnce } = require('../services/rewards');
 
 // --- Multi-Provider AI Helper (same pattern used for worksheet generation) ---
 async function generateAIJSON(prompt, systemInstruction = 'You are a helpful study assistant. Respond only with JSON.') {
@@ -279,11 +281,30 @@ Respond ONLY with JSON in this exact shape:
             ? parsed.questions.filter(q => q && q.question && Array.isArray(q.options) && q.options.length === 4 && typeof q.correctIndex === 'number')
             : [];
 
+        // Keep only questions whose key actually points at one of the options,
+        // so a malformed generation cannot produce an unanswerable quiz.
+        questions = questions.filter(q => Number.isInteger(q.correctIndex) && q.correctIndex >= 0 && q.correctIndex < q.options.length);
+
         if (questions.length === 0) {
             return res.status(502).json({ msg: "Couldn't generate a quiz right now — please try again in a moment." });
         }
 
-        res.json({ success: true, topic: subject, questions });
+        // The answer key stays here. The browser is given the questions and
+        // options only, and submits a quiz id — it used to be handed
+        // correctIndex for every question and then asked to report its own
+        // score, which it could simply assert.
+        const quizId = crypto.randomUUID();
+        await db.run(
+            'INSERT INTO study_quizzes (id, user_id, topic, questions, total) VALUES (?, ?, ?, ?, ?)',
+            [quizId, req.user.id, subject, JSON.stringify(questions), questions.length]
+        );
+
+        res.json({
+            success: true,
+            quizId,
+            topic: subject,
+            questions: questions.map((q, i) => ({ id: i, question: q.question, options: q.options }))
+        });
     } catch (err) {
         console.error('Quiz generation error:', err.message);
         res.status(500).json({ msg: 'Server error while generating the quiz' });
@@ -292,32 +313,58 @@ Respond ONLY with JSON in this exact shape:
 
 // @route  POST /api/study/quiz/submit
 // @desc   Grade a completed quiz, store the attempt, award XP
+// Grades against the stored key. The old version accepted `questions` from the
+// request and compared each answer to the `correctIndex` in that same payload,
+// so a browser could submit its own marking scheme and award itself a perfect
+// score and the XP that came with it.
 router.post('/quiz/submit', auth, async (req, res) => {
     try {
-        const { topic, questions, answers } = req.body;
-        if (!Array.isArray(questions) || !Array.isArray(answers)) {
-            return res.status(400).json({ msg: 'Missing quiz data' });
+        const { quizId, answers } = req.body;
+        if (!quizId || !Array.isArray(answers)) {
+            return res.status(400).json({ msg: 'A quiz id and an answers array are required.' });
+        }
+
+        const quiz = await db.get(
+            'SELECT * FROM study_quizzes WHERE id = ? AND user_id = ?',
+            [String(quizId), req.user.id]
+        );
+        // Scoped to the caller, so one account cannot submit against another's quiz.
+        if (!quiz) {
+            return res.status(404).json({ msg: 'That quiz could not be found. Generate a new one to continue.' });
+        }
+
+        let questions = [];
+        try { questions = JSON.parse(quiz.questions) || []; } catch { questions = []; }
+        if (questions.length === 0) {
+            return res.status(409).json({ msg: 'That quiz is no longer usable. Please generate a new one.' });
         }
 
         let score = 0;
         const results = questions.map((q, i) => {
-            const isCorrect = answers[i] === q.correctIndex;
+            const given = Number.isInteger(answers[i]) ? answers[i] : null;
+            const isCorrect = given === q.correctIndex;
             if (isCorrect) score++;
-            return { isCorrect, correctIndex: q.correctIndex, explanation: q.explanation || '' };
+            return { given, isCorrect, correctIndex: q.correctIndex, explanation: q.explanation || '' };
         });
 
-        await db.run(
-            'INSERT INTO quiz_attempts (user_id, topic, questions_json, answers_json, score, total) VALUES (?, ?, ?, ?, ?, ?)',
-            [req.user.id, topic || 'General', JSON.stringify(questions), JSON.stringify(answers), score, questions.length]
-        );
-
-        // Award XP proportional to performance — always something for trying, more for doing well
-        const xpEarned = 10 + Math.round((score / questions.length) * 30);
-        await db.run('UPDATE users SET xp = xp + ? WHERE id = ?', [xpEarned, req.user.id]);
-        await db.run(
-            'INSERT INTO activity (user_id, tool_used, time_spent, xp_earned) VALUES (?, ?, ?, ?)',
-            [req.user.id, 'AI Quiz Generator', 5, xpEarned]
-        );
+        // One reward per quiz, so resubmitting the same quiz id — by retry, by
+        // double-click or deliberately — does not pay again.
+        const xpEarned = await db.transaction(async () => {
+            await db.run(
+                'INSERT INTO quiz_attempts (user_id, topic, questions_json, answers_json, score, total) VALUES (?, ?, ?, ?, ?, ?)',
+                [req.user.id, quiz.topic || 'General', quiz.questions, JSON.stringify(answers), score, questions.length]
+            );
+            const grant = await grantOnce(
+                req.user.id, `quiz:${quiz.id}`,
+                10 + Math.round((score / questions.length) * 30),
+                `Quiz: ${quiz.topic || 'General'}`
+            );
+            await db.run(
+                'INSERT INTO activity (user_id, tool_used, time_spent, xp_earned, estimated_minutes) VALUES (?, ?, 0, ?, 5)',
+                [req.user.id, 'AI Quiz Generator', grant.xp]
+            );
+            return grant.xp;
+        });
 
         res.json({ success: true, score, total: questions.length, results, xpEarned });
     } catch (err) {
