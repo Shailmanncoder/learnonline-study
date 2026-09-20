@@ -1707,7 +1707,7 @@ async function loadNotes() {
         notes.forEach(note => {
             const div = document.createElement('div');
             div.className = 'note-item';
-            div.innerHTML = `<h4>${note.title}</h4><p>${new Date(note.created_at).toLocaleDateString()}</p>`;
+            div.innerHTML = `<h4>${escapeHtml(note.title)}</h4><p>${new Date(note.created_at).toLocaleDateString()}</p>`;
             div.addEventListener('click', () => {
                 document.getElementById('note-title').value = note.title;
                 document.getElementById('note-content').value = note.content;
@@ -1774,9 +1774,9 @@ async function loadLeaderboard() {
             div.innerHTML = `
                 <div class="lb-user">
                     <div class="rank">${medal}</div>
-                    <img src="${avatarUrl}" alt="${user.username}" style="background:#1a1a2e; width: 40px; height: 40px; border-radius: 50%;">
+                    <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(user.username)}" style="background:#1a1a2e; width: 40px; height: 40px; border-radius: 50%;">
                     <div>
-                        <div style="font-weight: 600; font-size: 16px;">${user.username}${isMe ? ' <span style="color:#a855f7">✨ You</span>' : ''}</div>
+                        <div style="font-weight: 600; font-size: 16px;">${escapeHtml(user.username)}${isMe ? ' <span style="color:#a855f7">✨ You</span>' : ''}</div>
                         ${user.bio ? `<div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${user.bio}</div>` : ''}
                     </div>
                 </div>
@@ -5686,7 +5686,7 @@ async function loadTeacherAnnouncementsTab() {
         list.innerHTML = announcements.map(a => `
             <div class="stream-item-card">
                 <div class="stream-item-header">
-                    <div class="stream-item-avatar">${(a.teacher_name || 'T').charAt(0).toUpperCase()}</div>
+                    <div class="stream-item-avatar">${escapeHtml((a.teacher_name || 'T').charAt(0).toUpperCase())}</div>
                     <div class="stream-item-meta">
                         <h4>${escapeHtml(a.title)}</h4>
                         <span>Posted by ${escapeHtml(a.teacher_name)} &bull; ${new Date(a.created_at).toLocaleDateString()}</span>
@@ -5719,7 +5719,7 @@ async function loadTeacherPeopleTab() {
         teacherList.innerHTML = teachers.map(t => `
             <div class="person-row">
                 <div class="person-info">
-                    <div class="person-avatar">${(t.username || 'T').charAt(0).toUpperCase()}</div>
+                    <div class="person-avatar">${escapeHtml((t.username || 'T').charAt(0).toUpperCase())}</div>
                     <div>
                         <strong style="font-size: 14px; color: var(--text-primary);">${escapeHtml(t.username)}</strong>
                         <div style="font-size: 12px; color: var(--text-secondary);">${escapeHtml(t.subject || 'Faculty')} &bull; ${t.role || 'Teacher'}</div>
@@ -5738,7 +5738,7 @@ async function loadTeacherPeopleTab() {
             studentList.innerHTML = students.map(s => `
                 <div class="person-row">
                     <div class="person-info">
-                        <div class="person-avatar" style="background: color-mix(in srgb, #16A34A 12%, transparent); color: #059669;">${(s.username || 'S').charAt(0).toUpperCase()}</div>
+                        <div class="person-avatar" style="background: color-mix(in srgb, #16A34A 12%, transparent); color: #059669;">${escapeHtml((s.username || 'S').charAt(0).toUpperCase())}</div>
                         <div>
                             <strong style="font-size: 14px; color: var(--text-primary);">${escapeHtml(s.username)}</strong>
                             <div style="font-size: 12px; color: var(--text-secondary);">Joined: ${new Date(s.joined_at).toLocaleDateString()} &bull; Instant Code</div>
@@ -5830,7 +5830,7 @@ async function loadStudentClassrooms() {
                 <div class="class-card-body">
                     <div class="class-card-meta-row">
                         <span><i class="fa-solid fa-chalkboard-user"></i> Teachers</span>
-                        <strong>${(c.teachers || []).map(t => t.username).join(', ') || 'Faculty'}</strong>
+                        <strong>${escapeHtml((c.teachers || []).map(t => t.username).join(', ')) || 'Faculty'}</strong>
                     </div>
                     <div class="class-card-meta-row">
                         <span><i class="fa-solid fa-book-open"></i> Homework</span>
@@ -6143,13 +6143,20 @@ function renderStudentWorksheetsPane(worksheets) {
                     <span><i class="fa-solid fa-star"></i> ${w.total_marks || 20} Marks</span> &bull;
                     <span><i class="fa-solid fa-stopwatch"></i> ${w.duration || 20} Mins</span>
                 </div>
-                ${w.my_score !== null && w.my_score !== undefined ? `
-                    <span class="status-pill-graded"><i class="fa-solid fa-check-double"></i> Best Attempt: ${w.my_score} / ${w.total_marks || 20} Marks</span>
-                ` : '<span class="status-pill-assigned">Not Attempted Yet</span>'}
+                ${(() => {
+                    const best = w.my_best_score ?? w.my_score;
+                    if (best === null || best === undefined) return '<span class="status-pill-assigned">Not Attempted Yet</span>';
+                    // A provisional score is shown as provisional rather than
+                    // as a mark the teacher has stood behind.
+                    if (w.my_latest_status === 'provisional') {
+                        return `<span class="status-pill-pending"><i class="fa-solid fa-hourglass-half"></i> Awaiting teacher review &mdash; provisional ${w.my_latest_score ?? best} / ${w.total_marks || 20}</span>`;
+                    }
+                    return `<span class="status-pill-graded"><i class="fa-solid fa-check-double"></i> Best Attempt: ${best} / ${w.total_marks || 20} Marks</span>`;
+                })()}
             </div>
             <div>
                 <button class="btn btn-primary" onclick="startStudentWorksheet(${w.id})" style="font-size: 13.5px; padding: 10px 20px;">
-                    <i class="fa-solid fa-play"></i> ${w.my_score !== null && w.my_score !== undefined ? 'Retake Worksheet' : 'Start Worksheet'}
+                    <i class="fa-solid fa-play"></i> ${(w.my_best_score ?? w.my_score) !== null && (w.my_best_score ?? w.my_score) !== undefined ? 'Retake Worksheet' : 'Start Worksheet'}
                 </button>
             </div>
         </div>
@@ -6157,28 +6164,31 @@ function renderStudentWorksheetsPane(worksheets) {
 }
 
 window.startStudentWorksheet = async function(worksheetId) {
+    // The questions used to be pulled out of the feed payload, which meant the
+    // feed had to carry the answer key in order to render a question. They now
+    // come from an endpoint that sends the questions and not the answers.
     try {
-        const res = await api.getStudentClassFeed(authToken, currentStudentClassId);
-        const ws = (res.stream?.worksheets || []).find(w => w.id === worksheetId);
-        if (!ws) {
-            showToast('Worksheet not found', 'error');
-            return;
+        showToast('Opening worksheet…', 'info');
+        const res = await api.startWorksheet(authToken, worksheetId);
+        if (!res.canSubmit && res.closedReason) {
+            showToast(res.closedReason.message, 'info');
         }
-
-        let parsed = {};
-        try {
-            parsed = JSON.parse(ws.worksheet_data);
-        } catch {
-            parsed = { questions: [] };
-        }
-
-        openWorksheetPlayerModal(ws, parsed);
+        openWorksheetPlayerModal(
+            { ...res.worksheet, total_marks: res.totalMarks, duration: res.durationMinutes },
+            { questions: res.questions },
+            { canSubmit: res.canSubmit, attemptsUsed: res.attemptsUsed, attemptsAllowed: res.attemptsAllowed }
+        );
     } catch (err) {
         showToast(err.message || 'Failed to start worksheet', 'error');
     }
 };
 
-function openWorksheetPlayerModal(worksheet, worksheetData) {
+function openWorksheetPlayerModal(worksheet, worksheetData, options = {}) {
+    // A fresh identity for this attempt. If the network drops mid-send and the
+    // student retries, the server recognises the retry instead of recording a
+    // second attempt and paying for it twice.
+    currentWorksheetSubmissionKey = (crypto.randomUUID ? crypto.randomUUID() : `k${Date.now()}-${Math.random().toString(16).slice(2)}`).slice(0, 60);
+    currentWorksheetCanSubmit = options.canSubmit !== false;
     const modal = document.getElementById('worksheet-player-modal');
     if (!modal) return;
 
@@ -6244,7 +6254,7 @@ function openWorksheetPlayerModal(worksheet, worksheetData) {
         submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Marking your answers…';
 
         try {
-            const result = await api.submitStudentWorksheet(authToken, worksheet.id, answers);
+            const result = await api.submitStudentWorksheet(authToken, worksheet.id, answers, currentWorksheetSubmissionKey);
             showToast(result.message || `Worksheet submitted! Score: ${result.score}/${result.totalPossible}`, 'success');
             // Show the marked paper rather than closing on a bare score.
             renderWorksheetResult({
@@ -6252,10 +6262,15 @@ function openWorksheetPlayerModal(worksheet, worksheetData) {
                 score: result.score,
                 totalPossible: result.totalPossible,
                 xpEarned: result.xpEarned,
+                pendingReview: result.pendingReview,
+                gradingStatus: result.gradingStatus,
                 results: result.results || []
             });
         } catch (err) {
-            showToast(err.message || 'Failed to submit worksheet', 'error');
+            // The answers are still on screen and the submission key is
+            // unchanged, so pressing submit again is a retry of this attempt,
+            // not a second one.
+            showToast(`${err.message || 'Could not submit'} — your answers are still here. Press submit to retry.`, 'error');
         } finally {
             submitBtn.disabled = false;
             submitBtn.innerHTML = '<i class="fa-solid fa-check"></i> Submit Assessment';
@@ -6304,7 +6319,7 @@ function renderStudentPeoplePane(teachers, classmates) {
     teacherList.innerHTML = teachers.map(t => `
         <div class="person-row">
             <div class="person-info">
-                <div class="person-avatar">${(t.username || 'T').charAt(0).toUpperCase()}</div>
+                <div class="person-avatar">${escapeHtml((t.username || 'T').charAt(0).toUpperCase())}</div>
                 <div>
                     <strong style="font-size: 14px; color: var(--text-primary);">${escapeHtml(t.username)}</strong>
                     <div style="font-size: 12px; color: var(--text-secondary);">${escapeHtml(t.subject || 'Teacher')} &bull; Faculty</div>
@@ -6316,7 +6331,7 @@ function renderStudentPeoplePane(teachers, classmates) {
     classmateList.innerHTML = classmates.map(c => `
         <div class="person-row">
             <div class="person-info">
-                <div class="person-avatar" style="background: color-mix(in srgb, #2563EB 12%, transparent); color: #2563EB;">${(c.username || 'S').charAt(0).toUpperCase()}</div>
+                <div class="person-avatar" style="background: color-mix(in srgb, #2563EB 12%, transparent); color: #2563EB;">${escapeHtml((c.username || 'S').charAt(0).toUpperCase())}</div>
                 <div>
                     <strong style="font-size: 14px; color: var(--text-primary);">${escapeHtml(c.username)}</strong>
                     <div style="font-size: 12px; color: var(--text-secondary);">Student &bull; Classmate</div>
@@ -6577,10 +6592,18 @@ document.querySelectorAll('.fc-grade-btn').forEach(btn => {
 //  AI QUIZ GENERATOR
 // ═══════════════════════════════════════════════════════════════════
 
+// Identity of the worksheet attempt currently open, and whether the server
+// said this student may still submit it.
+let currentWorksheetSubmissionKey = null;
+let currentWorksheetCanSubmit = true;
+
 let qzQuestions = [];
 let qzAnswers = [];
 let qzCurrentIndex = 0;
 let qzTopic = '';
+// The quiz's server-side id. The answer key stays there, so nothing here can
+// mark the quiz — the results come back from the submit call.
+let qzQuizId = null;
 
 function resetQuizUI() {
     document.getElementById('qz-setup-box').style.display = 'block';
@@ -6607,6 +6630,7 @@ document.getElementById('qz-generate-btn')?.addEventListener('click', async () =
     try {
         const res = await api.generateQuiz(authToken, { topic, sourceText, count, difficulty });
         qzQuestions = res.questions;
+        qzQuizId = res.quizId;
         qzAnswers = new Array(qzQuestions.length).fill(null);
         qzCurrentIndex = 0;
         qzTopic = res.topic;
@@ -6644,24 +6668,23 @@ function renderQuizQuestion() {
     });
 }
 
+// Selecting an answer records it and lets the student change their mind. It
+// cannot say whether the answer is right, because the key is not here any more
+// — the explanations arrive with the results.
 function selectQuizAnswer(selectedIndex) {
-    const q = qzQuestions[qzCurrentIndex];
     qzAnswers[qzCurrentIndex] = selectedIndex;
-    const isCorrect = selectedIndex === q.correctIndex;
 
     const optionsEl = document.getElementById('qz-options');
     optionsEl.querySelectorAll('.qz-option-btn').forEach((btn, i) => {
-        btn.disabled = true;
-        if (i === q.correctIndex) btn.classList.add('qz-option-correct');
-        else if (i === selectedIndex) btn.classList.add('qz-option-wrong');
+        const chosen = i === selectedIndex;
+        btn.classList.toggle('qz-option-selected', chosen);
+        btn.setAttribute('aria-pressed', String(chosen));
     });
 
     const feedback = document.getElementById('qz-feedback');
     feedback.style.display = 'block';
-    feedback.className = isCorrect ? 'qz-feedback-correct' : 'qz-feedback-wrong';
-    feedback.innerHTML = isCorrect
-        ? `<i class="fa-solid fa-circle-check"></i> Nice one — that's correct! ${escapeHtml(q.explanation || '')}`
-        : `<i class="fa-solid fa-circle-info"></i> Not quite, but great try. ${escapeHtml(q.explanation || '')}`;
+    feedback.className = 'qz-feedback-selected';
+    feedback.textContent = 'Answer recorded — you can change it until you finish. Explanations come with your results.';
 
     document.getElementById('qz-next-btn').style.display = 'block';
     document.getElementById('qz-next-btn').textContent = qzCurrentIndex < qzQuestions.length - 1 ? 'Next Question →' : 'See Results →';
@@ -6681,7 +6704,7 @@ async function finishQuiz() {
     document.getElementById('qz-results-box').style.display = 'block';
 
     try {
-        const res = await api.submitQuiz(authToken, qzTopic, qzQuestions, qzAnswers);
+        const res = await api.submitQuiz(authToken, qzQuizId, qzAnswers);
         const pct = Math.round((res.score / res.total) * 100);
 
         document.getElementById('qz-score-text').textContent = `${res.score}/${res.total}`;
@@ -6702,13 +6725,24 @@ async function finishQuiz() {
             sub.textContent = `${res.score} out of ${res.total} this time. Every attempt sharpens your memory — try reviewing and take it again.`;
         }
 
-        showToast(`+${res.xpEarned} XP earned for completing the quiz!`, 'success');
-        applyXpResult({ xp: (currentUserData?.xp || 0) + res.xpEarned });
+        // A repeat submission of the same quiz earns nothing, and says so
+        // rather than showing "+0 XP".
+        if (res.xpEarned > 0) {
+            showToast(`+${res.xpEarned} XP earned for completing the quiz!`, 'success');
+            applyXpResult({ xp: (currentUserData?.xp || 0) + res.xpEarned });
+        } else {
+            showToast('Score saved. This quiz has already earned its XP.', 'info');
+        }
 
+        // Correctness and explanations come from the server's results, not from
+        // anything this page was holding.
+        const graded = Array.isArray(res.results) ? res.results : [];
         const reviewList = document.getElementById('qz-review-list');
         reviewList.innerHTML = qzQuestions.map((q, i) => {
             const userAns = qzAnswers[i];
-            const correct = userAns === q.correctIndex;
+            const row = graded[i] || {};
+            const correct = !!row.isCorrect;
+            q = { ...q, correctIndex: row.correctIndex, explanation: row.explanation };
             return `
                 <div class="glass qz-review-item ${correct ? 'qz-review-correct' : 'qz-review-wrong'}">
                     <p style="font-weight:700; margin-bottom:8px;">${i + 1}. ${escapeHtml(q.question)}</p>
@@ -6720,7 +6754,17 @@ async function finishQuiz() {
             `;
         }).join('');
     } catch (err) {
-        showToast("Quiz complete, but couldn't save your score.", 'info');
+        // The answers are still in memory, so offer the retry rather than
+        // implying the attempt is lost.
+        showToast(err.message || "Couldn't save your score.", 'error');
+        document.getElementById('qz-results-title').textContent = 'Score not saved';
+        const sub = document.getElementById('qz-results-sub');
+        sub.textContent = 'Your answers are still here. ';
+        const retry = document.createElement('button');
+        retry.className = 'btn btn-primary';
+        retry.textContent = 'Retry saving';
+        retry.onclick = () => { retry.remove(); finishQuiz(); };
+        sub.appendChild(retry);
     }
 }
 
@@ -7434,8 +7478,10 @@ function renderWorksheetResult(data) {
             <span class="ws-result-frac">${data.score} / ${total} marks</span>
         </div>
         <div class="ws-result-verdict">
-            <h4>${verdict}</h4>
-            <p>${data.xpEarned ? `+${data.xpEarned} XP earned. ` : ''}Every question is marked below with the correct answer.</p>
+            <h4>${data.pendingReview ? 'Submitted — provisional score' : verdict}</h4>
+            <p>${data.pendingReview
+                ? 'Your written answers were marked automatically and are waiting for your teacher to confirm them, so this score may change. No XP is awarded until it is confirmed.'
+                : `${data.xpEarned ? `+${data.xpEarned} XP earned. ` : ''}Every question is marked below with the correct answer.`}</p>
         </div>`;
 
     const results = data.results || [];

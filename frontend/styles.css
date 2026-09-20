@@ -8098,6 +8098,9 @@ textarea:focus {
     border-radius: 100px;
 }
 .status-pill-graded { background: #D1FAE5; color: #059669; padding: 4px 10px; border-radius: 100px; font-weight: 800; font-size: 12px; }
+/* Marked by the machine, not yet confirmed by the teacher. Deliberately not
+   the graded green: it is not a final score. */
+.status-pill-pending { background: #FEF3C7; color: #B45309; padding: 4px 10px; border-radius: 100px; font-weight: 800; font-size: 12px; }
 .status-pill-submitted { background: #EFF6FF; color: #2563EB; padding: 4px 10px; border-radius: 100px; font-weight: 800; font-size: 12px; }
 .status-pill-assigned { background: var(--surface-inset); color: var(--text-secondary); padding: 4px 10px; border-radius: 100px; font-weight: 800; font-size: 12px; }
 
@@ -9404,8 +9407,14 @@ img, video, canvas, svg {
 .qz-option-wrong { background: rgba(239,68,68,0.1) !important; border-color: var(--danger-color) !important; }
 .qz-option-wrong .qz-option-letter { background: var(--danger-color); color: #fff; }
 
+/* Chosen, not yet marked: the quiz is graded on the server when the student
+   finishes, so during the quiz an option can only show that it is selected. */
+.qz-option-selected { background: rgba(59,130,246,0.10) !important; border-color: var(--primary-color, #2850e8) !important; }
+.qz-option-selected .qz-option-letter { background: var(--primary-color, #2850e8); color: #fff; }
+
 #qz-feedback.qz-feedback-correct { background: rgba(16,185,129,0.1); color: #047857; border: 1px solid rgba(16,185,129,0.3); }
 #qz-feedback.qz-feedback-wrong { background: rgba(239,68,68,0.08); color: #B91C1C; border: 1px solid rgba(239,68,68,0.25); }
+#qz-feedback.qz-feedback-selected { background: rgba(59,130,246,0.08); color: var(--text-secondary); border: 1px solid rgba(59,130,246,0.22); }
 
 .qz-score-ring {
     width: 120px; height: 120px; border-radius: 50%;

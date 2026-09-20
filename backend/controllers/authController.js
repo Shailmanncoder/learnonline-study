@@ -19,6 +19,16 @@ router.post('/register', async (req, res) => {
         if (password.length < 6) {
             return res.status(400).json({ msg: 'Password must be at least 6 characters long' });
         }
+        // Usernames are shown to other people — on the leaderboard, on class
+        // rosters, beside submissions — so the name itself must not be able to
+        // carry markup. Rendering escapes it too; this keeps it from being
+        // stored in the first place. Every existing account satisfies this, and
+        // sign-in is not checked against it, so nobody is locked out.
+        if (!/^[A-Za-z0-9 ._@+-]{2,50}$/.test(username.trim())) {
+            return res.status(400).json({
+                msg: 'Usernames can use letters, numbers, spaces and . _ @ + - only (2-50 characters).'
+            });
+        }
 
         const userExists = await db.get('SELECT * FROM users WHERE username = ?', [username.trim()]);
         if (userExists) {

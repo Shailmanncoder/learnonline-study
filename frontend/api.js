@@ -518,6 +518,17 @@ const api = {
         return data;
     },
 
+    // Opens a worksheet for attempting. Returns the questions without their
+    // answers, plus whether this student may still submit.
+    startWorksheet: async (token, worksheetId) => {
+        const res = await fetch(`${API_BASE_URL}/classroom/worksheets/${worksheetId}/start`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error?.message || data.msg || 'Could not open this worksheet.');
+        return data;
+    },
+
     getStudentClassFeed: async (token, classId) => {
         const res = await fetch(`${API_BASE_URL}/classroom/${classId}/feed`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -538,11 +549,13 @@ const api = {
         return data;
     },
 
-    submitStudentWorksheet: async (token, worksheetId, answers) => {
+    // submissionKey identifies this attempt, so a retry after a dropped
+    // connection is recognised as the same submission rather than a new one.
+    submitStudentWorksheet: async (token, worksheetId, answers, submissionKey) => {
         const res = await fetch(`${API_BASE_URL}/classroom/worksheets/${worksheetId}/submit`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ answers })
+            body: JSON.stringify({ answers, submissionKey })
         });
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.error?.message || 'Failed to submit worksheet');
@@ -635,13 +648,17 @@ const api = {
         return data;
     },
 
-    submitQuiz: async (token, topic, questions, answers) => {
+    // The quiz is identified by id; the answer key lives on the server, so the
+    // browser has nothing to grade against and nothing to send but its answers.
+    submitQuiz: async (token, quizId, answers) => {
         const res = await fetch(`${API_BASE_URL}/study/quiz/submit`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ topic, questions, answers })
+            body: JSON.stringify({ quizId, answers })
         });
-        return res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Could not save your quiz.');
+        return data;
     },
 
     getQuizHistory: async (token) => {
