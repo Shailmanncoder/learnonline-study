@@ -73,3 +73,91 @@ The local JWT secret was replaced during remediation. The exposed provider key w
 Open **Online Auto Study** in the student sidebar (route `/online-auto-study`). The local workspace includes class 1–12 selection, sample books and chapters, a scripted tutor, notes, flashcards, quizzes, and an NCERT ingestion explanation. It loads on first use and keeps its selected chapter while switching StudyHub sections. The full workspace is also available at `/auto-study/index.html`.
 
 This integrated preview uses authored sample content; it is not connected to the existing live AI or NCERT retrieval services and does not save progress. Its files live in `frontend/auto-study/`, so it does not rely on the private Sites deployment. Access to this static demo follows the StudyHub host's access settings; the “demo” label does not imply private hosting.
+
+### Auto Study: what is still a demo, and what connecting it would take
+
+Auto Study remains authored sample content with scripted tutor replies. It
+makes no network calls at all — no `fetch`, no token, no storage — so a demo
+quiz answer cannot reach a grade, an XP total or any account record. Its demo
+labels ("Sample-content demo", "Not connected", "Demo replies only") describe
+the current state accurately and should not be removed while that is true.
+
+To connect it for real, in rough order:
+
+- **Catalog identity.** The class/book/chapter picker uses invented ids. Real
+  navigation needs NCERT's own book and chapter identifiers, plus edition and
+  language, since "Class 7 Science" names several different books across years
+  and media.
+- **Chapter sources.** Chapter text, with page numbers preserved, so an answer
+  can cite the page it came from. `backend/services/ncert*` already ingests and
+  retrieves this; a connection should call those services rather than building
+  a second ingestion path, and must not silently import a database dump.
+- **Citations.** The tutor should show which passage it used and say plainly
+  when the book does not support an answer.
+- **Saved progress.** Nothing is persisted today. Saving would mean per-account
+  rows, which brings it under the same ownership and deletion rules as the rest
+  of the app.
+
+Until those exist, the honest description is the one already on the page.
+
+## Classroom integrity (September 2026)
+
+Permissions are decided by the account row, not by the token or the request.
+`middleware/auth` loads the account on every authenticated request, rejects a
+token whose account no longer exists, and reports the stored role — a token
+issued before a role change grants nothing. The teacher router is gated on that
+role, so a student cannot reach a teacher endpoint by opening the teacher
+portal.
+
+A class code requests teacher access; it does not grant it. The request is
+stored pending and the class owner approves it and chooses the role, from
+subject teacher or class teacher. Owner is never assignable. Roster changes and
+code regeneration need owner or class teacher; archiving and approving teachers
+need the owner. Archived classes stay readable and take no new work.
+
+Assessments keep their answers. Student-facing worksheet responses are redacted,
+and `GET /api/classroom/worksheets/:id/start` serves the questions needed to
+answer without the key. Submission requires an active enrollment in an active
+class, a published worksheet inside its window, known question ids, and an
+attempt remaining. Practice quizzes are stored server-side and graded by quiz
+id, so a browser cannot supply its own marking scheme.
+
+Submissions carry an idempotency key, unique per (worksheet, student, key), so
+a retry returns the recorded result rather than creating a second attempt. XP is
+paid against `reward_grants`, keyed by the work completed, so retries, new
+attempts, regrades and resubmissions cannot pay twice.
+
+A machine grade is a proposal. Where the model could not mark an answer, or the
+keyword fallback did, the attempt is stored provisional, shows as provisional,
+and earns nothing until a teacher finalises it in the review queue. Both scores,
+the reviewer and the time are recorded. Students may request a review of their
+own result.
+
+Reporting distinguishes latest from best attempt and says which it is showing,
+counts distinct students, reports the class size as the denominator, averages
+finalised attempts only, and shows provisional work separately from zero.
+
+**Migrations** are additive and repeatable on both SQLite and MySQL, and run on
+start. They add `study_quizzes`, `reward_grants`,
+`homework_submission_revisions`, `grade_reviews`, `class_join_attempts`, and
+columns for submission idempotency, grading status, teacher-membership status,
+worksheet availability and estimated minutes. Existing rows keep working: a NULL
+`submission_key` marks a pre-existing attempt and stays distinct under the
+unique index on both engines, `grading_status` defaults to `graded`, and
+`teacher_classes.status` defaults to `active` so current teachers keep access.
+
+**Historical values are preserved, not rewritten.** `users.time_spent` and old
+`activity.time_spent` rows include assignment durations that were counted as
+measured study time; those totals are left alone, but new rows record the
+configured duration as `estimated_minutes` and add nothing to measured time.
+Attempts predating `grading_status` read as final, which is what they meant.
+
+**Known limitations.** Rate limiting is per-process, so multiple workers
+multiply the effective limit; a shared store would be needed for a real quota.
+`middleware/classroomAuth.js` documents a richer permission model than the one
+enforced and queries three tables that do not exist — it is marked NOT IN USE
+and reconciling it needs a product decision. Sign-in still distinguishes
+"account not found" from "wrong password", which the sign-up flow depends on but
+which also confirms whether a username exists. Teacher self-registration remains
+open: anyone may choose a teacher account at signup, which is a product decision
+rather than a bug, but it means teacher-portal access is self-service.
