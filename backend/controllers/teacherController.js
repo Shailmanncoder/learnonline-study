@@ -1373,7 +1373,7 @@ router.get('/worksheets/:id/analysis', async (req, res) => {
         const attempts = await db.all(
             `SELECT wa.*, u.username as student_name
              FROM worksheet_attempts wa JOIN users u ON u.id = wa.student_id
-             WHERE wa.worksheet_id = ? ORDER BY wa.submitted_at DESC`,
+             WHERE wa.worksheet_id = ? ORDER BY wa.submitted_at DESC, wa.id DESC`,
             [wsId]
         );
 

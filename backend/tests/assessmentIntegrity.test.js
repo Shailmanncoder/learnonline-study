@@ -161,6 +161,27 @@ test('assessments keep their answers, and submissions are authorised and idempot
         assert.ok(best.body.score >= latest.body.score);
     });
 
+    await t.test('the student\'s screen and the teacher\'s report describe the same attempt', async () => {
+        const mine = await api.get(`/api/classroom/worksheets/${wsId}/my-result`, { token: student.token });
+        const report = await api.get(`/api/teacher/worksheets/${wsId}/analysis`, { token: teacher.token });
+        assert.equal(report.status, 200);
+
+        // Both sides name which attempt they are showing, and both mean the
+        // latest one — this used to be "best" on one screen and "most recent"
+        // on the other, with nothing saying so.
+        assert.equal(mine.body.showing, 'latest');
+        assert.match(report.body.summary.showing, /latest/);
+
+        const row = report.body.students.find(r => r.id === student.id);
+        assert.ok(row, 'the student should appear in the report');
+        assert.equal(row.score, mine.body.score, 'the two screens must not disagree about the score');
+        assert.equal(row.total, mine.body.totalPossible);
+
+        // And the denominator is stated rather than implied.
+        assert.equal(report.body.summary.classSize, 1);
+        assert.equal(report.body.summary.submissions, 1);
+    });
+
     await t.test('a removed student keeps their history but cannot submit again', async () => {
         await api.post(`/api/teacher/classes/${cls.id}/students/remove`, { studentId: student.id }, { token: teacher.token });
         const res = await api.post(`/api/classroom/worksheets/${wsId}/submit`, {
