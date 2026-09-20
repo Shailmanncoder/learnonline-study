@@ -10,7 +10,7 @@
 // The visible symptom was new markup rendering against old stylesheets.
 // Bump CACHE_VERSION on any release that changes shell assets.
 
-const CACHE_VERSION = 'v14-learning-workspace';
+const CACHE_VERSION = 'v15-auto-study';
 const CACHE_NAME = `studyhub-shell-${CACHE_VERSION}`;
 const APP_SHELL = [
     '/',
@@ -28,6 +28,9 @@ const APP_SHELL = [
     '/chatTools.js',
     '/learning.js',
     '/learning.css',
+    '/auto-study/index.html',
+    '/auto-study/style.css',
+    '/auto-study/app.js',
     '/manifest.json',
     '/icon-192.png',
     '/icon-512.png'

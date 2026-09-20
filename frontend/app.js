@@ -154,6 +154,7 @@ function handleAppRouting(initial = false) {
         'leaderboard': 'leaderboard',
         'flashcards': 'flashcards',
         'learning-hub': 'learning-hub',
+        'online-auto-study': 'online-auto-study',
         'quiz-generator': 'quiz-generator',
         'quiz': 'quiz-generator',
         'study-roadmap': 'study-roadmap',
@@ -1013,6 +1014,10 @@ function navigateToSection(target, updateUrl = true) {
     const targetSection = document.getElementById(target);
     if (targetSection) targetSection.classList.add('active');
 
+    if (target === 'online-auto-study') {
+        const frame = document.getElementById('auto-study-frame');
+        if (frame && !frame.hasAttribute('src')) frame.src = frame.dataset.src;
+    }
     if (target === 'learning-hub') window.loadLearningWorkspace?.();
     if (target === 'leaderboard') loadLeaderboard();
     if (target === 'tools') loadTools();
