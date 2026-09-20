@@ -452,6 +452,9 @@ async function initMysql() {
     await ensureColumn('worksheet_attempts', 'grading_status', `VARCHAR(20) DEFAULT 'graded'`);
     await ensureColumn('worksheet_attempts', 'graded_kind', 'VARCHAR(20) DEFAULT NULL');
     await ensureColumn('worksheet_attempts', 'attempt_no', 'INT DEFAULT 1');
+    await ensureColumn('teacher_classes', 'status', `VARCHAR(20) DEFAULT 'active'`);
+    await ensureColumn('teacher_classes', 'approved_by', 'INT DEFAULT NULL');
+    await ensureColumn('teacher_classes', 'requested_at', 'DATETIME DEFAULT NULL');
     await ensureColumn('homework_submissions', 'revision', 'INT DEFAULT 1');
     await ensureColumn('homework_submissions', 'graded_revision', 'INT DEFAULT NULL');
     await ensureColumn('class_worksheets', 'opens_at', 'DATETIME DEFAULT NULL');
@@ -864,6 +867,9 @@ async function initSqlite() {
         ['worksheet_attempts', 'grading_status', `TEXT DEFAULT 'graded'`],
         ['worksheet_attempts', 'graded_kind', `TEXT DEFAULT NULL`],
         ['worksheet_attempts', 'attempt_no', `INTEGER DEFAULT 1`],
+        ['teacher_classes', 'status', `TEXT DEFAULT 'active'`],
+        ['teacher_classes', 'approved_by', `INTEGER DEFAULT NULL`],
+        ['teacher_classes', 'requested_at', `TEXT DEFAULT NULL`],
         ['homework_submissions', 'revision', `INTEGER DEFAULT 1`],
         ['homework_submissions', 'graded_revision', `INTEGER DEFAULT NULL`],
         ['class_worksheets', 'opens_at', `TEXT DEFAULT NULL`],

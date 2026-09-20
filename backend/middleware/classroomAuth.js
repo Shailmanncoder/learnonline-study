@@ -1,5 +1,16 @@
 const db = require('../config/db');
 
+// NOT IN USE — kept as the written-down permission model, not as an enforced
+// one. No route mounts requireClassroomPermission, and the tables it reads
+// (class_memberships, security_logs, classroom_audit_logs) do not exist in
+// either schema, so wiring it up as-is would make every guarded route throw.
+// The matrix below is the intent; what is actually enforced today lives in
+// controllers/teacherController.js (requireTeacherOfClass, requireClassPower,
+// requireActiveClass) against teacher_classes and class_enrollments.
+// Reconciling the two models — including the pending/approved student states
+// this file assumes and the roster does not have — needs a product decision
+// and is flagged for review rather than guessed at here.
+
 // Central Permission Matrix
 const PERMISSIONS = {
     class_owner: [

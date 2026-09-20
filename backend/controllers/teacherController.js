@@ -1,6 +1,9 @@
 const express = require('express');
+const crypto = require('node:crypto');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const { requireRole } = require('../middleware/auth');
+const { joinAttemptsExhausted, recordJoinAttempt } = require('../services/joinLimiter');
 const db = require('../config/db');
 
 // --- Multi-Provider AI Helper for Worksheet Generation ---
@@ -43,14 +46,36 @@ async function generateAIJSON(prompt, systemInstruction = 'You are a pedagogical
     return '';
 }
 
-// --- Helper: Secure Unique Class Code Generator ---
+// Every route in this file is a teacher-portal action, so the gate goes here
+// rather than being repeated (and eventually forgotten) on each one. The role
+// comes from the account row, so opening the teacher portal in the browser or
+// replaying a token issued before a role change grants nothing.
+router.use(auth, requireRole('teacher', 'developer'));
+
+// --- Helper: Unique Class Code Generator ---
+// Math.random() is predictable enough that, given a few codes, an attacker can
+// derive the generator state and guess the rest. Class codes are the only
+// thing standing between an outsider and a class roster, so they come from the
+// CSPRNG. The alphabet omits 0/O/1/I so a code read off a whiteboard is
+// unambiguous.
+const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 function generateClassCode() {
-    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const bytes = crypto.randomBytes(6);
     let code = '';
-    for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
+    for (let i = 0; i < 6; i++) code += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
     return code;
+}
+
+// Returns a code that is free, or throws rather than handing back one that is
+// already taken — the previous loop fell through after ten collisions and
+// wrote the duplicate, which would have pointed one code at two classes.
+async function allocateClassCode() {
+    for (let attempt = 0; attempt < 12; attempt++) {
+        const code = generateClassCode();
+        const taken = await db.get('SELECT id FROM classrooms WHERE class_code = ?', [code]);
+        if (!taken) return code;
+    }
+    throw new Error('Could not allocate a free class code');
 }
 
 // --- Helper: Audit Logging ---
@@ -84,45 +109,108 @@ async function notifyClassStudents(classId, type, title, message, refType, refId
 }
 
 // --- Authorization Middleware: Ensure caller is a teacher/owner of class ---
+// Membership in teacher_classes is what authorises a teacher for a class —
+// but only an *active* membership. A pending join request and a revoked one
+// both leave the row in place, and neither should let anyone read a roster.
 async function requireTeacherOfClass(req, res, next) {
     try {
         const classId = req.params.id || req.body.classId || req.params.classId;
         if (!classId) return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Class ID required' } });
 
         const tc = await db.get(
-            'SELECT tc.*, c.created_by FROM teacher_classes tc JOIN classrooms c ON c.id = tc.class_id WHERE tc.class_id = ? AND tc.teacher_id = ?',
+            `SELECT tc.*, c.created_by, c.status AS class_status
+             FROM teacher_classes tc JOIN classrooms c ON c.id = tc.class_id
+             WHERE tc.class_id = ? AND tc.teacher_id = ?`,
             [classId, req.user.id]
         );
-        if (!tc) {
-            return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'You are not a registered teacher of this classroom' } });
+        if (!tc || (tc.status && tc.status !== 'active')) {
+            return res.status(403).json({
+                success: false,
+                error: {
+                    code: tc && tc.status === 'pending' ? 'APPROVAL_PENDING' : 'NOT_AUTHORIZED',
+                    message: tc && tc.status === 'pending'
+                        ? 'Your request to join this classroom is awaiting the owner\'s approval.'
+                        : 'You are not a registered teacher of this classroom'
+                }
+            });
+        }
+        if (tc.class_status === 'deleted') {
+            return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } });
         }
         req.teacherClass = tc;
+        // The creator is the owner even if their teacher_classes row predates
+        // roles being recorded there.
+        req.isClassOwner = tc.role === 'owner' || Number(tc.created_by) === Number(req.user.id);
         next();
     } catch (err) {
         console.error('[TEACHER AUTH ERROR]', err.message);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Authorization check failed' } });
     }
+}
+
+// The check the routes below used to write inline, plus the two things every
+// one of those copies missed: a pending or revoked membership is not authority,
+// and a deleted class is not a class. Returns null when the caller has no
+// standing, so `if (!tc) return 403` at the call sites keeps working.
+async function activeTeacherMembership(classId, teacherId) {
+    const tc = await db.get(
+        `SELECT tc.*, c.status AS class_status, c.created_by
+         FROM teacher_classes tc JOIN classrooms c ON c.id = tc.class_id
+         WHERE tc.class_id = ? AND tc.teacher_id = ?`,
+        [classId, teacherId]
+    );
+    if (!tc) return null;
+    if (tc.status && tc.status !== 'active') return null;
+    if (tc.class_status === 'deleted') return null;
+    return tc;
+}
+
+// Class-wide powers. The split follows the permission matrix already written
+// down in middleware/classroomAuth.js: a subject teacher teaches, a class
+// teacher also manages the roster and the code, and only the owner can archive
+// the class or decide who else teaches it.
+function requireClassPower(power) {
+    const ALLOWED = {
+        MANAGE_ROSTER: ['owner', 'class_teacher'],
+        MANAGE_CLASS_CODE: ['owner', 'class_teacher'],
+        ARCHIVE_CLASSROOM: ['owner'],
+        MANAGE_TEACHERS: ['owner']
+    };
+    return (req, res, next) => {
+        const role = req.isClassOwner ? 'owner' : (req.teacherClass && req.teacherClass.role) || 'subject_teacher';
+        if (!(ALLOWED[power] || []).includes(role)) {
+            return res.status(403).json({
+                success: false,
+                error: { code: 'NOT_AUTHORIZED', message: `Only the class ${ALLOWED[power].join(' or ')} can do this.` }
+            });
+        }
+        next();
+    };
+}
+
+// An archived class is readable but frozen: no new work, no roster changes.
+function requireActiveClass(req, res, next) {
+    const status = req.teacherClass && req.teacherClass.class_status;
+    if (status && status !== 'active') {
+        return res.status(409).json({
+            success: false,
+            error: { code: 'CLASS_NOT_ACTIVE', message: `This classroom is ${status} and is read-only.` }
+        });
+    }
+    next();
 }
 
 // ============================================================================
 // 1. CREATE CLASSROOM
 // ============================================================================
-router.post('/classes', auth, async (req, res) => {
+router.post('/classes', async (req, res) => {
     try {
         const { name, grade, section, subject, academic_year, description } = req.body;
         if (!name || !section) {
             return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Class Name and Section are required' } });
         }
 
-        let classCode = '';
-        let exists = true;
-        let attempts = 0;
-        while (exists && attempts < 10) {
-            classCode = generateClassCode();
-            const existing = await db.get('SELECT id FROM classrooms WHERE class_code = ?', [classCode]);
-            if (!existing) exists = false;
-            attempts++;
-        }
+        const classCode = await allocateClassCode();
 
         const classRes = await db.run(
             'INSERT INTO classrooms (name, grade, section, subject, academic_year, class_code, description, created_by, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -153,18 +241,34 @@ router.post('/classes', auth, async (req, res) => {
 // ============================================================================
 // 2. TEACHER JOINS EXISTING CLASS WITH CLASS CODE
 // ============================================================================
-router.post('/classes/join', auth, async (req, res) => {
+// Knowing a class code is not authority to teach a class. The code is the same
+// one students are given, so anyone a student shares it with could otherwise
+// have walked in — and the old version took the role straight from the request
+// body, so they could walk in as `owner` and take the class over. A code now
+// only requests a seat; the owner decides whether it is granted, and at what
+// role. Owner is never among the options: ownership transfers deliberately.
+const ASSIGNABLE_TEACHER_ROLES = ['subject_teacher', 'class_teacher'];
+
+router.post('/classes/join', async (req, res) => {
     try {
-        const { classCode, subject, role } = req.body;
+        const { classCode, subject } = req.body;
         if (!classCode) {
             return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Class code is required' } });
         }
+        if (await joinAttemptsExhausted(req.user.id)) {
+            return res.status(429).json({
+                success: false,
+                error: { code: 'TOO_MANY_ATTEMPTS', message: 'Too many incorrect class codes. Please wait a few minutes and try again.' }
+            });
+        }
 
         const code = String(classCode).trim().toUpperCase();
-        const classroom = await db.get('SELECT * FROM classrooms WHERE UPPER(class_code) = ? AND status != "deleted"', [code]);
+        const classroom = await db.get("SELECT * FROM classrooms WHERE UPPER(class_code) = ? AND status != 'deleted'", [code]);
         if (!classroom) {
+            await recordJoinAttempt(req.user.id, false);
             return res.status(404).json({ success: false, error: { code: 'INVALID_CLASS_CODE', message: 'The class code is invalid or the class does not exist.' } });
         }
+        await recordJoinAttempt(req.user.id, true);
 
         if (classroom.status === 'archived') {
             return res.status(400).json({ success: false, error: { code: 'CLASS_ARCHIVED', message: 'This class has been archived and cannot accept new teachers.' } });
@@ -172,30 +276,123 @@ router.post('/classes/join', auth, async (req, res) => {
 
         const existing = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [classroom.id, req.user.id]);
         if (existing) {
-            return res.status(400).json({ success: false, error: { code: 'DUPLICATE_TEACHER', message: 'You are already registered as a teacher in this classroom.' } });
+            const pending = existing.status === 'pending';
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: pending ? 'APPROVAL_PENDING' : 'DUPLICATE_TEACHER',
+                    message: pending
+                        ? 'Your request is already waiting for the class owner to approve it.'
+                        : 'You are already registered as a teacher in this classroom.'
+                }
+            });
         }
 
-        await db.run(
-            'INSERT INTO teacher_classes (class_id, teacher_id, subject, role) VALUES (?, ?, ?, ?)',
-            [classroom.id, req.user.id, subject ? subject.trim() : 'Subject Teacher', role || 'subject_teacher']
-        );
+        // UNIQUE(class_id, teacher_id) makes a double-submitted request one row.
+        try {
+            await db.run(
+                `INSERT INTO teacher_classes (class_id, teacher_id, subject, role, status, requested_at)
+                 VALUES (?, ?, ?, 'subject_teacher', 'pending', CURRENT_TIMESTAMP)`,
+                [classroom.id, req.user.id, subject ? String(subject).trim().slice(0, 80) : 'Subject Teacher']
+            );
+        } catch (err) {
+            if (!/unique|duplicate/i.test(err.message)) throw err;
+        }
 
-        await logAudit(req.user.id, 'TEACHER_JOINED', 'classrooms', classroom.id, { subject, role });
+        const owner = await db.get(
+            `SELECT teacher_id FROM teacher_classes WHERE class_id = ? AND role = 'owner' LIMIT 1`,
+            [classroom.id]
+        );
+        const ownerId = (owner && owner.teacher_id) || classroom.created_by;
+        if (ownerId) {
+            await db.run(
+                'INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id) VALUES (?, ?, ?, ?, ?, ?)',
+                [ownerId, 'teacher_request', 'Teacher access requested',
+                 `${req.user.username} has asked to teach ${classroom.name}-${classroom.section}.`, 'classrooms', classroom.id]
+            );
+        }
+
+        await logAudit(req.user.id, 'TEACHER_ACCESS_REQUESTED', 'classrooms', classroom.id, { subject });
 
         res.json({
             success: true,
-            classroom: { ...classroom, my_role: role || 'subject_teacher' }
+            status: 'pending',
+            message: `Request sent. ${classroom.name}-${classroom.section} will appear once the class owner approves it.`,
+            classroom: { id: classroom.id, name: classroom.name, section: classroom.section, my_role: null, my_status: 'pending' }
         });
     } catch (err) {
         console.error('[TEACHER JOIN ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Could not send the request' } });
+    }
+});
+
+// ── Owner reviews teacher access requests ──────────────────────────
+router.get('/classes/:id/teacher-requests', requireTeacherOfClass, requireClassPower('MANAGE_TEACHERS'), async (req, res) => {
+    try {
+        const requests = await db.all(
+            `SELECT tc.teacher_id, tc.subject, tc.requested_at, u.username, u.profile_picture
+             FROM teacher_classes tc JOIN users u ON u.id = tc.teacher_id
+             WHERE tc.class_id = ? AND tc.status = 'pending' ORDER BY tc.requested_at ASC`,
+            [req.params.id]
+        );
+        res.json({ success: true, requests });
+    } catch (err) {
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Could not load requests' } });
+    }
+});
+
+router.post('/classes/:id/teacher-requests/:teacherId', requireTeacherOfClass, requireClassPower('MANAGE_TEACHERS'), requireActiveClass, async (req, res) => {
+    try {
+        const { decision, role } = req.body;
+        const classId = req.params.id;
+        const teacherId = Number(req.params.teacherId);
+        if (!Number.isInteger(teacherId) || teacherId <= 0) {
+            return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'A valid teacher is required' } });
+        }
+        if (!['approve', 'reject'].includes(decision)) {
+            return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'decision must be approve or reject' } });
+        }
+        // The owner chooses the role, and only from roles that can be granted.
+        const grantedRole = ASSIGNABLE_TEACHER_ROLES.includes(role) ? role : 'subject_teacher';
+
+        const pending = await db.get(
+            `SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ? AND status = 'pending'`,
+            [classId, teacherId]
+        );
+        if (!pending) {
+            return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'No pending request from that teacher' } });
+        }
+
+        if (decision === 'approve') {
+            await db.run(
+                `UPDATE teacher_classes SET status = 'active', role = ?, approved_by = ? WHERE class_id = ? AND teacher_id = ?`,
+                [grantedRole, req.user.id, classId, teacherId]
+            );
+        } else {
+            await db.run('DELETE FROM teacher_classes WHERE class_id = ? AND teacher_id = ? AND status = \'pending\'', [classId, teacherId]);
+        }
+
+        const cls = await db.get('SELECT name, section FROM classrooms WHERE id = ?', [classId]);
+        await db.run(
+            'INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id) VALUES (?, ?, ?, ?, ?, ?)',
+            [teacherId, 'teacher_request_decision',
+             decision === 'approve' ? 'Teacher access approved' : 'Teacher access declined',
+             `${cls ? `${cls.name}-${cls.section}` : 'The classroom'}: your request was ${decision === 'approve' ? `approved as ${grantedRole.replace('_', ' ')}` : 'declined'}.`,
+             'classrooms', classId]
+        );
+        await logAudit(req.user.id, decision === 'approve' ? 'TEACHER_APPROVED' : 'TEACHER_REJECTED', 'teacher_classes', classId, { teacherId, grantedRole });
+
+        res.json({ success: true, message: decision === 'approve' ? `Approved as ${grantedRole.replace('_', ' ')}` : 'Request declined' });
+    } catch (err) {
+        console.error('[TEACHER REQUEST DECISION ERROR]', err);
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Could not record the decision' } });
     }
 });
 
 // ============================================================================
 // 3. GET TEACHER'S CLASSROOMS
 // ============================================================================
-router.get('/classes', auth, async (req, res) => {
+router.get('/classes', async (req, res) => {
     try {
         const rows = await db.all(
             `SELECT c.*, tc.role as my_role, tc.subject as my_subject,
@@ -217,7 +414,7 @@ router.get('/classes', auth, async (req, res) => {
 // ============================================================================
 // 4. GET CLASSROOM DETAILS (STREAM, STATS)
 // ============================================================================
-router.get('/classes/:id', auth, requireTeacherOfClass, async (req, res) => {
+router.get('/classes/:id', requireTeacherOfClass, async (req, res) => {
     try {
         const classId = req.params.id;
         const classroom = await db.get('SELECT * FROM classrooms WHERE id = ?', [classId]);
@@ -286,7 +483,7 @@ router.get('/classes/:id', auth, requireTeacherOfClass, async (req, res) => {
 // ============================================================================
 // 5. GET CLASSROOM STUDENTS & PEOPLE LIST
 // ============================================================================
-router.get('/classes/:id/students', auth, requireTeacherOfClass, async (req, res) => {
+router.get('/classes/:id/students', requireTeacherOfClass, async (req, res) => {
     try {
         const classId = req.params.id;
         const students = await db.all(
@@ -318,16 +515,21 @@ router.get('/classes/:id/students', auth, requireTeacherOfClass, async (req, res
 // ============================================================================
 // 6. REMOVE STUDENT (Can rejoin with class code)
 // ============================================================================
-router.post('/classes/:id/students/remove', auth, requireTeacherOfClass, async (req, res) => {
+router.post('/classes/:id/students/remove', requireTeacherOfClass, requireClassPower('MANAGE_ROSTER'), requireActiveClass, async (req, res) => {
     try {
         const classId = req.params.id;
         const { studentId } = req.body;
-        if (!studentId) return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Student ID required' } });
+        if (!Number.isInteger(Number(studentId)) || Number(studentId) <= 0) {
+            return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'A valid student is required' } });
+        }
 
-        await db.run(
-            "UPDATE class_enrollments SET status = 'removed', removed_at = CURRENT_TIMESTAMP, removed_by = ? WHERE class_id = ? AND student_id = ?",
+        const updated = await db.run(
+            "UPDATE class_enrollments SET status = 'removed', removed_at = CURRENT_TIMESTAMP, removed_by = ? WHERE class_id = ? AND student_id = ? AND status = 'active'",
             [req.user.id, classId, studentId]
         );
+        if (!updated.changes) {
+            return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'That student is not actively enrolled in this class' } });
+        }
 
         const cls = await db.get('SELECT name, section FROM classrooms WHERE id = ?', [classId]);
         await db.run(
@@ -346,59 +548,95 @@ router.post('/classes/:id/students/remove', auth, requireTeacherOfClass, async (
 // ============================================================================
 // 7. BLOCK STUDENT (Cannot rejoin with class code)
 // ============================================================================
-router.post('/classes/:id/students/block', auth, requireTeacherOfClass, async (req, res) => {
+router.post('/classes/:id/students/block', requireTeacherOfClass, requireClassPower('MANAGE_ROSTER'), requireActiveClass, async (req, res) => {
     try {
         const classId = req.params.id;
         const { studentId, reason } = req.body;
-        if (!studentId) return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Student ID required' } });
+        if (!Number.isInteger(Number(studentId)) || Number(studentId) <= 0) {
+            return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'A valid student is required' } });
+        }
 
-        await db.run(
-            "UPDATE class_enrollments SET status = 'blocked', removed_at = CURRENT_TIMESTAMP, removed_by = ? WHERE class_id = ? AND student_id = ?",
-            [req.user.id, classId, studentId]
-        );
-
-        await db.run(
-            "INSERT OR REPLACE INTO class_student_restrictions (class_id, student_id, type, reason, created_by) VALUES (?, ?, 'blocked', ?, ?)",
-            [classId, studentId, reason || 'Restricted by teacher', req.user.id]
-        );
+        // The enrollment row and the restriction row have to move together —
+        // one saying blocked while the other does not is what made unblocking
+        // appear to work while the student stayed locked out.
+        await db.transaction(async () => {
+            await db.run(
+                "UPDATE class_enrollments SET status = 'blocked', removed_at = CURRENT_TIMESTAMP, removed_by = ? WHERE class_id = ? AND student_id = ?",
+                [req.user.id, classId, studentId]
+            );
+            const restriction = await db.get(
+                'SELECT id FROM class_student_restrictions WHERE class_id = ? AND student_id = ?',
+                [classId, studentId]
+            );
+            if (restriction) {
+                await db.run(
+                    "UPDATE class_student_restrictions SET type = 'blocked', reason = ?, created_by = ? WHERE id = ?",
+                    [String(reason || 'Restricted by teacher').slice(0, 300), req.user.id, restriction.id]
+                );
+            } else {
+                // INSERT OR REPLACE is SQLite-only; this works on both engines.
+                await db.run(
+                    "INSERT INTO class_student_restrictions (class_id, student_id, type, reason, created_by) VALUES (?, ?, 'blocked', ?, ?)",
+                    [classId, studentId, String(reason || 'Restricted by teacher').slice(0, 300), req.user.id]
+                );
+            }
+        });
 
         await logAudit(req.user.id, 'STUDENT_BLOCKED', 'class_student_restrictions', studentId, { classId, reason });
         res.json({ success: true, message: 'Student has been blocked from rejoining' });
     } catch (err) {
         console.error('[BLOCK STUDENT ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Could not block the student' } });
     }
 });
 
 // ============================================================================
 // 8. UNBLOCK STUDENT
 // ============================================================================
-router.post('/classes/:id/students/unblock', auth, requireTeacherOfClass, async (req, res) => {
+// Lifting a block used to delete the restriction and stop there, leaving the
+// enrollment on 'blocked' — which the join route reads and refuses. The
+// student stayed locked out and the teacher was told it had worked. Both rows
+// now move together, to 'removed': the block is lifted, and the student
+// rejoins deliberately with the class code rather than being silently put back
+// into a class they may have left.
+router.post('/classes/:id/students/unblock', requireTeacherOfClass, requireClassPower('MANAGE_ROSTER'), requireActiveClass, async (req, res) => {
     try {
         const classId = req.params.id;
         const { studentId } = req.body;
-        await db.run('DELETE FROM class_student_restrictions WHERE class_id = ? AND student_id = ?', [classId, studentId]);
-        res.json({ success: true, message: 'Student restriction removed' });
+        if (!Number.isInteger(Number(studentId)) || Number(studentId) <= 0) {
+            return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'A valid student is required' } });
+        }
+
+        await db.transaction(async () => {
+            await db.run('DELETE FROM class_student_restrictions WHERE class_id = ? AND student_id = ?', [classId, studentId]);
+            await db.run(
+                "UPDATE class_enrollments SET status = 'removed' WHERE class_id = ? AND student_id = ? AND status = 'blocked'",
+                [classId, studentId]
+            );
+        });
+
+        const cls = await db.get('SELECT name, section, class_code FROM classrooms WHERE id = ?', [classId]);
+        await db.run(
+            'INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id) VALUES (?, ?, ?, ?, ?, ?)',
+            [studentId, 'student_unblocked', 'You can rejoin this classroom',
+             `${cls ? `${cls.name}-${cls.section}` : 'A classroom'} is open to you again. Use the class code to rejoin.`, 'classrooms', classId]
+        );
+        await logAudit(req.user.id, 'STUDENT_UNBLOCKED', 'class_student_restrictions', studentId, { classId });
+
+        res.json({ success: true, message: 'Block lifted. The student can now rejoin with the class code.' });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        console.error('[UNBLOCK STUDENT ERROR]', err);
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Could not lift the block' } });
     }
 });
 
 // ============================================================================
 // 9. REGENERATE CLASS CODE (Owner/Class Teacher only)
 // ============================================================================
-router.post('/classes/:id/regenerate-code', auth, requireTeacherOfClass, async (req, res) => {
+router.post('/classes/:id/regenerate-code', requireTeacherOfClass, requireClassPower('MANAGE_CLASS_CODE'), requireActiveClass, async (req, res) => {
     try {
         const classId = req.params.id;
-        let newCode = '';
-        let exists = true;
-        let attempts = 0;
-        while (exists && attempts < 10) {
-            newCode = generateClassCode();
-            const existing = await db.get('SELECT id FROM classrooms WHERE class_code = ?', [newCode]);
-            if (!existing) exists = false;
-            attempts++;
-        }
+        const newCode = await allocateClassCode();
 
         await db.run('UPDATE classrooms SET class_code = ? WHERE id = ?', [newCode, classId]);
         await logAudit(req.user.id, 'CLASS_CODE_REGENERATED', 'classrooms', classId, { newCode });
@@ -413,29 +651,40 @@ router.post('/classes/:id/regenerate-code', auth, requireTeacherOfClass, async (
 // ============================================================================
 // 10. ARCHIVE CLASSROOM
 // ============================================================================
-router.post('/classes/:id/archive', auth, requireTeacherOfClass, async (req, res) => {
+router.post('/classes/:id/archive', requireTeacherOfClass, requireClassPower('ARCHIVE_CLASSROOM'), async (req, res) => {
     try {
         const classId = req.params.id;
-        await db.run("UPDATE classrooms SET status = 'archived' WHERE id = ?", [classId]);
-        await logAudit(req.user.id, 'CLASS_ARCHIVED', 'classrooms', classId, {});
-        res.json({ success: true, message: 'Classroom archived' });
+        const restore = req.body && req.body.restore === true;
+        await db.run('UPDATE classrooms SET status = ? WHERE id = ?', [restore ? 'active' : 'archived', classId]);
+        await logAudit(req.user.id, restore ? 'CLASS_RESTORED' : 'CLASS_ARCHIVED', 'classrooms', classId, {});
+        res.json({
+            success: true,
+            status: restore ? 'active' : 'archived',
+            message: restore
+                ? 'Classroom restored. It accepts new work again.'
+                : 'Classroom archived. It stays readable, but new work and roster changes are closed.'
+        });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        console.error('[ARCHIVE CLASS ERROR]', err);
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Could not update the classroom' } });
     }
 });
 
 // ============================================================================
 // 11. ANNOUNCEMENTS (POST)
 // ============================================================================
-router.post('/announcements', auth, async (req, res) => {
+router.post('/announcements', async (req, res) => {
     try {
         const { classId, title, message, priority, attachments } = req.body;
         if (!classId || !title || !message) {
             return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Class ID, Title, and Message are required' } });
         }
 
-        const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [classId, req.user.id]);
+        const tc = await activeTeacherMembership(classId, req.user.id);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized for this class' } });
+        // An archived class stays readable, and existing work can still be
+        // graded, but it takes no new material.
+        if (tc.class_status !== 'active') return res.status(409).json({ success: false, error: { code: 'CLASS_NOT_ACTIVE', message: `This classroom is ${tc.class_status} and no longer accepts new work.` } });
 
         const result = await db.run(
             'INSERT INTO class_announcements (class_id, teacher_id, title, message, priority, attachments) VALUES (?, ?, ?, ?, ?, ?)',
@@ -461,15 +710,18 @@ router.post('/announcements', auth, async (req, res) => {
 // ============================================================================
 // 12. HOMEWORK (CREATE / SUBMISSIONS / GRADE)
 // ============================================================================
-router.post('/homework', auth, async (req, res) => {
+router.post('/homework', async (req, res) => {
     try {
         const { classId, title, subject, instructions, due_date, due_time, max_marks, attachments } = req.body;
         if (!classId || !title || !subject) {
             return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Class ID, Title, and Subject are required' } });
         }
 
-        const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [classId, req.user.id]);
+        const tc = await activeTeacherMembership(classId, req.user.id);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized for this class' } });
+        // An archived class stays readable, and existing work can still be
+        // graded, but it takes no new material.
+        if (tc.class_status !== 'active') return res.status(409).json({ success: false, error: { code: 'CLASS_NOT_ACTIVE', message: `This classroom is ${tc.class_status} and no longer accepts new work.` } });
 
         const result = await db.run(
             'INSERT INTO class_homework (class_id, teacher_id, title, subject, instructions, due_date, due_time, max_marks, attachments, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -488,13 +740,13 @@ router.post('/homework', auth, async (req, res) => {
     }
 });
 
-router.get('/homework/:id/submissions', auth, async (req, res) => {
+router.get('/homework/:id/submissions', async (req, res) => {
     try {
         const hwId = req.params.id;
         const hw = await db.get('SELECT * FROM class_homework WHERE id = ?', [hwId]);
         if (!hw) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Homework not found' } });
 
-        const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [hw.class_id, req.user.id]);
+        const tc = await activeTeacherMembership(hw.class_id, req.user.id);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized' } });
 
         const submissions = await db.all(
@@ -511,7 +763,7 @@ router.get('/homework/:id/submissions', auth, async (req, res) => {
     }
 });
 
-router.post('/homework/grade', auth, async (req, res) => {
+router.post('/homework/grade', async (req, res) => {
     try {
         const { submissionId, marks, feedback } = req.body;
         if (!submissionId || marks === undefined) {
@@ -521,7 +773,7 @@ router.post('/homework/grade', auth, async (req, res) => {
         const sub = await db.get('SELECT hs.*, ch.class_id, ch.title FROM homework_submissions hs JOIN class_homework ch ON ch.id = hs.homework_id WHERE hs.id = ?', [submissionId]);
         if (!sub) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Submission not found' } });
 
-        const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [sub.class_id, req.user.id]);
+        const tc = await activeTeacherMembership(sub.class_id, req.user.id);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized' } });
 
         await db.run(
@@ -543,15 +795,18 @@ router.post('/homework/grade', auth, async (req, res) => {
 // ============================================================================
 // 13. STUDY NOTES (CREATE / PUBLISH)
 // ============================================================================
-router.post('/notes', auth, async (req, res) => {
+router.post('/notes', async (req, res) => {
     try {
         const { classId, title, subject, content, attachments, status } = req.body;
         if (!classId || !title || !content) {
             return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Class ID, Title, and Content are required' } });
         }
 
-        const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [classId, req.user.id]);
+        const tc = await activeTeacherMembership(classId, req.user.id);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized' } });
+        // An archived class stays readable, and existing work can still be
+        // graded, but it takes no new material.
+        if (tc.class_status !== 'active') return res.status(409).json({ success: false, error: { code: 'CLASS_NOT_ACTIVE', message: `This classroom is ${tc.class_status} and no longer accepts new work.` } });
 
         const result = await db.run(
             'INSERT INTO class_notes (class_id, teacher_id, title, subject, content, attachments, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -573,7 +828,7 @@ router.post('/notes', auth, async (req, res) => {
 // ============================================================================
 // 14. AI WORKSHEET GENERATOR (GENERATE -> PREVIEW/EDIT -> PUBLISH)
 // ============================================================================
-router.post('/worksheets/generate', auth, async (req, res) => {
+router.post('/worksheets/generate', async (req, res) => {
     try {
         const { grade, subject, topic, chapter, difficulty, numQuestions, questionTypes, language, totalMarks, duration } = req.body;
         if (!subject || !topic) {
@@ -665,7 +920,7 @@ Respond ONLY with valid, parseable JSON in the following exact format without ma
 
 // Generate 3 differentiated versions of a test (Easy / Medium / Hard) in one call —
 // same question count and topic, scaled difficulty, each independently publishable.
-router.post('/worksheets/generate-differentiated', auth, async (req, res) => {
+router.post('/worksheets/generate-differentiated', async (req, res) => {
     try {
         const { grade, subject, topic, numQuestions, language, duration } = req.body;
         if (!subject || !topic) {
@@ -711,15 +966,18 @@ Respond ONLY with valid JSON in this exact shape (no markdown fences, no comment
 });
 
 // Publish / Save Worksheet to Class
-router.post('/worksheets/publish', auth, async (req, res) => {
+router.post('/worksheets/publish', async (req, res) => {
     try {
         const { classId, title, subject, description, topic, difficulty, total_marks, duration, worksheet_data, status } = req.body;
         if (!classId || !title || !worksheet_data) {
             return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Class ID, Title, and Worksheet Data are required' } });
         }
 
-        const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [classId, req.user.id]);
+        const tc = await activeTeacherMembership(classId, req.user.id);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized for this class' } });
+        // An archived class stays readable, and existing work can still be
+        // graded, but it takes no new material.
+        if (tc.class_status !== 'active') return res.status(409).json({ success: false, error: { code: 'CLASS_NOT_ACTIVE', message: `This classroom is ${tc.class_status} and no longer accepts new work.` } });
 
         const result = await db.run(
             'INSERT INTO class_worksheets (class_id, teacher_id, title, subject, description, topic, difficulty, worksheet_data, total_marks, duration, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -742,13 +1000,13 @@ router.post('/worksheets/publish', auth, async (req, res) => {
 });
 
 // View student attempts for a worksheet
-router.get('/worksheets/:id/attempts', auth, async (req, res) => {
+router.get('/worksheets/:id/attempts', async (req, res) => {
     try {
         const wsId = req.params.id;
         const ws = await db.get('SELECT * FROM class_worksheets WHERE id = ?', [wsId]);
         if (!ws) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Worksheet not found' } });
 
-        const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [ws.class_id, req.user.id]);
+        const tc = await activeTeacherMembership(ws.class_id, req.user.id);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized' } });
 
         const attempts = await db.all(
@@ -769,7 +1027,7 @@ router.get('/worksheets/:id/attempts', auth, async (req, res) => {
 // ── GET /api/teacher/overview ──────────────────────────────────────
 // Dashboard numbers plus what actually needs the teacher's attention.
 // The stat tiles used to be hard-wired to 0 for homework and worksheets.
-router.get('/overview', auth, async (req, res) => {
+router.get('/overview', async (req, res) => {
     try {
         const tid = req.user.id;
 
@@ -853,7 +1111,7 @@ router.get('/overview', auth, async (req, res) => {
 // Everything this teacher has published, with how many students have
 // actually submitted. Without this the teacher has no route back to a
 // worksheet once it leaves the editor.
-router.get('/worksheets', auth, async (req, res) => {
+router.get('/worksheets', async (req, res) => {
     try {
         const rows = await db.all(
             `SELECT w.id, w.title, w.subject, w.topic, w.total_marks, w.status, w.created_at,
@@ -878,13 +1136,13 @@ router.get('/worksheets', auth, async (req, res) => {
 // Item analysis: which questions the class actually missed, and where the
 // wrong answers clustered. This is the point of collecting per-question
 // data — without it a worksheet is just a score.
-router.get('/worksheets/:id/analysis', auth, async (req, res) => {
+router.get('/worksheets/:id/analysis', async (req, res) => {
     try {
         const wsId = req.params.id;
         const ws = await db.get('SELECT * FROM class_worksheets WHERE id = ?', [wsId]);
         if (!ws) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Worksheet not found' } });
 
-        const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [ws.class_id, req.user.id]);
+        const tc = await activeTeacherMembership(ws.class_id, req.user.id);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized' } });
 
         let questions = [];
@@ -1006,14 +1264,14 @@ router.get('/worksheets/:id/analysis', auth, async (req, res) => {
 // ── POST /api/teacher/worksheets/:id/reteach ───────────────────────
 // Turn the diagnosis into the next lesson: a short worksheet aimed only at
 // the questions the class actually got wrong.
-router.post('/worksheets/:id/reteach', auth, async (req, res) => {
+router.post('/worksheets/:id/reteach', async (req, res) => {
     try {
         const wsId = req.params.id;
         const { questionIds, numQuestions } = req.body || {};
 
         const ws = await db.get('SELECT * FROM class_worksheets WHERE id = ?', [wsId]);
         if (!ws) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Worksheet not found' } });
-        const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [ws.class_id, req.user.id]);
+        const tc = await activeTeacherMembership(ws.class_id, req.user.id);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized' } });
 
         let parsed = {};
