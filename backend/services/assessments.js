@@ -137,6 +137,21 @@ function studentWorksheetRow(row, { includeQuestions = false } = {}) {
     return safe;
 }
 
+// Marks cross the wire as JSON, where Infinity and NaN both serialise to null.
+// Number(null) is 0, so without this a mark that was never a number arrives as
+// a silent zero on a student's record. Zero itself is a real mark and has to
+// survive, so the check is on what the value *is*, not on whether it is truthy.
+function parseMark(value, max) {
+    if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
+        return { ok: false, reason: 'Marks must be a number.' };
+    }
+    const n = Number(value);
+    if (!Number.isFinite(n)) return { ok: false, reason: 'Marks must be a number.' };
+    if (n < 0) return { ok: false, reason: 'Marks cannot be negative.' };
+    if (n > max) return { ok: false, reason: `Marks cannot exceed ${max}.` };
+    return { ok: true, value: n };
+}
+
 // Answers as submitted. Anything not matching a question on this worksheet is
 // dropped rather than graded, so a crafted payload cannot invent questions.
 function normaliseAnswers(rawAnswers, questions) {
@@ -179,6 +194,7 @@ module.exports = {
     isObjective,
     parseWorksheetData,
     validateWorksheet,
+    parseMark,
     studentQuestionView,
     studentWorksheetRow,
     normaliseAnswers,

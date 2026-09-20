@@ -4,7 +4,8 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const { requireRole } = require('../middleware/auth');
 const { joinAttemptsExhausted, recordJoinAttempt } = require('../services/joinLimiter');
-const { validateWorksheet } = require('../services/assessments');
+const { validateWorksheet, parseMark } = require('../services/assessments');
+const { grantOnce } = require('../services/rewards');
 const db = require('../config/db');
 
 // --- Multi-Provider AI Helper for Worksheet Generation ---
@@ -766,28 +767,56 @@ router.get('/homework/:id/submissions', async (req, res) => {
 
 router.post('/homework/grade', async (req, res) => {
     try {
-        const { submissionId, marks, feedback } = req.body;
+        const { submissionId, marks, feedback, revision } = req.body;
         if (!submissionId || marks === undefined) {
             return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Submission ID and marks required' } });
         }
 
-        const sub = await db.get('SELECT hs.*, ch.class_id, ch.title FROM homework_submissions hs JOIN class_homework ch ON ch.id = hs.homework_id WHERE hs.id = ?', [submissionId]);
+        const sub = await db.get('SELECT hs.*, ch.class_id, ch.title, ch.max_marks FROM homework_submissions hs JOIN class_homework ch ON ch.id = hs.homework_id WHERE hs.id = ?', [submissionId]);
         if (!sub) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Submission not found' } });
 
         const tc = await activeTeacherMembership(sub.class_id, req.user.id);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized' } });
 
+        // "0" is a legitimate mark and NaN is not, so the check is on the
+        // parsed number, not on truthiness. Infinity and 1e999 both fail
+        // Number.isFinite; a string of digits is accepted and coerced.
+        const maximum = Number(sub.max_marks) > 0 ? Number(sub.max_marks) : 100;
+        const parsedMark = parseMark(marks, maximum);
+        if (!parsedMark.ok) {
+            return res.status(400).json({
+                success: false,
+                error: { code: 'INVALID_MARKS', message: `${parsedMark.reason} Marks must be between 0 and ${maximum}.` }
+            });
+        }
+        const awarded = parsedMark.value;
+
+        // A teacher who opened version 1, marked it, and submits while the
+        // student has since sent version 2 would otherwise stamp the old grade
+        // onto the new answer without either of them noticing.
+        const currentRevision = Number(sub.revision || 1);
+        if (revision !== undefined && Number(revision) !== currentRevision) {
+            return res.status(409).json({
+                success: false,
+                error: {
+                    code: 'REVISION_CHANGED',
+                    message: `This student has submitted a newer version (v${currentRevision}) since you opened it. Reload before grading.`,
+                    currentRevision
+                }
+            });
+        }
+
         await db.run(
-            "UPDATE homework_submissions SET marks = ?, feedback = ?, status = 'graded', graded_at = CURRENT_TIMESTAMP, graded_by = ? WHERE id = ?",
-            [marks, feedback || '', req.user.id, submissionId]
+            "UPDATE homework_submissions SET marks = ?, feedback = ?, status = 'graded', graded_at = CURRENT_TIMESTAMP, graded_by = ?, graded_revision = ? WHERE id = ?",
+            [awarded, String(feedback || '').slice(0, 2000), req.user.id, currentRevision, submissionId]
         );
 
         await db.run(
             'INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id) VALUES (?, ?, ?, ?, ?, ?)',
-            [sub.student_id, 'homework_graded', `Homework Graded: ${sub.title}`, `You scored ${marks} marks. Feedback: ${feedback || 'Good work!'}`, 'homework', sub.homework_id]
+            [sub.student_id, 'homework_graded', `Homework Graded: ${sub.title}`, `You scored ${awarded} out of ${maximum}. Feedback: ${feedback || 'Good work!'}`, 'homework', sub.homework_id]
         );
 
-        res.json({ success: true, message: 'Submission graded successfully' });
+        res.json({ success: true, marks: awarded, revision: currentRevision, message: 'Submission graded successfully' });
     } catch (err) {
         res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
     }
@@ -1047,6 +1076,173 @@ router.get('/worksheets/:id/attempts', async (req, res) => {
     }
 });
 
+// ── Review queue ───────────────────────────────────────────────────
+// Where a machine grade stops being the last word. Two things land here: an
+// attempt whose written answers the model could not mark confidently (or that
+// fell back to the keyword heuristic), and an attempt whose score a student has
+// asked a person to look at. Nothing here is scored until a teacher decides.
+router.get('/reviews/queue', async (req, res) => {
+    try {
+        const classes = await db.all(
+            `SELECT class_id FROM teacher_classes
+             WHERE teacher_id = ? AND (status IS NULL OR status = 'active')`,
+            [req.user.id]
+        );
+        const classIds = classes.map(c => c.class_id);
+        if (!classIds.length) return res.json({ success: true, attempts: [], requests: [] });
+        const holes = classIds.map(() => '?').join(',');
+
+        const attempts = await db.all(
+            `SELECT wa.id, wa.worksheet_id, wa.student_id, wa.score, wa.total_marks, wa.breakdown,
+                    wa.graded_kind, wa.submitted_at, wa.attempt_no,
+                    w.title, w.worksheet_data, w.class_id, c.name AS class_name, c.section,
+                    u.username AS student_name
+             FROM worksheet_attempts wa
+             JOIN class_worksheets w ON w.id = wa.worksheet_id
+             JOIN classrooms c ON c.id = w.class_id
+             JOIN users u ON u.id = wa.student_id
+             WHERE w.class_id IN (${holes}) AND wa.grading_status = 'provisional'
+             ORDER BY wa.submitted_at ASC LIMIT 100`,
+            classIds
+        );
+
+        const requests = await db.all(
+            `SELECT gr.*, u.username AS student_name, c.name AS class_name, c.section
+             FROM grade_reviews gr
+             JOIN users u ON u.id = gr.student_id
+             LEFT JOIN classrooms c ON c.id = gr.class_id
+             WHERE gr.class_id IN (${holes}) AND gr.status = 'open'
+             ORDER BY gr.created_at ASC LIMIT 100`,
+            classIds
+        );
+
+        res.json({
+            success: true,
+            attempts: attempts.map(a => {
+                const { worksheet_data, breakdown, ...rest } = a;
+                const { questions } = validateWorksheet(worksheet_data);
+                let rows = [];
+                try { rows = JSON.parse(breakdown || '[]'); } catch { rows = []; }
+                return {
+                    ...rest,
+                    className: `${a.class_name}-${a.section}`,
+                    // Only the answers actually needing a person are sent.
+                    items: rows.filter(r => r.needsReview).map(r => {
+                        const q = questions.find(x => String(x.id) === String(r.id));
+                        return {
+                            id: r.id,
+                            question: q ? q.question : `Question ${r.id}`,
+                            expected: q ? q.correct_answer : null,
+                            answer: r.answer,
+                            marks: r.marks,
+                            awarded: r.awarded,
+                            gradedBy: r.gradedBy
+                        };
+                    })
+                };
+            }),
+            requests
+        });
+    } catch (err) {
+        console.error('[REVIEW QUEUE ERROR]', err);
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Could not load the review queue' } });
+    }
+});
+
+// Finalising an attempt: the teacher's marks replace the provisional ones, the
+// score becomes final, and only then is the reward paid.
+router.post('/reviews/:attemptId', async (req, res) => {
+    try {
+        const attemptId = Number(req.params.attemptId);
+        if (!Number.isInteger(attemptId) || attemptId <= 0) {
+            return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'A valid attempt is required' } });
+        }
+        const grades = Array.isArray(req.body && req.body.grades) ? req.body.grades : [];
+
+        const attempt = await db.get(
+            `SELECT wa.*, w.class_id, w.title FROM worksheet_attempts wa
+             JOIN class_worksheets w ON w.id = wa.worksheet_id WHERE wa.id = ?`,
+            [attemptId]
+        );
+        if (!attempt) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Attempt not found' } });
+
+        const tc = await activeTeacherMembership(attempt.class_id, req.user.id);
+        if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized' } });
+
+        if ((attempt.grading_status || 'graded') !== 'provisional') {
+            return res.status(409).json({ success: false, error: { code: 'ALREADY_FINAL', message: 'This attempt has already been finalised.' } });
+        }
+
+        let breakdown = [];
+        try { breakdown = JSON.parse(attempt.breakdown || '[]'); } catch { breakdown = []; }
+
+        for (const g of grades) {
+            const row = breakdown.find(b => String(b.id) === String(g && g.id));
+            if (!row) {
+                return res.status(400).json({ success: false, error: { code: 'UNKNOWN_QUESTION', message: `No question "${g && g.id}" on this attempt.` } });
+            }
+            const parsed = parseMark(g.awarded, Number(row.marks));
+            if (!parsed.ok) {
+                return res.status(400).json({ success: false, error: { code: 'INVALID_MARKS', message: `Marks for "${g.id}": ${parsed.reason}` } });
+            }
+            const awarded = parsed.value;
+            row.awarded = awarded;
+            row.feedback = String(g.feedback || row.feedback || '').slice(0, 2000);
+            row.correct = awarded >= Number(row.marks) * 0.5;
+            row.needsReview = false;
+            // Who actually decided this mark, kept with the mark itself.
+            row.gradedBy = 'teacher';
+            row.reviewedBy = req.user.id;
+        }
+
+        const stillOpen = breakdown.some(b => b.needsReview);
+        const previousScore = Number(attempt.score) || 0;
+        const newScore = Math.min(
+            breakdown.reduce((sum, b) => sum + (Number(b.awarded) || 0), 0),
+            Number(attempt.total_marks) || 0
+        );
+
+        const xpEarned = await db.transaction(async () => {
+            await db.run(
+                `UPDATE worksheet_attempts
+                    SET breakdown = ?, score = ?, grading_status = ?, status = ?, graded_kind = 'teacher'
+                  WHERE id = ?`,
+                [JSON.stringify(breakdown), newScore,
+                 stillOpen ? 'provisional' : 'graded',
+                 stillOpen ? 'awaiting_review' : 'completed', attemptId]
+            );
+            await db.run(
+                `INSERT INTO grade_reviews (subject_type, subject_id, class_id, student_id, reason, status, previous_score, new_score, reviewer_id, resolution_note, resolved_at)
+                 VALUES ('worksheet', ?, ?, ?, 'provisional grade finalised', 'resolved', ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+                [attemptId, attempt.class_id, attempt.student_id, previousScore, newScore, req.user.id,
+                 String((req.body && req.body.note) || '').slice(0, 500)]
+            );
+            if (stillOpen) return 0;
+            // Deferred until a person confirmed the score.
+            const grant = await grantOnce(
+                attempt.student_id, `worksheet:${attempt.worksheet_id}`,
+                Math.round(newScore * 2.5) + 20, `Worksheet: ${attempt.title}`
+            );
+            return grant.xp;
+        });
+
+        await db.run(
+            'INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id) VALUES (?, ?, ?, ?, ?, ?)',
+            [attempt.student_id, 'worksheet_reviewed', `Reviewed: ${attempt.title}`,
+             stillOpen
+                ? 'Part of your worksheet has been reviewed by your teacher.'
+                : `Your teacher confirmed your score: ${newScore}/${attempt.total_marks}.`,
+             'worksheet', attempt.worksheet_id]
+        );
+        await logAudit(req.user.id, 'ATTEMPT_REVIEWED', 'worksheet_attempts', attemptId, { previousScore, newScore });
+
+        res.json({ success: true, score: newScore, previousScore, finalised: !stillOpen, xpAwarded: xpEarned });
+    } catch (err) {
+        console.error('[REVIEW ATTEMPT ERROR]', err);
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Could not save the review' } });
+    }
+});
+
 // ── GET /api/teacher/overview ──────────────────────────────────────
 // Dashboard numbers plus what actually needs the teacher's attention.
 // The stat tiles used to be hard-wired to 0 for homework and worksheets.
@@ -1070,7 +1266,10 @@ router.get('/overview', async (req, res) => {
             const placeholders = classIds.map(() => '?').join(',');
 
             const hw = await db.get(
-                `SELECT COUNT(*) AS n FROM class_homework WHERE class_id IN (${placeholders}) AND status = 'published'`,
+                // Homework is created with status 'assigned'; this counted
+                // 'published', which no homework row has ever had, so the
+                // dashboard tile read 0 no matter how much work was set.
+                `SELECT COUNT(*) AS n FROM class_homework WHERE class_id IN (${placeholders}) AND status <> 'draft'`,
                 classIds
             );
             activeHomework = hw ? hw.n : 0;
@@ -1249,10 +1448,22 @@ router.get('/worksheets/:id/analysis', async (req, res) => {
             };
         });
 
-        const scored = latest.filter(a => a.total_marks > 0);
-        const avgPct = scored.length
-            ? Math.round(scored.reduce((s, a) => s + (a.score / a.total_marks) * 100, 0) / scored.length)
+        // A provisional score is a machine's guess awaiting a teacher, so it is
+        // counted separately rather than averaged in as though it were a mark
+        // someone stands behind.
+        const isProvisional = (a) => (a.grading_status || 'graded') === 'provisional';
+        const finalised = latest.filter(a => a.total_marks > 0 && !isProvisional(a));
+        const avgPct = finalised.length
+            ? Math.round(finalised.reduce((s, a) => s + (a.score / a.total_marks) * 100, 0) / finalised.length)
             : null;
+
+        // The denominator: how many students could have submitted. Without it,
+        // "average 82%" from three of thirty reads like the class average.
+        const roster = await db.get(
+            "SELECT COUNT(*) AS n FROM class_enrollments WHERE class_id = ? AND status = 'active'",
+            [ws.class_id]
+        );
+        const classSize = Number(roster && roster.n) || 0;
 
         // Weakest first — that ordering IS the teaching signal.
         const ranked = stats
@@ -1263,8 +1474,17 @@ router.get('/worksheets/:id/analysis', async (req, res) => {
             success: true,
             worksheet: { id: ws.id, title: ws.title, class_id: ws.class_id, total_marks: ws.total_marks },
             summary: {
+                // Each student's most recent attempt, counted once, and said
+                // out loud so this and the student's own screen agree.
+                showing: 'latest attempt per student',
                 submissions: latest.length,
+                classSize,
+                notSubmitted: Math.max(classSize - latest.length, 0),
+                finalisedCount: finalised.length,
+                provisionalCount: latest.filter(isProvisional).length,
+                // Averaged over finalised attempts only.
                 avgPct,
+                avgPctBasis: finalised.length,
                 weakest: ranked.slice(0, 3).map(q => ({ id: q.id, question: q.question, pctCorrect: q.pctCorrect })),
                 needsReview: stats.reduce((n, q) => n + q.needsReview, 0)
             },
@@ -1275,6 +1495,11 @@ router.get('/worksheets/:id/analysis', async (req, res) => {
                 score: a.score,
                 total: a.total_marks,
                 pct: a.total_marks ? Math.round((a.score / a.total_marks) * 100) : null,
+                // An unmarked answer is not a zero, and the two must not look
+                // alike in a ranking.
+                gradingStatus: a.grading_status || 'graded',
+                provisional: isProvisional(a),
+                attemptNo: a.attempt_no || null,
                 submitted_at: a.submitted_at
             })).sort((a, b) => (a.pct ?? 0) - (b.pct ?? 0))
         });
