@@ -13,24 +13,37 @@ test('a failure partway through a transaction leaves no partial grade or reward'
     const user = await db.run("INSERT INTO users (username, password, role) VALUES ('tx-user', 'x', 'student')");
     const userId = user.lastID;
 
+    // Real parent rows: MySQL enforces the foreign key on worksheet_attempts
+    // and SQLite (with foreign_keys off) does not, so a made-up worksheet id
+    // would fail on one engine before reaching the failure being tested.
+    const cls = await db.run(
+        "INSERT INTO classrooms (name, section, class_code, created_by, status) VALUES ('Tx', 'A', 'TXCODE', ?, 'active')",
+        [userId]
+    );
+    const ws = await db.run(
+        "INSERT INTO class_worksheets (class_id, teacher_id, title, subject, worksheet_data, total_marks, status) VALUES (?, ?, 'Tx', 'General', '{\"questions\":[]}', 10, 'published')",
+        [cls.lastID, userId]
+    );
+    const worksheetId = ws.lastID;
+
     const before = await db.get('SELECT xp FROM users WHERE id = ?', [userId]);
 
     await assert.rejects(db.transaction(async () => {
         await db.run(
             `INSERT INTO worksheet_attempts (worksheet_id, student_id, answers, score, total_marks, status, grading_status)
              VALUES (?, ?, ?, ?, ?, 'completed', 'graded')`,
-            [4242, userId, '[]', 9, 10]
+            [worksheetId, userId, '[]', 9, 10]
         );
-        await grantOnce(userId, 'worksheet:4242', 45, 'should not survive');
+        await grantOnce(userId, `worksheet:${worksheetId}`, 45, 'should not survive');
         // Whatever goes wrong after the score is written — a constraint, a
         // dropped connection, a bug — must take the whole thing with it.
         throw new Error('write failed halfway');
     }), /write failed halfway/);
 
-    const attempt = await db.get('SELECT * FROM worksheet_attempts WHERE worksheet_id = 4242 AND student_id = ?', [userId]);
+    const attempt = await db.get('SELECT * FROM worksheet_attempts WHERE worksheet_id = ? AND student_id = ?', [worksheetId, userId]);
     assert.equal(attempt, undefined, 'the attempt must not survive a failed write');
 
-    const grant = await db.get('SELECT * FROM reward_grants WHERE user_id = ? AND reward_key = ?', [userId, 'worksheet:4242']);
+    const grant = await db.get('SELECT * FROM reward_grants WHERE user_id = ? AND reward_key = ?', [userId, `worksheet:${worksheetId}`]);
     assert.equal(grant, undefined, 'the reward row must not survive');
 
     const after = await db.get('SELECT xp FROM users WHERE id = ?', [userId]);
