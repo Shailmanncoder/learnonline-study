@@ -79,8 +79,3 @@ The learning tables are created additively on first use for the configured SQLit
 
 Validation: `npm test` includes isolated HTTP journeys for quiz ownership, duplicate submissions, mistake scheduling, goals and export isolation, answer-key hiding, enrollment, homework regrading, teacher reviews, and rollback. Browser checks covered the student workspace, saved goals, check-ins, retest feedback and direct reload. Live model generation, MySQL deployment behavior, and production capacity require deployment-specific verification. The new features do not change AI provider routing or configure model credentials.
 
-## Online Auto Study prototype
-
-Open **Online Auto Study** in the student sidebar (route `/online-auto-study`). The local workspace includes class 1–12 selection, sample books and chapters, a scripted tutor, notes, flashcards, quizzes, and an NCERT ingestion explanation. It loads on first use and keeps its selected chapter while switching StudyHub sections. The full workspace is also available at `/auto-study/index.html`.
-
-This integrated preview uses authored sample content; it is not connected to the existing live AI or NCERT retrieval services and does not save progress. Its files live in `frontend/auto-study/`, so it does not rely on the private Sites deployment. Access to this static demo follows the StudyHub host's access settings; the “demo” label does not imply private hosting.

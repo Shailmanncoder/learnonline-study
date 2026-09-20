@@ -42,65 +42,6 @@ router.get('/health', async (req, res) => {
     }
 });
 
-// Public catalog endpoints for the online study app
-router.get('/catalog', async (req, res, next) => {
-    try {
-        const db = require('../config/db');
-        const classes = [...new Set((await db.all(
-            'SELECT DISTINCT class_level FROM source_documents WHERE class_level IS NOT NULL ORDER BY CAST(class_level AS INTEGER)'
-        )).map(r => r.class_level))];
-        const catalog = {};
-        for (const cls of classes) {
-            const books = await db.all(
-                'SELECT DISTINCT subject FROM source_documents WHERE class_level = ? ORDER BY subject',
-                [cls]
-            );
-            catalog[cls] = books.map(b => b.subject).filter(Boolean);
-        }
-        res.json({ classes, catalog });
-    } catch (e) { next(e); }
-});
-
-router.get('/study/:classLevel/:subject', async (req, res, next) => {
-    try {
-        const db = require('../config/db');
-        const { classLevel, subject } = req.params;
-        const docs = await db.all(
-            `SELECT DISTINCT chapter, id FROM source_documents
-             WHERE class_level = ? AND subject = ? AND chapter IS NOT NULL
-             ORDER BY chapter`,
-            [classLevel, subject]
-        );
-        const chapters = docs.map(d => ({ id: d.id, title: d.chapter }));
-        res.json({ chapters });
-    } catch (e) { next(e); }
-});
-
-router.get('/chapter/:docId', async (req, res, next) => {
-    try {
-        const db = require('../config/db');
-        const { docId } = req.params;
-        const doc = await db.get(
-            'SELECT * FROM source_documents WHERE id = ?',
-            [docId]
-        );
-        if (!doc) return res.status(404).json({ msg: 'Chapter not found' });
-        const questions = await db.all(
-            'SELECT id, question, options, correct_answer FROM questions WHERE source_document_id = ? LIMIT 5',
-            [docId]
-        );
-        res.json({
-            document: { title: doc.chapter, class: doc.class_level, subject: doc.subject },
-            questions: questions.map(q => ({
-                id: q.id,
-                question: q.question,
-                options: q.options ? JSON.parse(q.options) : [],
-                correctAnswer: q.correct_answer
-            }))
-        });
-    } catch (e) { next(e); }
-});
-
 router.use(auth);
 router.get('/status', (req, res) => {
     const fs = require('node:fs');
