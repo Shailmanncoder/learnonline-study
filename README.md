@@ -66,3 +66,10 @@ labelled as AI-checked.
 The payment controller, Razorpay dependency, checkout script, pricing dialogs, upgrades, subscription API methods, and all paid-access gates have been removed. Former `/api/payment/*` routes return 404. Fresh databases no longer create billing tables or plan columns. Existing historical billing records are deliberately left untouched; no destructive database migration is run.
 
 The local JWT secret was replaced during remediation. The exposed provider key was removed from configuration, but deleting a key from files does **not** revoke it. Revoke the old key in its provider account and enter a new key in `backend/.env`. Never distribute `.env`, configuration backups, or user databases. The rebuilt distribution ZIP excludes those files and includes the current application code.
+
+
+## Online Auto Study prototype
+
+Open **Online Auto Study** in the student sidebar (route `/online-auto-study`). The local workspace includes class 1–12 selection, sample books and chapters, a scripted tutor, notes, flashcards, quizzes, and an NCERT ingestion explanation. It loads on first use and keeps its selected chapter while switching StudyHub sections. The full workspace is also available at `/auto-study/index.html`.
+
+This integrated preview uses authored sample content; it is not connected to the existing live AI or NCERT retrieval services and does not save progress. Its files live in `frontend/auto-study/`, so it does not rely on the private Sites deployment. Access to this static demo follows the StudyHub host's access settings; the “demo” label does not imply private hosting.
