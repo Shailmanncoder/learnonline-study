@@ -193,9 +193,16 @@ router.get('/leaderboard', async (req, res) => {
 // @desc    Delete user account and all data
 router.delete('/account', auth, async (req, res) => {
     try {
-        await db.run('DELETE FROM notes WHERE user_id = ?', [req.user.id]);
-        await db.run('DELETE FROM activity WHERE user_id = ?', [req.user.id]);
-        await db.run('DELETE FROM users WHERE id = ?', [req.user.id]);
+        const learning = require('../services/learning');
+        await learning.ready();
+        await db.transaction(async () => {
+            for (const table of ['learning_quizzes', 'learning_mistakes', 'learning_goals', 'learning_checkins', 'learning_rewards']) {
+                await db.run(`DELETE FROM ${table} WHERE user_id = ?`, [req.user.id]);
+            }
+            await db.run('DELETE FROM notes WHERE user_id = ?', [req.user.id]);
+            await db.run('DELETE FROM activity WHERE user_id = ?', [req.user.id]);
+            await db.run('DELETE FROM users WHERE id = ?', [req.user.id]);
+        });
         res.json({ msg: 'Account deleted successfully' });
     } catch (err) {
         console.error(err.message);
