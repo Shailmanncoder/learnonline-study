@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const { rateLimit } = require('../middleware/rateLimit');
 const db = require('../config/db');
 const { generateJSON } = require('../services/ai');
 const {
@@ -8,6 +9,7 @@ const {
     studentWorksheetRow, studentQuestionView
 } = require('../services/assessments');
 const { grantOnce, alreadyGranted } = require('../services/rewards');
+const { joinAttemptsExhausted, recordJoinAttempt } = require('../services/joinLimiter');
 
 // ── Grading ────────────────────────────────────────────────────────
 // Objective questions are matched exactly. Subjective answers used to
@@ -253,28 +255,42 @@ async function requireEnrolledOrTeacher(req, res, next) {
         });
     } catch (err) {
         console.error('[CLASSROOM AUTH ERROR]', err.message);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 }
 
 // ============================================================================
 // 1. STUDENT JOINS CLASS WITH CLASS CODE (Instant — NO approval needed)
 // ============================================================================
-router.post('/join', auth, async (req, res) => {
+router.post('/join', auth, rateLimit({
+    name: 'class-join', windowMs: 60_000, max: 20,
+    message: 'Too many join attempts. Please wait a moment.'
+}), async (req, res) => {
     try {
         const { classCode } = req.body;
         if (!classCode) {
             return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Class code is required' } });
         }
 
+        // Only wrong codes count towards the limit, so a class all typing the
+        // same correct code is never throttled.
+        if (await joinAttemptsExhausted(req.user.id)) {
+            return res.status(429).json({
+                success: false,
+                error: { code: 'TOO_MANY_ATTEMPTS', message: 'Too many incorrect class codes. Please wait a few minutes and try again.' }
+            });
+        }
+
         const code = String(classCode).trim().toUpperCase();
-        const classroom = await db.get('SELECT * FROM classrooms WHERE UPPER(class_code) = ? AND status != "deleted"', [code]);
+        const classroom = await db.get("SELECT * FROM classrooms WHERE UPPER(class_code) = ? AND status != 'deleted'", [code]);
         if (!classroom) {
+            await recordJoinAttempt(req.user.id, false);
             return res.status(404).json({
                 success: false,
                 error: { code: 'INVALID_CLASS_CODE', message: 'The class code is invalid or the class does not exist.' }
             });
         }
+        await recordJoinAttempt(req.user.id, true);
 
         if (classroom.status === 'archived') {
             return res.status(400).json({
@@ -342,7 +358,7 @@ router.post('/join', auth, async (req, res) => {
         });
     } catch (err) {
         console.error('[STUDENT JOIN ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -376,7 +392,7 @@ router.get('/my-classes', auth, async (req, res) => {
         res.json({ success: true, classes: rows });
     } catch (err) {
         console.error('[GET MY CLASSES ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -399,7 +415,7 @@ router.get('/:id', auth, requireEnrolledOrTeacher, async (req, res) => {
 
         res.json({ success: true, classroom, teachers, classmates });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -454,7 +470,7 @@ router.get('/:id/feed', auth, requireEnrolledOrTeacher, async (req, res) => {
         });
     } catch (err) {
         console.error('[GET CLASS FEED ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -477,14 +493,17 @@ router.get('/:id/homework', auth, requireEnrolledOrTeacher, async (req, res) => 
         );
         res.json({ success: true, homework: rows });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
 // ============================================================================
 // 6. SUBMIT HOMEWORK
 // ============================================================================
-router.post('/homework/:id/submit', auth, async (req, res) => {
+router.post('/homework/:id/submit', auth, rateLimit({
+    name: 'hw-submit', windowMs: 60_000, max: 20,
+    message: 'Too many submissions in a row. Wait a moment — your work is safe.'
+}), async (req, res) => {
     try {
         const homeworkId = req.params.id;
         const { content, attachments } = req.body;
@@ -576,7 +595,7 @@ router.post('/homework/:id/submit', auth, async (req, res) => {
         });
     } catch (err) {
         console.error('[SUBMIT HOMEWORK ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -604,7 +623,7 @@ router.get('/:id/worksheets', auth, requireEnrolledOrTeacher, async (req, res) =
         );
         res.json({ success: true, worksheets: rows.map(row => (req.isTeacher ? row : studentWorksheetRow(row))) });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -669,7 +688,10 @@ router.get('/worksheets/:id/start', auth, async (req, res) => {
 // inserted a fresh attempt. It now establishes, in order, that the caller may
 // submit, that the worksheet is open to them, and that this is not a retry of
 // something already recorded.
-router.post('/worksheets/:id/submit', auth, async (req, res) => {
+router.post('/worksheets/:id/submit', auth, rateLimit({
+    name: 'ws-submit', windowMs: 60_000, max: 20,
+    message: 'Too many submissions in a row. Wait a moment — your answers are safe.'
+}), async (req, res) => {
     try {
         const wsId = req.params.id;
         const { answers, submissionKey } = req.body;
@@ -857,7 +879,7 @@ router.get('/:id/notes', auth, requireEnrolledOrTeacher, async (req, res) => {
         );
         res.json({ success: true, notes: rows });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -928,7 +950,7 @@ router.get('/worksheets/:id/my-result', auth, async (req, res) => {
         });
     } catch (err) {
         console.error('[MY RESULT ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -996,7 +1018,7 @@ router.get('/notifications/list', auth, async (req, res) => {
         const unreadCount = rows.filter(n => !n.is_read).length;
         res.json({ success: true, notifications: rows, unreadCount });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -1005,7 +1027,7 @@ router.post('/notifications/read', auth, async (req, res) => {
         await db.run('UPDATE notifications SET is_read = 1 WHERE user_id = ?', [req.user.id]);
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 

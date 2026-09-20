@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const { rateLimit } = require('../middleware/rateLimit');
 const db = require('../config/db');
 
 // ── AI Provider Setup ──────────────────────────────────────────────
@@ -336,7 +337,10 @@ function mediumOf(facts) {
     return get('medium') || get('subject') || 'English';
 }
 
-router.post('/generate', auth, async (req, res) => {
+router.post('/generate', auth, rateLimit({
+    name: 'ai-generate', windowMs: 60_000, max: 30,
+    message: 'You are sending requests faster than we can answer them. Give it a few seconds.'
+}), async (req, res) => {
     try {
         const {
             prompt,

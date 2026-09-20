@@ -4,13 +4,17 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { getJwtSecret } = require('../config/security');
 const db = require('../config/db');
+const { rateLimit, refund } = require('../middleware/rateLimit');
 
 // @route   POST api/auth/register
 // @desc    Register user with role support
-router.post('/register', async (req, res) => {
+// Sign-up is cheap for a person and cheap to automate, so it is bounded.
+router.post('/register', rateLimit({
+    name: 'register', windowMs: 60 * 60_000, max: 20,
+    message: 'Too many accounts created from here recently. Please wait a little and try again.'
+}), async (req, res) => {
     try {
         const { username, password, role = 'student' } = req.body;
-        console.log('[AUTH] register request', { username, role });
 
         if (typeof username !== 'string' || !username.trim() || username.trim().length > 50 ||
             typeof password !== 'string' || !password || Buffer.byteLength(password, 'utf8') > 72) {
@@ -45,7 +49,7 @@ router.post('/register', async (req, res) => {
             'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
             [username.trim(), hashedPassword, cleanRole]
         );
-        console.log('[AUTH] register inserted', { id: result.lastID, username, role: cleanRole });
+        console.log('[AUTH] account created', { id: result.lastID, role: cleanRole });
 
         const payload = {
             user: { id: result.lastID, role: cleanRole }
@@ -66,10 +70,14 @@ router.post('/register', async (req, res) => {
 
 // @route   POST api/auth/login
 // @desc    Authenticate user & verify role
-router.post('/login', async (req, res) => {
+// Password guessing is the attack this stops. Only failures count — a
+// successful sign-in refunds its slot below — so ordinary use is never limited.
+router.post('/login', rateLimit({
+    name: 'login', windowMs: 15 * 60_000, max: 12,
+    message: 'Too many sign-in attempts. Please wait a few minutes and try again.'
+}), async (req, res) => {
     try {
         const { username, password, requiredRole } = req.body;
-        console.log('[AUTH] login request', { username, requiredRole });
 
         if (typeof username !== 'string' || !username.trim() || username.trim().length > 50 ||
             typeof password !== 'string' || !password || Buffer.byteLength(password, 'utf8') > 72) {
@@ -103,6 +111,7 @@ router.post('/login', async (req, res) => {
             user: { id: user.id, role: userRole }
         };
 
+        refund('login', req);
         jwt.sign(payload, getJwtSecret(), { expiresIn: '5d', algorithm: 'HS256' }, (err, token) => {
             if (err) throw err;
             res.json({

@@ -236,7 +236,7 @@ router.post('/classes', async (req, res) => {
         });
     } catch (err) {
         console.error('[CREATE CLASS ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -409,7 +409,7 @@ router.get('/classes', async (req, res) => {
         res.json({ success: true, classes: rows });
     } catch (err) {
         console.error('[GET TEACHER CLASSES ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -478,7 +478,7 @@ router.get('/classes/:id', requireTeacherOfClass, async (req, res) => {
         });
     } catch (err) {
         console.error('[GET CLASS DETAILS ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -510,7 +510,7 @@ router.get('/classes/:id/students', requireTeacherOfClass, async (req, res) => {
         res.json({ success: true, students, blocked });
     } catch (err) {
         console.error('[GET STUDENTS ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -543,7 +543,7 @@ router.post('/classes/:id/students/remove', requireTeacherOfClass, requireClassP
         res.json({ success: true, message: 'Student removed successfully' });
     } catch (err) {
         console.error('[REMOVE STUDENT ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -646,7 +646,7 @@ router.post('/classes/:id/regenerate-code', requireTeacherOfClass, requireClassP
         res.json({ success: true, newCode });
     } catch (err) {
         console.error('[REGENERATE CODE ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -705,7 +705,7 @@ router.post('/announcements', async (req, res) => {
         res.json({ success: true, announcement });
     } catch (err) {
         console.error('[ANNOUNCEMENT ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -738,7 +738,7 @@ router.post('/homework', async (req, res) => {
         res.json({ success: true, homework });
     } catch (err) {
         console.error('[HOMEWORK ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -761,7 +761,7 @@ router.get('/homework/:id/submissions', async (req, res) => {
         );
         res.json({ success: true, homework: hw, submissions });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -818,7 +818,7 @@ router.post('/homework/grade', async (req, res) => {
 
         res.json({ success: true, marks: awarded, revision: currentRevision, message: 'Submission graded successfully' });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -851,7 +851,7 @@ router.post('/notes', async (req, res) => {
         const note = await db.get('SELECT n.*, u.username as teacher_name FROM class_notes n JOIN users u ON u.id = n.teacher_id WHERE n.id = ?', [noteId]);
         res.json({ success: true, note });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -1047,7 +1047,7 @@ router.post('/worksheets/publish', async (req, res) => {
         res.json({ success: true, worksheet: published });
     } catch (err) {
         console.error('[PUBLISH WORKSHEET ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -1072,7 +1072,7 @@ router.get('/worksheets/:id/attempts', async (req, res) => {
 
         res.json({ success: true, worksheet: ws, attempts });
     } catch (err) {
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -1325,7 +1325,7 @@ router.get('/overview', async (req, res) => {
         });
     } catch (err) {
         console.error('[TEACHER OVERVIEW ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -1350,7 +1350,7 @@ router.get('/worksheets', async (req, res) => {
         res.json({ success: true, worksheets: rows });
     } catch (err) {
         console.error('[LIST WORKSHEETS ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -1505,7 +1505,7 @@ router.get('/worksheets/:id/analysis', async (req, res) => {
         });
     } catch (err) {
         console.error('[ANALYSIS ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 
@@ -1562,7 +1562,7 @@ Respond ONLY with JSON:
         res.json({ success: true, worksheet: json, basedOn: wanted.map(q => q.id) });
     } catch (err) {
         console.error('[RETEACH ERROR]', err);
-        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Something went wrong on our side. Please try again.' } });
     }
 });
 

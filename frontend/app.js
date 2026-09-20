@@ -250,12 +250,47 @@ const SESSION_KEYS = [
     'authToken', 'token', 'studyUser',
     'activePortalMode', 'activeTeacherTab', 'activeDevTab',
     'selectedDevSkill', 'teacherSubject',
-    'studyUserNotes', 'currentPlanData', 'unlockedTools'
+    'studyUserNotes', 'currentPlanData', 'unlockedTools',
+    // These held one account's data and outlived their session, so on a shared
+    // school computer the next person saw the last person's activity, chat and
+    // favourites.
+    'recent_activity', 'favTools', 'devUserSkills', 'activeChatThreadId'
 ];
+
+// Unfinished worksheet answers, kept per account and per worksheet so a draft
+// can never surface in someone else's session.
+const WORKSHEET_DRAFT_PREFIX = 'ws-draft:';
+function worksheetDraftKey(worksheetId) {
+    const who = (currentUserData && currentUserData.id) || 'anon';
+    return `${WORKSHEET_DRAFT_PREFIX}${who}:${worksheetId}`;
+}
+function saveWorksheetDraft(worksheetId, answers) {
+    try { localStorage.setItem(worksheetDraftKey(worksheetId), JSON.stringify({ savedAt: Date.now(), answers })); }
+    catch (e) { /* storage full or blocked; the answers are still on screen */ }
+}
+function readWorksheetDraft(worksheetId) {
+    try {
+        const raw = localStorage.getItem(worksheetDraftKey(worksheetId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed && Array.isArray(parsed.answers) ? parsed : null;
+    } catch (e) { return null; }
+}
+function clearWorksheetDraft(worksheetId) {
+    try { localStorage.removeItem(worksheetDraftKey(worksheetId)); } catch (e) {}
+}
+function clearAllWorksheetDrafts() {
+    try {
+        Object.keys(localStorage)
+            .filter(k => k.startsWith(WORKSHEET_DRAFT_PREFIX))
+            .forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
+}
 
 function performFullLogout() {
     try {
         SESSION_KEYS.forEach((k) => localStorage.removeItem(k));
+        clearAllWorksheetDrafts();
         sessionStorage.clear();
     } catch (e) { /* private mode */ }
 
@@ -6218,6 +6253,37 @@ function openWorksheetPlayerModal(worksheet, worksheetData, options = {}) {
         </div>
     `).join('');
 
+    // Read whatever is filled in right now, so a draft and a submission are
+    // always the same shape.
+    const readAnswers = () => questions.map(q => {
+        if (q.options && q.options.length) {
+            const checked = container.querySelector(`input[name="ws_q_${q.id}"]:checked`);
+            return { id: q.id, answer: checked ? checked.value : '' };
+        }
+        const textarea = container.querySelector(`textarea[name="ws_q_${q.id}"]`);
+        return { id: q.id, answer: textarea ? textarea.value : '' };
+    });
+
+    // Put back anything left from an interrupted attempt at this worksheet by
+    // this account. Drafts are keyed by account and worksheet, so one can never
+    // surface in someone else's session.
+    const draft = readWorksheetDraft(worksheet.id);
+    if (draft && draft.answers.some(a => a.answer)) {
+        draft.answers.forEach(({ id, answer }) => {
+            if (!answer) return;
+            let radio = null;
+            try { radio = container.querySelector(`input[name="ws_q_${id}"][value="${CSS.escape(String(answer))}"]`); } catch (e) { radio = null; }
+            if (radio) { radio.checked = true; return; }
+            const textarea = container.querySelector(`textarea[name="ws_q_${id}"]`);
+            if (textarea) textarea.value = answer;
+        });
+        showToast('Restored the answers you had already filled in.', 'info');
+    }
+    const saveDraft = () => saveWorksheetDraft(worksheet.id, readAnswers());
+    container.addEventListener('input', saveDraft);
+    container.addEventListener('change', saveDraft);
+
+
     modal.style.display = 'flex';
 
     // Start Timer
@@ -6257,6 +6323,7 @@ function openWorksheetPlayerModal(worksheet, worksheetData, options = {}) {
             const result = await api.submitStudentWorksheet(authToken, worksheet.id, answers, currentWorksheetSubmissionKey);
             showToast(result.message || `Worksheet submitted! Score: ${result.score}/${result.totalPossible}`, 'success');
             // Show the marked paper rather than closing on a bare score.
+            clearWorksheetDraft(worksheet.id);
             renderWorksheetResult({
                 title: worksheet.title,
                 score: result.score,
