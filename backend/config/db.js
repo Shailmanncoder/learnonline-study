@@ -387,6 +387,87 @@ async function initMysql() {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB`);
 
+    // ── Classroom integrity tables (see initSqlite for what each one is for) ──
+    await pool.query(`CREATE TABLE IF NOT EXISTS study_quizzes (
+        id VARCHAR(36) PRIMARY KEY,
+        user_id INT NOT NULL,
+        topic VARCHAR(255),
+        questions MEDIUMTEXT NOT NULL,
+        total INT NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS reward_grants (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        reward_key VARCHAR(190) NOT NULL,
+        xp INT NOT NULL DEFAULT 0,
+        reason VARCHAR(255),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_user_reward (user_id, reward_key),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS homework_submission_revisions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        submission_id INT NOT NULL,
+        homework_id INT NOT NULL,
+        student_id INT NOT NULL,
+        revision INT NOT NULL,
+        content MEDIUMTEXT,
+        attachments TEXT,
+        status VARCHAR(20) DEFAULT 'submitted',
+        marks DECIMAL(7,2) DEFAULT NULL,
+        feedback TEXT,
+        graded_by INT DEFAULT NULL,
+        graded_at DATETIME DEFAULT NULL,
+        submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_submission_revision (submission_id, revision),
+        FOREIGN KEY (submission_id) REFERENCES homework_submissions(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS grade_reviews (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        subject_type VARCHAR(20) NOT NULL,
+        subject_id INT NOT NULL,
+        class_id INT,
+        student_id INT NOT NULL,
+        reason TEXT,
+        status VARCHAR(20) DEFAULT 'open',
+        previous_score DECIMAL(7,2) DEFAULT NULL,
+        new_score DECIMAL(7,2) DEFAULT NULL,
+        reviewer_id INT DEFAULT NULL,
+        resolution_note TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        resolved_at DATETIME DEFAULT NULL,
+        KEY idx_grade_reviews_open (status, class_id)
+    ) ENGINE=InnoDB`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS class_join_attempts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        succeeded TINYINT DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_join_attempts (user_id, created_at)
+    ) ENGINE=InnoDB`);
+
+    await ensureColumn('worksheet_attempts', 'submission_key', 'VARCHAR(80) DEFAULT NULL');
+    await ensureColumn('worksheet_attempts', 'grading_status', `VARCHAR(20) DEFAULT 'graded'`);
+    await ensureColumn('worksheet_attempts', 'graded_kind', 'VARCHAR(20) DEFAULT NULL');
+    await ensureColumn('worksheet_attempts', 'attempt_no', 'INT DEFAULT 1');
+    await ensureColumn('homework_submissions', 'revision', 'INT DEFAULT 1');
+    await ensureColumn('homework_submissions', 'graded_revision', 'INT DEFAULT NULL');
+    await ensureColumn('class_worksheets', 'opens_at', 'DATETIME DEFAULT NULL');
+    await ensureColumn('class_worksheets', 'closes_at', 'DATETIME DEFAULT NULL');
+    await ensureColumn('class_worksheets', 'max_attempts', 'INT DEFAULT NULL');
+    // MySQL has no CREATE INDEX IF NOT EXISTS; a repeat run is a duplicate-name
+    // error, which is the success case on every deploy after the first.
+    try {
+        await pool.query(`CREATE UNIQUE INDEX uniq_worksheet_submission_key
+            ON worksheet_attempts(worksheet_id, student_id, submission_key)`);
+    } catch (err) {
+        if (err.code !== 'ER_DUP_KEYNAME') {
+            console.warn('[DB] Could not add uniq_worksheet_submission_key:', err.message);
+        }
+    }
+
     console.log(`[DB] Connected to MySQL ${DB_HOST}:${DB_PORT}/${DB_NAME}`);
 }
 
@@ -704,6 +785,98 @@ async function initSqlite() {
         UNIQUE (user_id, mem_key),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`);
+    // ── Classroom integrity tables ─────────────────────────────────
+    // Practice quizzes keep their question set and answer key here, so the
+    // browser submits a quiz id and answers rather than its own marking scheme.
+    await exec(`CREATE TABLE IF NOT EXISTS study_quizzes (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        topic TEXT,
+        questions TEXT NOT NULL,
+        total INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    // One XP grant per (user, reward_key). Retries, resubmissions and regrades
+    // reuse the key, so the unique constraint — not a code path — is what stops
+    // the same completion being paid twice.
+    await exec(`CREATE TABLE IF NOT EXISTS reward_grants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        reward_key TEXT NOT NULL,
+        xp INTEGER NOT NULL DEFAULT 0,
+        reason TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (user_id, reward_key),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    // Each homework version is kept, so a teacher's feedback stays attached to
+    // the answer it was written against.
+    await exec(`CREATE TABLE IF NOT EXISTS homework_submission_revisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        submission_id INTEGER NOT NULL,
+        homework_id INTEGER NOT NULL,
+        student_id INTEGER NOT NULL,
+        revision INTEGER NOT NULL,
+        content TEXT,
+        attachments TEXT,
+        status TEXT DEFAULT 'submitted',
+        marks REAL DEFAULT NULL,
+        feedback TEXT,
+        graded_by INTEGER DEFAULT NULL,
+        graded_at TEXT DEFAULT NULL,
+        submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (submission_id, revision),
+        FOREIGN KEY (submission_id) REFERENCES homework_submissions(id) ON DELETE CASCADE
+    )`);
+    // A student can contest a result; an authorised teacher resolves it. The
+    // previous and new score are both kept.
+    await exec(`CREATE TABLE IF NOT EXISTS grade_reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_type TEXT NOT NULL,
+        subject_id INTEGER NOT NULL,
+        class_id INTEGER,
+        student_id INTEGER NOT NULL,
+        reason TEXT,
+        status TEXT DEFAULT 'open',
+        previous_score REAL DEFAULT NULL,
+        new_score REAL DEFAULT NULL,
+        reviewer_id INTEGER DEFAULT NULL,
+        resolution_note TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TEXT DEFAULT NULL
+    )`);
+    // Failed class-code guesses, for rate limiting only.
+    await exec(`CREATE TABLE IF NOT EXISTS class_join_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        succeeded INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`);
+    await exec(`CREATE INDEX IF NOT EXISTS idx_join_attempts ON class_join_attempts(user_id, created_at)`);
+    await exec(`CREATE INDEX IF NOT EXISTS idx_grade_reviews_open ON grade_reviews(status, class_id)`);
+
+    // Additive columns. Existing rows keep working: a NULL submission_key marks
+    // a pre-idempotency attempt, and grading_status defaults to the old
+    // behaviour of "this score is final".
+    for (const [table, column, definition] of [
+        ['worksheet_attempts', 'submission_key', `TEXT DEFAULT NULL`],
+        ['worksheet_attempts', 'grading_status', `TEXT DEFAULT 'graded'`],
+        ['worksheet_attempts', 'graded_kind', `TEXT DEFAULT NULL`],
+        ['worksheet_attempts', 'attempt_no', `INTEGER DEFAULT 1`],
+        ['homework_submissions', 'revision', `INTEGER DEFAULT 1`],
+        ['homework_submissions', 'graded_revision', `INTEGER DEFAULT NULL`],
+        ['class_worksheets', 'opens_at', `TEXT DEFAULT NULL`],
+        ['class_worksheets', 'closes_at', `TEXT DEFAULT NULL`],
+        ['class_worksheets', 'max_attempts', `INTEGER DEFAULT NULL`]
+    ]) {
+        try { await exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`); } catch (ignore) {}
+    }
+    // NULL submission_key rows stay distinct under this index on both engines,
+    // so historical attempts are never collapsed together.
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_worksheet_submission_key
+        ON worksheet_attempts(worksheet_id, student_id, submission_key)`);
+
     await exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages(thread_id)`);
     await exec(`CREATE INDEX IF NOT EXISTS idx_chat_threads_user ON chat_threads(user_id, updated_at)`);
 
@@ -719,30 +892,69 @@ const readyPromise = init().catch(err => {
     throw err;
 });
 
+// A transaction owns one MySQL connection, so its statements cannot be spread
+// across the pool. SQLite has a single connection, so its work is serialized
+// instead: without that, an unrelated request's INSERT lands between another
+// request's BEGIN and COMMIT and is rolled back with it.
+const { AsyncLocalStorage } = require('node:async_hooks');
+const transactionContext = new AsyncLocalStorage();
+let sqliteQueue = Promise.resolve();
+function serialized(work) {
+    const result = sqliteQueue.then(work, work);
+    sqliteQueue = result.catch(() => {});
+    return result;
+}
+
+async function query(mode, sql, params = []) {
+    await readyPromise;
+    const context = transactionContext.getStore();
+    if (dialect === 'mysql') {
+        const [result] = await (context?.connection || pool).execute(sql, params);
+        return mode === 'get' ? result[0]
+            : mode === 'all' ? result
+            : { lastID: result.insertId, changes: result.affectedRows };
+    }
+    // Inside a transaction the queue slot is already held; taking it again
+    // would wait on a promise that only settles after this work finishes.
+    return context ? runSqlite(sql, params, mode) : serialized(() => runSqlite(sql, params, mode));
+}
+
 const db = {
-    get: async (sql, params = []) => {
+    get: (sql, params) => query('get', sql, params),
+    all: (sql, params) => query('all', sql, params),
+    run: (sql, params) => query('run', sql, params),
+    // Everything inside `work` commits together or not at all. Nested calls
+    // join the transaction already running rather than opening a second one.
+    // Never await an AI provider in here: it holds the connection (MySQL) or
+    // the whole queue (SQLite) for as long as the model takes to answer.
+    transaction: async (work) => {
         await readyPromise;
+        if (transactionContext.getStore()) return work(db);
         if (dialect === 'mysql') {
-            const [rows] = await pool.execute(sql, params);
-            return rows[0];
+            const connection = await pool.getConnection();
+            try {
+                await connection.beginTransaction();
+                const value = await transactionContext.run({ connection }, () => work(db));
+                await connection.commit();
+                return value;
+            } catch (error) {
+                await connection.rollback().catch(() => {});
+                throw error;
+            } finally {
+                connection.release();
+            }
         }
-        return runSqlite(sql, params, 'get');
-    },
-    all: async (sql, params = []) => {
-        await readyPromise;
-        if (dialect === 'mysql') {
-            const [rows] = await pool.execute(sql, params);
-            return rows;
-        }
-        return runSqlite(sql, params, 'all');
-    },
-    run: async (sql, params = []) => {
-        await readyPromise;
-        if (dialect === 'mysql') {
-            const [result] = await pool.execute(sql, params);
-            return { lastID: result.insertId, changes: result.affectedRows };
-        }
-        return runSqlite(sql, params, 'run');
+        return serialized(async () => {
+            await runSqlite('BEGIN IMMEDIATE', [], 'run');
+            try {
+                const value = await transactionContext.run({ sqlite: true }, () => work(db));
+                await runSqlite('COMMIT', [], 'run');
+                return value;
+            } catch (error) {
+                await runSqlite('ROLLBACK', [], 'run').catch(() => {});
+                throw error;
+            }
+        });
     },
     ready: () => readyPromise,
     dialect: () => dialect
