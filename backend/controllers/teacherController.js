@@ -6,13 +6,17 @@ const { requireRole } = require('../middleware/auth');
 const { joinAttemptsExhausted, recordJoinAttempt } = require('../services/joinLimiter');
 const { validateWorksheet, parseMark } = require('../services/assessments');
 const { grantOnce } = require('../services/rewards');
+const { providerOrder, geminiKey, geminiModel } = require('../services/ai');
 const db = require('../config/db');
 
 // --- Multi-Provider AI Helper for Worksheet Generation ---
 async function generateAIJSON(prompt, systemInstruction = 'You are a pedagogical assistant. Respond only with JSON.') {
-    // 1. Try Groq
-    const groqKey = process.env.GROQ_API_KEY;
-    if (groqKey && groqKey !== 'your_groq_api_key_here' && groqKey.length > 5) {
+    // Provider order comes from the shared service, so AI_PROVIDER applies here
+    // too. This used to hard-code Groq first, which meant a deploy preferring
+    // Gemini still generated worksheets on Groq.
+    const tryGroq = async () => {
+        const groqKey = process.env.GROQ_API_KEY;
+        if (!groqKey || groqKey === 'your_groq_api_key_here' || groqKey.length <= 5) return null;
         try {
             const Groq = require('groq-sdk');
             const groq = new Groq({ apiKey: groqKey });
@@ -25,24 +29,31 @@ async function generateAIJSON(prompt, systemInstruction = 'You are a pedagogical
                 temperature: 0.3,
                 response_format: { type: 'json_object' }
             });
-            return completion.choices[0]?.message?.content || '';
+            return completion.choices[0]?.message?.content || null;
         } catch (e) {
             console.warn('[GROQ WORKSHEET GEN WARNING]', e.message);
+            return null;
         }
-    }
+    };
 
-    // 2. Try Gemini
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (geminiKey && geminiKey !== 'your_gemini_api_key_here' && geminiKey.length > 10) {
+    const tryGemini = async () => {
+        const key = geminiKey();
+        if (!key) return null;
         try {
             const { GoogleGenerativeAI } = require('@google/generative-ai');
-            const genAI = new GoogleGenerativeAI(geminiKey);
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const genAI = new GoogleGenerativeAI(key);
+            const model = genAI.getGenerativeModel({ model: geminiModel() });
             const result = await model.generateContent(`${systemInstruction}\n\n${prompt}`);
-            return result.response.text();
+            return result.response.text() || null;
         } catch (e) {
             console.warn('[GEMINI WORKSHEET GEN WARNING]', e.message);
+            return null;
         }
+    };
+
+    for (const provider of providerOrder()) {
+        const out = provider === 'gemini' ? await tryGemini() : await tryGroq();
+        if (out) return out;
     }
 
     return '';

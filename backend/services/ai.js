@@ -6,6 +6,34 @@
 // their own Groq/Gemini clients.
 // ================================================================
 
+// ── Which provider answers first ──────────────────────────────────
+// AI_PROVIDER=gemini tries Gemini before Groq; anything else, or unset, keeps
+// Groq first, which is what every deploy did before this setting existed. The
+// other provider always stays as the fallback, so losing one does not take the
+// AI features down with it.
+//
+// Four places used to hard-code "Groq, then Gemini" — this service, the chat
+// controller, and the quiz and worksheet generators. They all read this now, so
+// the preference cannot apply to some screens and not others.
+function providerOrder() {
+    const preferred = String(process.env.AI_PROVIDER || '').trim().toLowerCase();
+    return preferred === 'gemini' ? ['gemini', 'groq'] : ['groq', 'gemini'];
+}
+
+// A Gemini key that is absent, or still the placeholder from .env.example, is
+// not a key.
+function geminiKey() {
+    const key = process.env.GEMINI_API_KEY;
+    return key && key !== 'your_gemini_api_key_here' && key.length > 10 ? key : null;
+}
+
+// Only Gemini model names, so a stray GROQ_MODEL-style value cannot be sent to
+// Google as a model id.
+function geminiModel() {
+    const requested = String(process.env.GEMINI_MODEL || '').trim();
+    return /^gemini-[a-z0-9.\-]+$/i.test(requested) ? requested : 'gemini-2.5-flash';
+}
+
 // Task → model. Mirrors the routing in controllers/aiController.js.
 const TASK_MODELS = {
     fast:      'openai/gpt-oss-20b',
@@ -85,8 +113,9 @@ async function generateText(prompt, systemInstruction = 'You are a helpful assis
     // counts toward it — stay well under.
     const budget = maxTokens || (task === 'reasoning' ? 5000 : 4000);
 
-    const groq = groqClient();
-    if (groq) {
+    const tryGroq = async () => {
+        const groq = groqClient();
+        if (!groq) return null;
         const call = (m, tokens) => groq.chat.completions.create({
             model: m,
             messages: [
@@ -112,19 +141,27 @@ async function generateText(prompt, systemInstruction = 'You are a helpful assis
                 console.warn(`[AI] ${m} unavailable (${err.status || err.message}) — trying next model`);
             }
         }
-    }
+        return null;
+    };
 
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (geminiKey && geminiKey !== 'your_gemini_api_key_here' && geminiKey.length > 10) {
+    const tryGemini = async () => {
+        const key = geminiKey();
+        if (!key) return null;
         try {
             const { GoogleGenerativeAI } = require('@google/generative-ai');
-            const genAI = new GoogleGenerativeAI(geminiKey);
-            const m = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const genAI = new GoogleGenerativeAI(key);
+            const m = genAI.getGenerativeModel({ model: geminiModel() });
             const result = await m.generateContent(`${systemInstruction}\n\n${prompt}`);
-            return result.response.text();
+            return result.response.text() || null;
         } catch (e) {
             console.warn('[AI] Gemini error:', e.message);
+            return null;
         }
+    };
+
+    for (const provider of providerOrder()) {
+        const text = provider === 'gemini' ? await tryGemini() : await tryGroq();
+        if (text) return text;
     }
 
     return '';
@@ -151,4 +188,5 @@ async function generateJSON(prompt, systemInstruction, opts = {}, fallback = nul
 }
 
 module.exports = {
-    modelChain, isRetryable, TEXT_FALLBACKS, VISION_FALLBACKS, generateText, generateJSON, TASK_MODELS };
+    modelChain, isRetryable, TEXT_FALLBACKS, VISION_FALLBACKS, generateText, generateJSON, TASK_MODELS,
+    providerOrder, geminiKey, geminiModel };

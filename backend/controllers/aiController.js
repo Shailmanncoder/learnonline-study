@@ -3,24 +3,26 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const { rateLimit } = require('../middleware/rateLimit');
 const db = require('../config/db');
+const { providerOrder, geminiKey, geminiModel } = require('../services/ai');
 
 // ── AI Provider Setup ──────────────────────────────────────────────
-// Priority: 1) Groq (openai/gpt-oss-120b or configured GROQ_MODEL)
-//           2) Replit AI Integrations (managed Gemini)
-//           3) Direct Google Gemini API key
-//           4) Simulated response
+// AI_PROVIDER=gemini answers with Gemini and keeps Groq as the fallback;
+// unset (or anything else) keeps Groq first with Gemini as the fallback.
+// Replit's managed Gemini endpoint is used only when neither key is present,
+// and a simulated response is the last resort.
 
 let aiMode = 'none';
 let gemini = null;
 let groq = null;
 
-// 1. Groq (Primary if key provided)
+// Both clients are built when their keys exist, whichever one answers first.
+// This used to stop at the first key it found, so a Gemini key was ignored
+// outright whenever a Groq key was also set — there was nothing to fall back to.
 const groqKey = process.env.GROQ_API_KEY;
 if (groqKey && groqKey !== 'your_groq_api_key_here' && groqKey.length > 5) {
     try {
         const Groq = require('groq-sdk');
         groq = new Groq({ apiKey: groqKey });
-        aiMode = 'groq';
         // Logged after module init — the routing consts below are in their
         // temporal dead zone at this point.
         process.nextTick(() => {
@@ -32,29 +34,33 @@ if (groqKey && groqKey !== 'your_groq_api_key_here' && groqKey.length > 5) {
     }
 }
 
-// 2. Replit AI Integrations (set automatically after blueprint install)
-if (aiMode === 'none') {
-    const REPLIT_BASE_URL = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-    const REPLIT_KEY = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-    if (REPLIT_BASE_URL && REPLIT_KEY) {
-        aiMode = 'replit';
-        console.log('AI: Using Replit AI Integrations (Gemini)');
+const directGeminiKey = geminiKey();
+if (directGeminiKey) {
+    try {
+        const { GoogleGenerativeAI } = require('@google/generative-ai');
+        gemini = new GoogleGenerativeAI(directGeminiKey);
+    } catch (e) {
+        console.warn('Gemini SDK error:', e.message);
     }
 }
 
-// 3. Direct Gemini key
-if (aiMode === 'none') {
-    const key = process.env.GEMINI_API_KEY;
-    if (key && key !== 'your_gemini_api_key_here' && key.length > 10) {
-        try {
-            const { GoogleGenerativeAI } = require('@google/generative-ai');
-            gemini = new GoogleGenerativeAI(key);
-            aiMode = 'gemini';
-            console.log('AI: Using direct Gemini API key');
-        } catch (e) {
-            console.warn('Gemini SDK error:', e.message);
-        }
-    }
+// Replit's OpenAI-compatible Gemini endpoint, when the blueprint set it up.
+const REPLIT_BASE_URL = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+const REPLIT_KEY = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+
+// AI_PROVIDER decides who goes first; the other stays as the fallback.
+for (const provider of providerOrder()) {
+    if (aiMode !== 'none') break;
+    if (provider === 'gemini' && gemini) aiMode = 'gemini';
+    if (provider === 'groq' && groq) aiMode = 'groq';
+}
+if (aiMode === 'none' && REPLIT_BASE_URL && REPLIT_KEY) aiMode = 'replit';
+if (aiMode !== 'none') {
+    process.nextTick(() => console.log(
+        `AI: answering with ${aiMode}${aiMode === 'gemini' ? ` (${geminiModel()})` : ''}` +
+        `${aiMode === 'gemini' && groq ? ', Groq as fallback' : ''}` +
+        `${aiMode === 'groq' && gemini ? ', Gemini as fallback' : ''}`
+    ));
 }
 
 if (aiMode === 'none') {
@@ -742,16 +748,24 @@ router.post('/generate', auth, rateLimit({
                             }
                             continue;
                         }
-                        // Unknown error — rethrow
-                        throw err;
+                        // An unexpected error from one model should not end the
+                        // request while other models, and the other provider,
+                        // are still untried.
+                        console.warn(`Gemini model ${tryModel} failed:`, msg);
+                        break;
                     }
                 }
             }
-            throw lastErr;
+            if (!groq) throw lastErr;
+            // Gemini is preferred, not required: rather than fail the request,
+            // fall through to Groq below. The switch is logged so a provider
+            // quietly doing all the work is visible.
+            console.warn('[AI] Gemini could not answer — falling back to Groq:', lastErr && lastErr.message);
+            step('Gemini unavailable — answering with the backup provider');
         }
 
-        // ── Groq path ──
-        if (aiMode === 'groq' && groq) {
+        // Reached when Groq is the chosen provider, or when Gemini fell through.
+        if (groq) {
             const hasImages = Array.isArray(images) && images.length > 0;
             const groqModel = pickGroqModel({ task, model, hasImages });
             const reasoningParams = groqReasoningParams(groqModel, task, wantReasoning);
