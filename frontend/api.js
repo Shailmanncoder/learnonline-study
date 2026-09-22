@@ -170,6 +170,16 @@ const api = {
         });
         return res.json();
     },
+    // The model list and what each is good for, from the server — so the
+    // picker can never offer something the server would reject.
+    getAiModels: async (token) => {
+        const res = await fetch(`${API_BASE_URL}/ai/models`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Could not load the model list');
+        return res.json();
+    },
+
     getAiProgress: async (token, requestId) => {
         const res = await fetch(`${API_BASE_URL}/ai/progress/${encodeURIComponent(requestId)}`, {
             headers: { 'Authorization': `Bearer ${token}` }

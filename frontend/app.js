@@ -203,6 +203,9 @@ async function initApp() {
             }
             loadNotes();
             loadLeaderboard();
+            // Needs the account loaded first: the remembered choice is keyed
+            // per account so one student's preference is not another's.
+            loadAiModelPicker();
         } catch (err) {
             console.error(err);
             localStorage.removeItem('authToken');
@@ -246,6 +249,65 @@ function logout() {
 
 // Everything the session owns. `theme` is deliberately kept — it's a device
 // preference, not account data.
+// ── Which model answers ───────────────────────────────────────────
+// 'auto' lets the server route each question and report what it picked. The
+// options come from GET /api/ai/models, so the picker can never offer a model
+// the server would reject — when one is retired server-side it simply stops
+// appearing here.
+const MODEL_CHOICE_PREFIX = 'ai-model:';
+function modelChoiceKey() {
+    return MODEL_CHOICE_PREFIX + ((currentUserData && currentUserData.id) || 'anon');
+}
+
+// Resolved at send time, not cached in a variable: the picker loads
+// asynchronously, so a question asked in the first moment after a reload would
+// otherwise be sent as 'auto', silently ignoring the student's saved choice.
+function currentModelChoice() {
+    const select = document.getElementById('grok-model-select');
+    if (select && select.value) return select.value;
+    try {
+        return localStorage.getItem(modelChoiceKey()) || 'auto';
+    } catch (e) {
+        return 'auto';
+    }
+}
+
+async function loadAiModelPicker() {
+    const wrap = document.getElementById('grok-model-pick');
+    const select = document.getElementById('grok-model-select');
+    if (!wrap || !select || !authToken) return;
+    let info;
+    try {
+        info = await api.getAiModels(authToken);
+    } catch (e) {
+        wrap.hidden = true;   // no picker rather than a broken one
+        return;
+    }
+    // These are Gemini models. If Groq is answering, choosing one would change
+    // nothing, so the control is not offered.
+    if (!info.selectable) { wrap.hidden = true; return; }
+
+    const options = [info.auto, ...(info.models || [])].filter(Boolean);
+    select.innerHTML = options.map(m =>
+        `<option value="${escapeHtml(m.id)}" title="${escapeHtml(m.bestFor || '')}">${escapeHtml(m.label)}</option>`
+    ).join('');
+
+    let saved = null;
+    try { saved = localStorage.getItem(modelChoiceKey()); } catch (e) { saved = null; }
+    const initial = options.some(m => m.id === saved) ? saved : (info.default || 'auto');
+    select.value = initial;
+    select.title = (options.find(m => m.id === initial) || {}).bestFor || '';
+    wrap.hidden = false;
+
+    select.onchange = () => {
+        const chosenId = select.value;
+        const picked = options.find(m => m.id === chosenId);
+        select.title = (picked && picked.bestFor) || '';
+        try { localStorage.setItem(modelChoiceKey(), chosenId); } catch (e) { /* private mode */ }
+        if (picked) showToast(`${picked.label}: ${picked.bestFor}`, 'info');
+    };
+}
+
 const SESSION_KEYS = [
     'authToken', 'token', 'studyUser',
     'activePortalMode', 'activeTeacherTab', 'activeDevTab',
@@ -256,6 +318,11 @@ const SESSION_KEYS = [
 function performFullLogout() {
     try {
         SESSION_KEYS.forEach((k) => localStorage.removeItem(k));
+        try {
+            Object.keys(localStorage)
+                .filter(k => k.startsWith(MODEL_CHOICE_PREFIX))
+                .forEach(k => localStorage.removeItem(k));
+        } catch (e) { /* private mode */ }
         sessionStorage.clear();
     } catch (e) { /* private mode */ }
 
@@ -4672,7 +4739,7 @@ Provide a clear, 2-sentence executive summary with recommended next steps.`;
             systemPrompt = "You are a Socratic tutor. Guide the student to understanding by asking insightful leading questions, breaking concepts into smaller pieces, and validating their intuition.";
         }
 
-        const res = await api.generateAI(authToken, promptToSend, systemPrompt, undefined, {
+        const res = await api.generateAI(authToken, promptToSend, systemPrompt, currentModelChoice(), {
             threadId: activeChatThreadId,
             useMemory: true,
             requestId
@@ -4728,6 +4795,19 @@ Provide a clear, 2-sentence executive summary with recommended next steps.`;
         // answerable worksheet, self-scoring quiz, flashcards (see chatTools.js).
         const toolHtml = window.ChatToolsUI ? window.ChatToolsUI.render(res) : '';
 
+        // Which model answered — and, when Auto chose it, why. Shown so a
+        // wrong routing decision is visible to the student rather than silent.
+        let modelHtml = '';
+        if (res.modelUsed && res.modelUsed.label) {
+            const why = res.modelUsed.auto && res.modelUsed.reason
+                ? `<span class="grok-model-why">— ${escapeHtml(res.modelUsed.reason)}</span>`
+                : '';
+            modelHtml = `<div class="grok-model-used" title="${escapeHtml(res.modelUsed.id || '')}">
+                <i class="fa-solid fa-microchip" aria-hidden="true"></i>
+                ${escapeHtml(res.modelUsed.label)} ${why}
+            </div>`;
+        }
+
         bubbleEl.innerHTML = `
             ${toolNameBadge}
             ${thinkingHtml}
@@ -4735,6 +4815,7 @@ Provide a clear, 2-sentence executive summary with recommended next steps.`;
             ${toolHtml}
             ${libraryHtml}
             ${sourcesHtml}
+            ${modelHtml}
             <div class="grok-msg-actions">
                 <button type="button" class="grok-msg-btn grok-copy-btn" title="Copy response to clipboard">
                     <i class="fa-regular fa-copy"></i> Copy
