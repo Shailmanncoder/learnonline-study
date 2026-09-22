@@ -169,21 +169,9 @@ function withImages(apiMessages, images) {
     return out;
 }
 
-// ── Allowed Gemini models (server-side allowlist to prevent client cost abuse) ──
-const ALLOWED_MODELS = new Set([
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-flash-latest'
-]);
-const DEFAULT_MODEL = 'gemini-2.5-flash';
-
-function pickModel(requested) {
-    if (requested && ALLOWED_MODELS.has(requested)) return requested;
-    const envModel = process.env.GEMINI_MODEL;
-    if (envModel && ALLOWED_MODELS.has(envModel)) return envModel;
-    return DEFAULT_MODEL;
-}
+const {
+    GEMINI_MODELS, MODEL_BY_ID, DEFAULT_MODEL, chooseModel, defaultModel
+} = require('../services/geminiModels');
 
 const { buildStudyContext, getFacts, rememberFact, forgetFact } = require('../services/studyMemory');
 const { lookup: webLookup, buildWebContext } = require('../services/webLookup');
@@ -298,6 +286,27 @@ router.patch('/threads/:id', auth, async (req, res) => {
 });
 
 // Live steps for an in-flight /generate request — see services/progress.js.
+// ── GET /api/ai/models ─────────────────────────────────────────────
+// The picker is built from this rather than from a list copied into the
+// frontend, so the two cannot drift — when a model is retired here, it stops
+// being offered there on the next load.
+router.get('/models', auth, (req, res) => {
+    res.json({
+        // Auto is a routing mode, not a model, so it is described separately.
+        auto: {
+            id: 'auto',
+            label: 'Auto',
+            bestFor: 'Picks the model that suits each question, and tells you which one it used and why.'
+        },
+        models: GEMINI_MODELS.map(m => ({ id: m.id, label: m.label, tier: m.tier, bestFor: m.bestFor })),
+        default: 'auto',
+        // Honest about the case where the picker cannot apply: these are Gemini
+        // models, and Groq answering means the choice had no effect.
+        provider: aiMode,
+        selectable: aiMode === 'gemini'
+    });
+});
+
 router.get('/progress/:rid', auth, (req, res) => {
     const r = progress.read(req.params.rid, req.user.id);
     res.json(r || { steps: [], done: false });
@@ -367,7 +376,9 @@ router.post('/generate', auth, rateLimit({
             return res.status(400).json({ msg: 'Prompt or messages array is required' });
         }
 
-        const safeModel = pickModel(model);
+        const hasImages = Array.isArray(images) && images.length > 0;
+        const chosen = chooseModel({ requested: model, prompt, task, hasImages });
+        const safeModel = chosen.id;
         let apiMessages = buildMessages(prompt, systemMessage, messages);
 
         // ── Memory ─────────────────────────────────────────────────
@@ -594,7 +605,7 @@ router.post('/generate', auth, rateLimit({
                         await forgetFact(req.user.id, LOCK_LABEL_KEY).catch(() => {});
                     }
                 const [found, index, located] = await Promise.all([
-                    buildTextbookContext(facts, messages, prompt),
+                    buildTextbookContext(facts, messages, prompt, { onStep: step }),
                     // Always supplied when a class is known: naming chapters
                     // is a catalog question that retrieval cannot answer, and
                     // without the real list the model recites whichever
@@ -660,6 +671,15 @@ router.post('/generate', auth, rateLimit({
             }
         }
 
+        // A real decision, reported: the student sees which model answered and
+        // why, so Auto routing them to the wrong tier is visible rather than
+        // hidden. Only said aloud when Auto chose — if they picked it
+        // themselves, telling them what they picked is noise.
+        if (aiMode === 'gemini') {
+            step(chosen.auto
+                ? `Using ${chosen.label} (${chosen.id}) — ${chosen.reason}`
+                : `Using ${chosen.label} (${chosen.id})`);
+        }
         step('Writing the answer');
 
         // ── Replit AI Integrations path (OpenAI-compatible Gemini endpoint) ──
@@ -677,20 +697,18 @@ router.post('/generate', auth, rateLimit({
             });
             progress.finish(rid);
             return res.json({ result: completion.choices[0]?.message?.content || '',
-                ...(textbookSources ? { sources: textbookSources } : {}), steps: progress.stepsOf(rid) });
+                ...(textbookSources ? { sources: textbookSources } : {}), steps: progress.stepsOf(rid), modelUsed: aiMode === 'gemini' ? { id: chosen.id, label: chosen.label, reason: chosen.reason, auto: chosen.auto } : null });
         }
 
         // ── Direct Gemini path (with model fallback) ──
         if (aiMode === 'gemini' && gemini) {
             const generationConfig = { temperature: 0.7, maxOutputTokens: 8192 };
             const primaryModel = safeModel;
-            // Only models confirmed to have quota on this key; lighter models listed first as backup
-            const fallbackModels = [
-                primaryModel,
-                'gemini-2.5-flash-lite',
-                'gemini-2.5-flash',
-                'gemini-flash-latest'
-            ].filter((m, i, a) => a.indexOf(m) === i); // deduplicate
+            // The chosen model first, then the rest of the catalogue as backup.
+            // The old list named the 2.5 models, which now 404 on a current
+            // key — so every fallback step was guaranteed to fail.
+            const fallbackModels = [primaryModel, ...GEMINI_MODELS.map(m => m.id)]
+                .filter((m, i, a) => a.indexOf(m) === i);
 
             // Filter out system messages for Gemini (handled via systemInstruction)
             const userMessages = apiMessages.filter(m => m.role !== 'system');
@@ -726,7 +744,7 @@ router.post('/generate', auth, rateLimit({
                         const genModel = gemini.getGenerativeModel({ model: tryModel, systemInstruction: systemMessage });
                         const text = await tryGenerate(genModel);
                         progress.finish(rid);
-                        return res.json({ result: text, ...(textbookSources ? { sources: textbookSources } : {}), steps: progress.stepsOf(rid) });
+                        return res.json({ result: text, ...(textbookSources ? { sources: textbookSources } : {}), steps: progress.stepsOf(rid), modelUsed: aiMode === 'gemini' ? { id: chosen.id, label: chosen.label, reason: chosen.reason, auto: chosen.auto } : null });
                     } catch (err) {
                         lastErr = err;
                         const msg = err.message || '';
@@ -833,6 +851,7 @@ router.post('/generate', auth, rateLimit({
             if (memoryDoc) payload.memoryDoc = memoryDoc;
             progress.finish(rid);
             payload.steps = progress.stepsOf(rid);
+            payload.modelUsed = aiMode === 'gemini' ? { id: chosen.id, label: chosen.label, reason: chosen.reason, auto: chosen.auto } : null;
             if (wantReasoning && choice.reasoning) {
                 payload.reasoning = String(choice.reasoning);
             }
@@ -986,7 +1005,7 @@ router.post('/tts', auth, async (req, res) => {
                     spokenText = converted;
                 }
             } else if (gemini) {
-                const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+                const model = gemini.getGenerativeModel({ model: defaultModel() });
                 const prompt = `Convert this explanation into a natural, spoken Hinglish voice script for text-to-speech. Retain 70-80% of the written explanation faithfully. Speak MAINLY IN HINDI, with technical terms in ENGLISH. Smooth continuous flow without markdown symbols:\n\n${cleanText}`;
                 const resGemini = await model.generateContent(prompt);
                 const converted = resGemini.response?.text()?.trim();

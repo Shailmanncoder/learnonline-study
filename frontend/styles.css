@@ -6903,6 +6903,61 @@ textarea:focus {
     gap: 8px;
 }
 
+/* Model picker — shaped like the chips beside it so the composer keeps one
+   visual language. Hidden entirely when the provider is not Gemini, since the
+   choice would have no effect. */
+.grok-model-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px 4px 12px;
+    border-radius: 100px;
+    border: 1px solid var(--border-color);
+    background: #F8FAFD;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+.grok-model-pick:hover { background: #EFF6FF; color: #2563EB; border-color: #BFDBFE; }
+.grok-model-pick select {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    max-width: 150px;
+    padding-right: 2px;
+}
+.grok-model-pick select:focus-visible { outline: 2px solid #2563EB; outline-offset: 2px; border-radius: 4px; }
+.sr-only-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+[data-theme="dark"] .grok-model-pick { background: rgba(255,255,255,.04); }
+[data-theme="dark"] .grok-model-pick select option { background: #0f172a; color: #e6edf7; }
+
+/* On a phone the chip row is a horizontal scroller, so a wide picker pushes
+   itself off-screen. The label alone is enough there — the "best for" text is
+   still on the option's tooltip. */
+@media (max-width: 640px) {
+    .grok-model-pick { padding: 4px 8px 4px 10px; }
+    .grok-model-pick select { max-width: 104px; }
+}
+
+/* Which model answered, shown on the answer itself. */
+.grok-model-used {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: rgba(37,99,235,.08);
+    border: 1px solid rgba(37,99,235,.18);
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    font-weight: 600;
+}
+.grok-model-used .grok-model-why { font-weight: 500; opacity: .85; }
+
 .grok-chip-btn {
     display: inline-flex;
     align-items: center;

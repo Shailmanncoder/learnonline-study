@@ -27,11 +27,13 @@ function geminiKey() {
     return key && key !== 'your_gemini_api_key_here' && key.length > 10 ? key : null;
 }
 
-// Only Gemini model names, so a stray GROQ_MODEL-style value cannot be sent to
-// Google as a model id.
+// One catalogue for the whole app: this returned gemini-2.5-flash, which now
+// 404s as "no longer available to new users", so every call through this
+// service would have failed while the chat controller used a live model.
+const { MODEL_BY_ID, DEFAULT_MODEL } = require('./geminiModels');
 function geminiModel() {
     const requested = String(process.env.GEMINI_MODEL || '').trim();
-    return /^gemini-[a-z0-9.\-]+$/i.test(requested) ? requested : 'gemini-2.5-flash';
+    return MODEL_BY_ID.has(requested) ? requested : DEFAULT_MODEL;
 }
 
 // Task → model. Mirrors the routing in controllers/aiController.js.

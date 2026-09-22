@@ -248,9 +248,12 @@ function distinctiveTerms(question) {
 const BOOK_META = /\b(story|stories|poem|poems|poet|author|writer|character|characters|hero|heroine|moral|theme|summary|summarise|summarize|plot|lesson|chapter|chapters|unit|title|message|narrator|setting|ending|beginning|first|last|kahani|kavita|lekhak|kavi|patra|saar|sandesh)\b|कहानी|कविता|लेखक|कवि|पात्र|सारांश|संदेश|शीर्षक|पाठ/i;
 
 // Returns { block, sources } to inject, or null to leave the request alone.
-async function buildTextbookContext(facts, messages, prompt) {
+async function buildTextbookContext(facts, messages, prompt, { onStep } = {}) {
     load();
     if (disabled || !corpus) return null;
+
+    // Never let reporting break retrieval.
+    const report = (text) => { try { if (onStep) onStep(text); } catch (ignore) {} };
 
     const question = latestQuestion(messages, prompt).slice(0, 3000);
     if (question.trim().length < 8) return null;   // greetings aren't lookups
@@ -263,6 +266,8 @@ async function buildTextbookContext(facts, messages, prompt) {
     let hits;
     let forced = null;
     try {
+        const scope = [String(grade).replace(/^\s*class\s*/i, 'Class '), subject].filter(Boolean).join(' ');
+        report(`Searching your ${scope} NCERT textbooks`);
         const embedding = await embedOne(question);
         // Current edition first — see the note in ncertTutor. Fall back to
         // older editions only when the current one has nothing relevant,
@@ -289,6 +294,10 @@ async function buildTextbookContext(facts, messages, prompt) {
     noteSuccess();
 
     let relevant = (hits || []).filter(h => h.score >= MIN_SCORE);
+    if (forced) report(`Looking inside "${forced.name}", the book you chose`);
+    report(relevant.length
+        ? `Found ${relevant.length} matching passage${relevant.length === 1 ? '' : 's'}`
+        : 'No passage in those books matched');
 
     // Inside a chosen book, similarity alone is not evidence. Asked
     // "photosynthesis kaise hoti hai" with Kaveri (English literature)
@@ -348,6 +357,16 @@ async function buildTextbookContext(facts, messages, prompt) {
         });
     }
     if (!lines.length) return null;
+
+    // The chapters and pages that actually reached the model.
+    const byChapter = new Map();
+    for (const src of sources) {
+        if (!byChapter.has(src.chapter)) byChapter.set(src.chapter, new Set());
+        byChapter.get(src.chapter).add(src.page);
+    }
+    for (const [chapter, pages] of byChapter) {
+        report(`Reading ${chapter} — page${pages.size === 1 ? '' : 's'} ${[...pages].sort((a, b) => a - b).join(', ')}`);
+    }
 
     const block = forced
         ? [

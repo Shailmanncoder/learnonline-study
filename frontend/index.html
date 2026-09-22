@@ -972,6 +972,13 @@
                                     <button type="button" class="grok-chip-btn active" data-mode="all"><i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Tools</button>
                                     <button type="button" class="grok-chip-btn" data-mode="research"><i class="fa-solid fa-globe"></i> Web Search</button>
                                     <button type="button" class="grok-chip-btn" data-mode="solve"><i class="fa-solid fa-calculator"></i> Step-by-Step</button>
+                                    <!-- Filled from GET /api/ai/models so the options cannot drift
+                                         from what the server will actually accept. -->
+                                    <label class="grok-model-pick" id="grok-model-pick" hidden>
+                                        <i class="fa-solid fa-microchip" aria-hidden="true"></i>
+                                        <span class="sr-only-label">Model</span>
+                                        <select id="grok-model-select" aria-label="Which AI model answers"></select>
+                                    </label>
                                 </div>
                                 <div class="grok-composer-actions">
                                     <button type="button" class="grok-icon-btn" id="grok-voice-btn" title="Voice Input (Dictation)">

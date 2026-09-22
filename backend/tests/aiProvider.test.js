@@ -61,17 +61,22 @@ test('a placeholder or stub Gemini key does not count as a key', () => {
     });
 });
 
-test('GEMINI_MODEL only accepts Gemini model names', () => {
+test('GEMINI_MODEL only accepts a model from the catalogue', () => {
+    const { GEMINI_MODELS, DEFAULT_MODEL } = require('../services/geminiModels');
+
     withEnv({ GEMINI_MODEL: undefined }, () => {
-        assert.equal(geminiModel(), 'gemini-2.5-flash');
+        assert.equal(geminiModel(), DEFAULT_MODEL);
     });
-    withEnv({ GEMINI_MODEL: 'gemini-2.5-pro' }, () => {
-        assert.equal(geminiModel(), 'gemini-2.5-pro');
-    });
-    // A Groq model id in this variable would otherwise be sent to Google.
-    for (const wrong of ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', '../../etc/passwd', 'gpt-4']) {
+    for (const m of GEMINI_MODELS) {
+        withEnv({ GEMINI_MODEL: m.id }, () => assert.equal(geminiModel(), m.id));
+    }
+    // A Groq id would otherwise be sent to Google as a model name, and the 2.5
+    // ids now 404 — a shape check would have let both through, so the check is
+    // against the catalogue itself.
+    for (const wrong of ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', '../../etc/passwd', 'gpt-4',
+                         'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-flash-latest']) {
         withEnv({ GEMINI_MODEL: wrong }, () => {
-            assert.equal(geminiModel(), 'gemini-2.5-flash', `${wrong} must not be used as a Gemini model`);
+            assert.equal(geminiModel(), DEFAULT_MODEL, `${wrong} must not be used as a Gemini model`);
         });
     }
 });
