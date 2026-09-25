@@ -363,7 +363,7 @@ authSwitchBtn.addEventListener('click', (e) => {
     e.preventDefault();
     window.isLoginMode = !window.isLoginMode;
     authTitle.textContent = window.isLoginMode ? 'Student Sign In' : 'Create Student Account';
-    authSubtitle.textContent = window.isLoginMode ? 'Log in to continue to your AI Study Hub' : 'Join thousands of students on StudyHub';
+    authSubtitle.textContent = window.isLoginMode ? 'Log in to continue to your AI Study Hub' : 'Create your StudyHub account';
     authSwitchText.textContent = window.isLoginMode ? "Don't have a student account?" : "Already have an account?";
     authSwitchBtn.textContent = window.isLoginMode ? 'Sign Up' : 'Log In';
     setAuthBtnText(window.isLoginMode ? 'Enter Student Portal' : 'Create Account');
@@ -547,7 +547,7 @@ if (teacherAuthSwitchBtn) {
         e.preventDefault();
         window.isTeacherLoginMode = !window.isTeacherLoginMode;
         if (teacherAuthTitle) teacherAuthTitle.textContent = window.isTeacherLoginMode ? 'Teacher Sign In' : 'Register as Teacher';
-        if (teacherAuthSubtitle) teacherAuthSubtitle.textContent = window.isTeacherLoginMode ? 'Access your Google Classroom-style Teacher Hub & Worksheets' : 'Create your educator profile to manage classes & assignments';
+        if (teacherAuthSubtitle) teacherAuthSubtitle.textContent = window.isTeacherLoginMode ? 'Manage classes, assign worksheets, and review student work' : 'Create your educator profile to manage classes & assignments';
         if (teacherAuthSwitchText) teacherAuthSwitchText.textContent = window.isTeacherLoginMode ? "Don't have a teacher account?" : "Already registered as teacher?";
         if (teacherAuthSwitchBtn) teacherAuthSwitchBtn.textContent = window.isTeacherLoginMode ? 'Sign Up as Teacher' : 'Log In';
         if (teacherModalSubjectGroup) teacherModalSubjectGroup.style.display = window.isTeacherLoginMode ? 'none' : 'block';
@@ -7943,7 +7943,7 @@ const LEGAL_DOCS = {
 <p class="legal-meta">Last updated: ${LEGAL_UPDATED}</p>
 
 <h4>Who we are</h4>
-<p>StudyHub is operated by ExamPrism AI, India. <span class="legal-todo">[REVIEW] Add your registered legal entity name and address.</span>
+<p>StudyHub is operated by ExamPrism AI, India. <span class="legal-todo">Registered entity and address details have not yet been published. Contact support for operator information.</span>
 Contact: <a href="mailto:support@learnonline.study">support@learnonline.study</a>.</p>
 
 <h4>What we store</h4>
@@ -7970,13 +7970,13 @@ Contact: <a href="mailto:support@learnonline.study">support@learnonline.study</a
 
 <h4>Students under 18</h4>
 <p class="legal-warn"><strong>Important.</strong> This service is used by school students, and India's Digital Personal Data Protection Act, 2023 requires verifiable parental consent before processing a child's personal data.
-<span class="legal-todo">[REVIEW] You must implement parental consent and confirm your lawful basis before onboarding minors at scale. Please get this reviewed by a lawyer.</span></p>
+<span class="legal-todo">A verified parental-consent process is not described here. Parents and schools should contact support before providing children’s personal data.</span></p>
 
 <h4>Your rights</h4>
 <p>You can export or delete your account at any time from Profile Settings — "Delete Account &amp; All Data" removes your record and its associated work from our database. You can also email us to request access, correction or erasure.</p>
 
 <h4>Retention</h4>
-<p>We keep your data while your account is active. Deleting your account removes it. <span class="legal-todo">[REVIEW] Confirm your backup retention window.</span></p>
+<p>We keep your data while your account is active. Deleting your account removes it. <span class="legal-todo">Backup retention periods have not yet been published. Contact support for details.</span></p>
 `,
 
     terms: `
@@ -8004,7 +8004,7 @@ Contact: <a href="mailto:support@learnonline.study">support@learnonline.study</a
 <p>We aim to keep the service running but we don't promise uninterrupted availability. AI features depend on third-party providers and may be rate-limited or temporarily unavailable.</p>
 
 <h4>Liability</h4>
-<p>The service is provided "as is". To the extent permitted by law, we are not liable for indirect loss, or for academic outcomes arising from reliance on AI-generated content. <span class="legal-todo">[REVIEW] Add governing law and jurisdiction.</span></p>
+<p>The service is provided "as is". To the extent permitted by law, we are not liable for indirect loss, or for academic outcomes arising from reliance on AI-generated content. <span class="legal-todo">Governing-law and jurisdiction details have not yet been published.</span></p>
 `,
 
     contact: `
@@ -8014,7 +8014,7 @@ Contact: <a href="mailto:support@learnonline.study">support@learnonline.study</a
 <p><a href="mailto:support@learnonline.study">support@learnonline.study</a> — accounts, bugs, and data requests (access, correction, deletion).</p>
 <h4>Who runs this</h4>
 <p>StudyHub is built by <strong>ExamPrism AI</strong>, India.
-<span class="legal-todo">[REVIEW] Add your registered address and, for DPDP compliance, a named Grievance Officer with contact details.</span></p>
+<span class="legal-todo">Registered-address and designated grievance-contact details have not yet been published. General enquiries can be sent to the support address above.</span></p>
 <h4>Schools</h4>
 <p>If you're a school or teacher wanting to use StudyHub with a class, email us — we'll help you set up classrooms and rosters.</p>
 `

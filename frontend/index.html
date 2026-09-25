@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Study Hub | Next-Gen Learning Platform</title>
+    <title>StudyHub | Next-Gen Learning Platform</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#F4F7FC">
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
@@ -30,6 +30,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="/refinements.css">
 </head>
 <body>
     <!-- Particle Canvas (Landing) -->
@@ -37,12 +38,12 @@
 
     <!-- Student Auth Modal Overlay -->
     <div id="auth-modal" class="auth-overlay" style="display:none;">
-        <div class="auth-container glass" id="auth-box">
-            <button class="auth-close-btn" id="auth-close-btn"><i class="fa-solid fa-xmark"></i></button>
+        <div class="auth-container glass" id="auth-box" role="dialog" aria-modal="true" aria-labelledby="auth-title" tabindex="-1">
+            <button class="auth-close-btn" id="auth-close-btn" aria-label="Close sign-in"><i class="fa-solid fa-xmark"></i></button>
             <div class="auth-logo-mini" id="auth-logo-icon"><i class="fa-solid fa-graduation-cap"></i></div>
 
             <h2 id="auth-title">Student Sign In</h2>
-            <p id="auth-subtitle">Log in to continue to your AI Study Hub</p>
+            <p id="auth-subtitle">Log in to continue to your StudyHub</p>
             
             <form id="auth-form">
                 <div class="form-group">
@@ -52,10 +53,11 @@
                 <div class="form-group">
                     <label for="password">Password</label>
                     <div class="password-wrapper">
-                        <input type="password" id="password" required placeholder="Enter password" autocomplete="current-password">
-                        <button type="button" class="toggle-pw" id="toggle-pw"><i class="fa-solid fa-eye"></i></button>
+                        <input type="password" id="password" aria-describedby="password-help" required placeholder="Enter password" autocomplete="current-password">
+                        <button type="button" class="toggle-pw" id="toggle-pw" aria-label="Show password"><i class="fa-solid fa-eye"></i></button>
                     </div>
                 </div>
+                <p class="auth-help" id="password-help">Creating an account? Use at least 6 characters; a longer, unique password is recommended.</p><p class="auth-help"><a href="mailto:support@learnonline.study?subject=Account%20access%20help">Need help signing in? Contact support</a></p>
                 <div id="auth-error" class="error-msg"></div>
                 <button type="submit" class="btn btn-full btn-glow" id="auth-submit">
                     <span id="auth-btn-text">Enter Student Portal</span>
@@ -72,8 +74,8 @@
 
     <!-- Developer Auth Modal Overlay (Completely Separate) -->
     <div id="dev-auth-modal" class="auth-overlay" style="display:none;">
-        <div class="auth-container glass" id="dev-auth-box">
-            <button class="auth-close-btn" id="dev-auth-close-btn"><i class="fa-solid fa-xmark"></i></button>
+        <div class="auth-container glass" id="dev-auth-box" role="dialog" aria-modal="true" aria-labelledby="dev-auth-title" tabindex="-1">
+            <button class="auth-close-btn" id="dev-auth-close-btn" aria-label="Close sign-in"><i class="fa-solid fa-xmark"></i></button>
             <div class="auth-logo-mini" style="background: linear-gradient(135deg, #2563EB, #1D4ED8); color: #fff;">
                 <i class="fa-solid fa-laptop-code"></i>
             </div>
@@ -104,10 +106,11 @@
                 <div class="form-group">
                     <label for="dev-password">Password</label>
                     <div class="password-wrapper">
-                        <input type="password" id="dev-password" required placeholder="Enter password" autocomplete="current-password">
-                        <button type="button" class="toggle-pw" id="dev-toggle-pw"><i class="fa-solid fa-eye"></i></button>
+                        <input type="password" id="dev-password" aria-describedby="dev-password-help" required placeholder="Enter password" autocomplete="current-password">
+                        <button type="button" class="toggle-pw" id="dev-toggle-pw" aria-label="Show password"><i class="fa-solid fa-eye"></i></button>
                     </div>
                 </div>
+                <p class="auth-help" id="dev-password-help">Creating an account? Use at least 6 characters; a longer, unique password is recommended.</p><p class="auth-help"><a href="mailto:support@learnonline.study?subject=Account%20access%20help">Need help signing in? Contact support</a></p>
                 <div id="dev-auth-error" class="error-msg"></div>
                 <button type="submit" class="btn btn-full btn-glow" id="dev-auth-submit" style="background: linear-gradient(135deg, #2563EB, #1D4ED8);">
                     <span id="dev-auth-btn-text">Enter Developer Portal</span>
@@ -124,14 +127,14 @@
 
     <!-- Teacher Auth Modal Overlay (Separate Dedicated Portal) -->
     <div id="teacher-auth-modal" class="auth-overlay" style="display:none;">
-        <div class="auth-container glass" id="teacher-auth-box">
-            <button class="auth-close-btn" id="teacher-auth-close-btn"><i class="fa-solid fa-xmark"></i></button>
+        <div class="auth-container glass" id="teacher-auth-box" role="dialog" aria-modal="true" aria-labelledby="teacher-auth-title" tabindex="-1">
+            <button class="auth-close-btn" id="teacher-auth-close-btn" aria-label="Close sign-in"><i class="fa-solid fa-xmark"></i></button>
             <div class="auth-logo-mini" style="background: linear-gradient(135deg, #059669, #10B981); color: #fff;">
                 <i class="fa-solid fa-chalkboard-user"></i>
             </div>
 
             <h2 id="teacher-auth-title">Teacher Sign In</h2>
-            <p id="teacher-auth-subtitle">Access your Google Classroom-style Teacher Hub &amp; Worksheets</p>
+            <p id="teacher-auth-subtitle">Manage classes, assign worksheets, and review student work</p>
             
             <form id="teacher-auth-form">
                 <div class="form-group" id="teacher-modal-subject-group" style="text-align: left; margin-bottom: 14px; display: none;">
@@ -155,10 +158,11 @@
                 <div class="form-group">
                     <label for="teacher-password">Password</label>
                     <div class="password-wrapper">
-                        <input type="password" id="teacher-password" required placeholder="Enter password" autocomplete="current-password">
-                        <button type="button" class="toggle-pw" id="teacher-toggle-pw"><i class="fa-solid fa-eye"></i></button>
+                        <input type="password" id="teacher-password" aria-describedby="teacher-password-help" required placeholder="Enter password" autocomplete="current-password">
+                        <button type="button" class="toggle-pw" id="teacher-toggle-pw" aria-label="Show password"><i class="fa-solid fa-eye"></i></button>
                     </div>
                 </div>
+                <p class="auth-help" id="teacher-password-help">Creating an account? Use at least 6 characters; a longer, unique password is recommended.</p><p class="auth-help"><a href="mailto:support@learnonline.study?subject=Account%20access%20help">Need help signing in? Contact support</a></p>
                 <div id="teacher-auth-error" class="error-msg"></div>
                 <button type="submit" class="btn btn-full btn-glow" id="teacher-auth-submit" style="background: linear-gradient(135deg, #059669, #10B981);">
                     <span id="teacher-auth-btn-text">Enter Teacher Portal</span>
@@ -204,7 +208,7 @@
                     <span class="splash-stat-lbl">Total XP</span>
                 </div>
                 <div class="splash-stat">
-                    <span class="splash-stat-val">50+</span>
+                    <span class="splash-stat-val">50</span>
                     <span class="splash-stat-lbl">AI Tools</span>
                 </div>
                 <div class="splash-stat">
@@ -235,7 +239,7 @@
                 <ul class="land-nav-links">
                     <li><a href="#features">Features</a></li>
                     <li><a href="#dev-tracks"><i class="fa-solid fa-code"></i> Developer Tests</a></li>
-                    <li><a href="#tools-preview"><i class="fa-solid fa-wand-magic-sparkles"></i> 50+ AI Tools</a></li>
+                    <li><a href="#tools-preview"><i class="fa-solid fa-wand-magic-sparkles"></i> 50 AI Tools</a></li>
                     <li><a href="#how-it-works">How It Works</a></li>
                 </ul>
                 <div class="land-nav-actions">
@@ -252,13 +256,13 @@
                         Start Learning Free <i class="fa-solid fa-arrow-right"></i>
                     </button>
                 </div>
-                <button class="land-hamburger" id="land-hamburger"><i class="fa-solid fa-bars"></i></button>
+                <button class="land-hamburger" id="land-hamburger" aria-label="Open navigation" aria-controls="land-mobile-menu" aria-expanded="false"><i class="fa-solid fa-bars"></i></button>
             </div>
             <!-- Mobile menu -->
             <div class="land-mobile-menu" id="land-mobile-menu">
                 <a href="#features" class="land-mobile-link"><i class="fa-solid fa-star"></i> Features</a>
                 <a href="#dev-tracks" class="land-mobile-link"><i class="fa-solid fa-code"></i> Developer Tests</a>
-                <a href="#tools-preview" class="land-mobile-link"><i class="fa-solid fa-wand-magic-sparkles"></i> 50+ AI Tools</a>
+                <a href="#tools-preview" class="land-mobile-link"><i class="fa-solid fa-wand-magic-sparkles"></i> 50 AI Tools</a>
                 <a href="#how-it-works" class="land-mobile-link"><i class="fa-solid fa-circle-question"></i> How It Works</a>
                 <button class="btn-land-primary" id="mobile-signup-btn">Start Learning Free</button>
                 <button class="btn-land-outline" id="mobile-login-btn">Log In</button>
@@ -278,13 +282,13 @@
                     AI-assisted learning
                 </div>
                 <h1 class="land-hero-title">
-                    Master Any Subject &<br>
-                    <span class="land-gradient-text">Crack Technical Exams</span><br>
-                    with Next-Gen AI
+                    Learn with confidence.<br>
+                    <span class="land-gradient-text">Teach with clarity.</span>
+
                 </h1>
                 <p class="land-hero-sub">
-                    Practice with AI-powered mock assessments in <strong>Python, Java, AWS, React, Docker, SQL & DSA</strong>. 
-                    Interactive academic worksheets, multi-format summarizers, smart notes & 50+ intelligent tools.
+                    Study school subjects, prepare classroom worksheets, or practise <strong>coding and technical assessments</strong>.
+                    Interactive academic worksheets, multi-format summarizers, smart notes & 50 intelligent tools.
                 </p>
                 <div class="land-hero-btns">
                     <button class="btn-land-primary btn-land-large" id="hero-signup-btn">
@@ -300,7 +304,7 @@
                 </p>
                 <div class="land-hero-stats">
                     <div class="land-hero-stat">
-                        <span class="stat-num" data-target="50">50</span><span>+</span>
+                        <span class="stat-num" data-target="50">50</span>
                         <span class="stat-label">AI Tools</span>
                     </div>
                     <div class="land-stat-divider"></div>
@@ -365,6 +369,7 @@
         </section>
 
         <!-- Features Section -->
+        <section id="dev-tracks" class="refined-tracks"><h2>Practice for your next technical challenge</h2><p>Explore seven tracks: Python and AI, Fullstack, Java, AWS and DevOps, SQL and System Design, DSA, and Go.</p><button type="button" class="btn-land-primary" id="refined-dev-entry">Explore developer practice</button></section>
         <section class="land-section" id="features">
             <div class="land-section-inner">
                 <div class="land-section-label">Why Choose Us</div>
@@ -376,7 +381,7 @@
                         <div class="feature-icon" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
                             <i class="fa-solid fa-brain"></i>
                         </div>
-                        <h3>50+ AI Study Tools</h3>
+                        <h3>50 AI Study Tools</h3>
                         <p>Essay writer, math solver, grammar checker, code debugger, language translator, and many more.</p>
                     </div>
                     <div class="feature-card glass-land" data-aos="1">
@@ -421,7 +426,7 @@
         <!-- Tools Preview Section -->
         <section class="land-section land-section-dark" id="tools-preview">
             <div class="land-section-inner">
-                <div class="land-section-label">50+ Tools</div>
+                <div class="land-section-label">50 Tools</div>
                 <h2 class="land-section-title">Explore our <span class="land-gradient-text">AI Tool Library</span></h2>
                 <div class="tools-marquee-wrap">
                     <div class="tools-marquee">
@@ -505,7 +510,7 @@
                         <div class="step-num">02</div>
                         <div class="step-icon"><i class="fa-solid fa-toolbox"></i></div>
                         <h3>Choose a Tool</h3>
-                        <p>Browse 50+ AI study tools across writing, math, languages, coding, and more.</p>
+                        <p>Browse 50 AI study tools across writing, math, languages, coding, and more.</p>
                         <div class="step-line"></div>
                     </div>
                     <div class="step-card">
@@ -530,7 +535,7 @@
             <div class="land-cta-inner">
                 <div class="land-cta-blob"></div>
                 <h2>Ready to transform<br>how you study?</h2>
-                <p>Join thousands of students using AI Study Hub to achieve better results.</p>
+                <p>Build a steady study routine with guided practice and useful feedback.</p>
                 <button class="btn-land-primary btn-land-large" id="cta-signup-btn">
                     Start for Free — No Credit Card <i class="fa-solid fa-arrow-right"></i>
                 </button>
@@ -590,7 +595,7 @@
                 </li>
                 <li class="nav-item" data-target="tools" title="AI Tools">
                     <i class="fa-solid fa-toolbox"></i> <span>AI Tools</span>
-                    <span class="nav-badge-pill">50+</span>
+                    <span class="nav-badge-pill">50</span>
                 </li>
                 <li class="nav-item" data-target="notes" title="Note Taker">
                     <i class="fa-solid fa-book"></i> <span>Note Taker</span> 
@@ -789,14 +794,14 @@
                                     <h2 class="grok-title">AI Study Companion</h2>
                                     <span class="grok-model-pill"><i class="fa-solid fa-bolt"></i> GPT-OSS 120B · Qwen 3.8</span>
                                 </div>
-                                <p class="grok-subtitle">Connected to 50+ study tools, live academic research &amp; Socratic tutor</p>
+                                <p class="grok-subtitle">Connected to 50 study tools, live academic research &amp; Socratic tutor</p>
                             </div>
                         </div>
                         <div class="grok-header-actions">
                             <div class="grok-mode-select-wrap">
                                 <select id="grok-tutor-mode" class="grok-mode-select">
                                     <option value="socratic">🤖 Socratic AI Tutor (Adaptive)</option>
-                                    <option value="tools" selected>⚡ 50+ Tools Auto-Execution</option>
+                                    <option value="tools" selected>⚡ 50 Tools Auto-Execution</option>
                                     <option value="research">🔍 Deep Academic Research</option>
                                     <option value="stem">🧮 STEM &amp; Step-by-Step Solver</option>
                                     <option value="exam">🎯 Exam &amp; Practice Coach</option>
@@ -1389,19 +1394,19 @@
             <section id="tools" class="section-container">
                 <div class="section-header-row">
                     <div class="section-header">
-                        <h2>50+ AI Study & Productivity Tools</h2>
+                        <h2>50 AI Study & Productivity Tools</h2>
                         <p>Supercharge your learning workflow with state-of-the-art AI assistants powered by GPT-OSS 120B.</p>
                     </div>
                     <div class="tools-search-wrap">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" id="tools-search-input" placeholder="Filter 50+ tools by name or keyword...">
+                        <input type="text" id="tools-search-input" placeholder="Filter 50 tools by name or keyword...">
                     </div>
                 </div>
 
                 <!-- Category Filter Pills -->
                 <div class="tools-filter-bar" id="tools-filter-bar">
                     <button class="filter-pill active" data-category="all">
-                        <i class="fa-solid fa-grid-2"></i> All Tools <span class="filter-count" id="count-all">50+</span>
+                        <i class="fa-solid fa-grid-2"></i> All Tools <span class="filter-count" id="count-all">50</span>
                     </button>
                     <button class="filter-pill" data-category="writing">
                         <i class="fa-solid fa-pen-nib"></i> Writing & Essays <span class="filter-count" id="count-writing">12</span>
@@ -3579,8 +3584,8 @@
          actually stores and which vendors receive data — see app.js
          LEGAL_DOCS. Placeholders marked [REVIEW] need your legal input. -->
     <div id="legal-modal" class="modal-overlay" style="display:none;">
-        <div class="modal-content legal-modal">
-            <button class="modal-x-btn" id="legal-close"><i class="fa-solid fa-xmark"></i></button>
+        <div class="modal-content legal-modal" role="dialog" aria-modal="true" aria-label="Policies and contact" tabindex="-1">
+            <button class="modal-x-btn" id="legal-close" aria-label="Close policy"><i class="fa-solid fa-xmark"></i></button>
             <div class="legal-tabs">
                 <button class="legal-tab is-active" data-legal-tab="privacy">Privacy</button>
                 <button class="legal-tab" data-legal-tab="terms">Terms</button>
@@ -3597,5 +3602,6 @@
     <script defer src="/sourceLibrary.js"></script>
     <script defer src="/chatTools.js"></script>
     <script defer src="/premium.js"></script>
+<script defer src="/refinements.js"></script>
 </body>
 </html>
