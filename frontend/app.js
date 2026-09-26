@@ -1063,7 +1063,7 @@ function navigateToSection(target, updateUrl = true) {
     if (target === 'leaderboard') loadLeaderboard();
     if (target === 'tools') loadTools();
     if (target === 'notes') loadNotes();
-    if (target === 'classroom') loadStudentClassrooms();
+    if (target === 'classroom') { loadStudentClassrooms(); window.loadSharedTeachingResources?.(); }
     if (target === 'flashcards') loadFlashcardDecks();
     if (target === 'quiz-generator') resetQuizUI();
     if (target === 'profile') loadBadges();
@@ -5036,6 +5036,7 @@ document.querySelectorAll('.teacher-nav-item').forEach(item => {
 });
 
 function switchTeacherTab(tabName, updateUrl = true) {
+    if (tabName === 'studio') window.loadTeachingStudio?.();
     document.querySelectorAll('.teacher-nav-item').forEach(el => {
         el.classList.toggle('active', el.getAttribute('data-teacher-tab') === tabName);
     });

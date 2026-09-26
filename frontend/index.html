@@ -31,6 +31,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 <link rel="stylesheet" href="/refinements.css">
+    <link rel="stylesheet" href="/teachingStudio.css">
 </head>
 <body>
     <!-- Particle Canvas (Landing) -->
@@ -1232,6 +1233,7 @@
 
             <!-- Student Hub: Classroom Section -->
             <section id="classroom" class="section-container">
+<div id="student-teaching-resources" role="region" aria-label="Teacher resources"></div>
                 <!-- 1. Enrolled Classes List View -->
                 <div id="student-classes-list-view">
                     <div class="classroom-hero-banner">
@@ -2980,6 +2982,7 @@
                     <li class="teacher-nav-item active" data-teacher-tab="dashboard">
                         <i class="fa-solid fa-chart-pie"></i> <span>Dashboard</span>
                     </li>
+                    <li class="teacher-nav-item" data-teacher-tab="studio"><i class="fa-solid fa-chalkboard-user"></i><span>Teaching Studio</span></li>
                     <li class="teacher-nav-item" data-teacher-tab="classes">
                         <i class="fa-solid fa-school"></i> <span>My Classes</span>
                     </li>
@@ -3018,6 +3021,17 @@
             <!-- Main Workspace Area -->
             <main class="teacher-main-content">
                 <!-- 1. Dashboard Tab -->
+                <div id="teacher-tab-studio" class="teacher-tab-pane" style="display:none"><div class="studio-shell">
+<header><span>PREPARE · TEACH · FOLLOW UP</span><h2>Your Teaching Studio</h2><p>Keep resources, classroom activity, and teacher-reviewed AI drafts together. Turn a lesson into a plan your learners can follow.</p></header>
+<label for="studio-class">Your classroom</label><select id="studio-class"></select><p id="studio-status" role="status" aria-live="polite"></p>
+<div id="studio-body" hidden><div id="studio-metrics"></div>
+<div class="studio-grid"><section class="studio-card"><h3>Classwork and review</h3><ul id="studio-today"></ul><p>Use Homework Manager for grading.</p><div class="studio-actions"><button type="button" onclick="switchTeacherTab('homework')">Open homework</button><button type="button" onclick="switchTeacherTab('ai-worksheets')">Worksheet analysis &amp; reteach</button></div></section>
+<section class="studio-card"><h3>Measured class impact</h3><p>Export aggregate enrolment, recorded attendance and completed worksheet results. Student names and individual records are excluded. Learning improvement and teacher time saved are not yet measured.</p><button type="button" id="studio-impact">Download class impact</button></section></div>
+<div class="studio-grid"><section class="studio-card"><h3>Your resource library</h3><p>Upload any file type: PDF, JPG/JPEG, PNG, Word, PowerPoint, spreadsheets, audio, video or ZIP. Up to 6 MB per file and 60 MB per teacher. Files start private and download as attachments; they are not virus-scanned. Share only files you trust.</p><form id="studio-upload"><label for="studio-files">Choose teaching files</label><input id="studio-files" type="file" multiple required><button class="studio-primary" id="studio-upload-submit">Upload privately</button></form><ul id="studio-resources"></ul></section>
+<section class="studio-card"><h3>Draft your next lesson</h3><p>AI can use text from TXT, Markdown, CSV and JSON files. For other formats, paste relevant text below. Selected text is sent to the configured AI provider. Check accuracy before publishing.</p><form id="studio-generate"><label for="studio-kind">Create a draft</label><select id="studio-kind"><option value="lesson">Lesson plan, activity &amp; exit quiz</option><option value="catchup">Catch-up and follow-up practice</option><option value="parent">Private parent update</option></select><label for="studio-title">Topic or title</label><input id="studio-title" required maxlength="200" placeholder="e.g. Class 7 — Fractions"><label for="studio-source">Optional source file</label><select id="studio-source"></select><label for="studio-instructions">Instructions, source text or verified progress facts</label><textarea id="studio-instructions" rows="6" maxlength="8000" placeholder="Describe the learning goal and any support learners need. Use only necessary information; avoid personal identifiers."></textarea><button class="studio-primary" id="studio-generate-submit">Create private AI draft</button></form></section></div>
+<section class="studio-card"><h3>Attendance</h3><label for="studio-day">Class date</label><input type="date" id="studio-day" style="max-width:220px"><div id="studio-roster"></div><button type="button" class="studio-primary" id="studio-attendance-save">Save attendance</button></section>
+<section class="studio-card"><h3>Review your drafts</h3><p>Publication shares the edited text, including any answer keys, with your class. Remove teacher-only answers before publishing. Parent updates always remain private.</p><div id="studio-drafts"></div></section>
+</div></div></div>
                 <div id="teacher-tab-dashboard" class="teacher-tab-pane active">
                     <section class="teacher-hero-banner">
                         <div>
@@ -3598,6 +3612,7 @@
     <script defer src="/landing.js"></script>
     <script defer src="/ncert.js"></script>
     <script defer src="/app.js"></script>
+<script defer src="/teachingStudio.js"></script>
     <script defer src="/chatSidebar.js"></script>
     <script defer src="/sourceLibrary.js"></script>
     <script defer src="/chatTools.js"></script>

@@ -24,6 +24,7 @@ app.use('/api/ai',           aiRoutes);
 app.use('/api/ncert',        require('./controllers/ncertController'));
 app.use('/api/memory',       require('./controllers/memoryController'));
 app.use('/api/library',      require('./controllers/libraryController'));
+app.use('/api/teaching-studio', require('./controllers/teachingStudioController'));
 app.use('/api/teacher',      teacherRoutes);
 app.use('/api/classroom',    classroomRoutes);
 app.use('/api/study',        studyRoutes);

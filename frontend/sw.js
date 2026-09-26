@@ -10,7 +10,7 @@
 // The visible symptom was new markup rendering against old stylesheets.
 // Bump CACHE_VERSION on any release that changes shell assets.
 
-const CACHE_VERSION = 'v16-ui-refinement';
+const CACHE_VERSION = 'v17-teaching-studio';
 const CACHE_NAME = `studyhub-shell-${CACHE_VERSION}`;
 const APP_SHELL = [
     '/',
@@ -23,6 +23,8 @@ const APP_SHELL = [
     '/refinements.js',
     '/refinements.css',
     '/app.js',
+    '/teachingStudio.js',
+    '/teachingStudio.css',
     '/ncert.js',
     '/premium.js',
     '/chatSidebar.js',
