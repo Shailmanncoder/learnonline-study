@@ -181,6 +181,17 @@ async function initApp() {
     if (authToken) {
         try {
             currentUserData = await api.getProfile(authToken);
+        } catch (err) {
+            // The session really is no good — this is the only case that
+            // should sign someone out.
+            console.error('[BOOT] profile request failed:', err);
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('token');
+            authToken = null;
+            showAuth();
+            return;
+        }
+        try {
             // Backfill the role record for sessions that predate it, so the
             // portal guards work on a restored session too. The profile
             // endpoint is the authority on role; only fall back to the
@@ -207,11 +218,10 @@ async function initApp() {
             // per account so one student's preference is not another's.
             loadAiModelPicker();
         } catch (err) {
-            console.error(err);
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('token');
-            authToken = null;
-            showAuth();
+            // Something failed while drawing the app. The session is fine, so
+            // keep the person signed in and on their page rather than throwing
+            // them back to the landing screen.
+            console.error('[BOOT] could not finish rendering the app:', err);
         }
     } else {
         showAuth();
@@ -230,6 +240,11 @@ function showApp() {
     authModal.style.display = 'none';
     if (window.hideLanding) window.hideLanding();
     handleAppRouting(true);
+    // The sign-in path loads the profile and then came straight here, which
+    // routes and shows the splash but never rendered the account — so a new
+    // account saw the markup's placeholder name for the whole session, and it
+    // only corrected itself if they happened to refresh.
+    updateDashboardUI();
     showWelcomeSplash();
 }
 
@@ -894,32 +909,69 @@ function setHeroGreeting() {
     }
 }
 
-// Extract clean first name from email or username (e.g. asha.verma@example.com -> Asha)
+// A display name from the account's username. Deliberately conservative: it is
+// someone's name, and the previous version rewrote it.
+//
+// What it used to do, and why each rule is gone:
+//   * /mm/ -> /m/ turned "Emma" into "Ema" and "Mohammad" into "Mohamad". The
+//     rule existed to render one developer's "shailmmann" as "Shailmann".
+//   * stripping trailing coder|dev|student|official|user turned "Arjun Dev"
+//     into "Arjun " and "Aditya.Student" into "Aditya".
+//   * a 'Shailmann' fallback meant any name it reduced to nothing — "student2024"
+//     — was displayed as that developer's name.
+// Now: take the local part of an email, use the first word, and add a capital
+// only when the word is entirely lower-case so "McDonald" and "de Souza"
+// survive. Returns '' when there is no name yet, so callers can wait rather
+// than show someone else's.
 function getCleanStudentName(raw) {
-    const rawUser = raw || (currentUserData && (currentUserData.username || currentUserData.email)) || localStorage.getItem('username') || 'Shailmann';
-    let str = rawUser.includes('@') ? rawUser.split('@')[0] : rawUser;
-    // Strip trailing suffixes like coder, dev, student, official, numbers
-    str = str.replace(/(coder|dev|student|official|user|[0-9_.-]+)+$/gi, '');
-    if (str.length < 2) {
-        str = rawUser.split('@')[0].replace(/[0-9_.-]+/g, '') || 'Shailmann';
+    const source = raw
+        || (currentUserData && currentUserData.username)
+        || '';
+    let name = String(source).trim();
+    if (!name) return '';
+    if (name.includes('@')) name = name.split('@')[0];
+    // Separators people use in usernames, so "priya.sharma" reads as "Priya".
+    name = name.replace(/[._-]+/g, ' ').trim();
+    const first = name.split(/\s+/)[0] || '';
+    if (!first) return '';
+    return first === first.toLowerCase()
+        ? first.charAt(0).toUpperCase() + first.slice(1)
+        : first;
+}
+
+// Every place the signed-in person's name or account appears. Called whenever
+// the profile is loaded or changes — the login path fetched the profile but
+// never re-rendered, so the markup's placeholder ("Shailmann",
+// "student@example.com") stayed on screen for the whole session and only
+// corrected itself on a manual refresh.
+function applyIdentity() {
+    const username = (currentUserData && currentUserData.username) || '';
+    const displayName = getCleanStudentName(username);
+    if (!displayName) return;   // nothing known yet; leave the markup alone
+
+    for (const id of ['hero-username', 'grok-user-welcome-name', 'devhub-greeting-name']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = displayName;
     }
-    // Clean duplicate mm to single m (e.g. shailmmann -> Shailmann)
-    str = str.replace(/mm/gi, 'm');
-    return str.charAt(0).toUpperCase() + str.slice(1);
+    // The full username, not a first name, where the account is identified.
+    for (const id of ['mini-username', 'devhub-user-name']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = username;
+    }
+    const rank = document.getElementById('rank-banner-name');
+    if (rank) rank.textContent = `${displayName} (You)`;
+
+    const miniAvatar = document.getElementById('mini-avatar-letter');
+    if (miniAvatar) miniAvatar.textContent = displayName.charAt(0).toUpperCase();
 }
 
 function updateDashboardUI() {
     setHeroGreeting();
 
-    let rawUser = (currentUserData && currentUserData.username) || (currentUserData && currentUserData.email) || localStorage.getItem('username') || 'Shailmann';
-    let displayName = getCleanStudentName(rawUser);
-    let userEmail = (currentUserData && currentUserData.email) || (rawUser.includes('@') ? rawUser : `${rawUser.toLowerCase()}@gmail.com`);
-
-    const heroName = document.getElementById('hero-username');
-    if (heroName) heroName.textContent = displayName;
-
-    const grokWelcomeName = document.getElementById('grok-user-welcome-name');
-    if (grokWelcomeName) grokWelcomeName.textContent = displayName;
+    // Accounts have a username and no email column, so the profile menu shows
+    // the username. It used to show `${username}@gmail.com` — an address the
+    // person never gave and which may belong to someone else.
+    applyIdentity();
 
     const xp = (currentUserData && currentUserData.xp !== undefined) ? currentUserData.xp : 160;
     const level = (currentUserData && currentUserData.level !== undefined) ? currentUserData.level : 2;
@@ -940,15 +992,9 @@ function updateDashboardUI() {
     const levelEl = document.getElementById('dash-level');
     if (levelEl) animateCount(levelEl, level);
 
-    const miniUser = document.getElementById('mini-username');
-    if (miniUser) miniUser.textContent = userEmail;
     const miniLevel = document.getElementById('mini-level');
     if (miniLevel) miniLevel.textContent = level;
 
-    const miniAvatar = document.getElementById('mini-avatar-letter');
-    if (miniAvatar) {
-        miniAvatar.textContent = (displayName[0] || 'S').toUpperCase();
-    }
 
     const avatarUrl = resolveAvatarUrl(currentUserData?.profile_picture, currentUserData);
     const miniImg = document.getElementById('mini-avatar');
@@ -3695,8 +3741,8 @@ function renderDevSkills() {
 
 // Letter Avatar Generation (Never Use Human Face Photos)
 function updateDeveloperAvatar(name) {
-    const cleanName = (name || 'Arjun').trim();
-    const firstLetter = cleanName.charAt(0).toUpperCase() || 'A';
+    const cleanName = String(name || '').trim();
+    const firstLetter = cleanName.charAt(0).toUpperCase() || '?';
     const avatarEl = document.getElementById('devhub-avatar-initial');
     if (avatarEl) {
         avatarEl.textContent = firstLetter;
@@ -3719,18 +3765,18 @@ function showDeveloperPortal(defaultTab = 'dashboard') {
     }
 
     // Populate user profile info in Developer Hub with pure letter avatar
-    const username = currentUserData?.username || 'Arjun Dev';
-    const cleanName = username.split('@')[0] || 'Arjun';
-    const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+    const username = (currentUserData && currentUserData.username) || '';
+    const capitalizedName = getCleanStudentName(username);
 
     const devNameEl = document.getElementById('devhub-user-name');
     const greetingEl = document.getElementById('devhub-greeting-name');
     const heroNameEl = document.getElementById('devhub-hero-name');
     const devLvlEl = document.getElementById('devhub-user-lvl');
 
-    if (devNameEl) devNameEl.textContent = `${capitalizedName} Dev`;
-    if (greetingEl) greetingEl.textContent = capitalizedName;
-    if (heroNameEl) heroNameEl.textContent = capitalizedName;
+    // The account's own name, not name + " Dev".
+    if (devNameEl && username) devNameEl.textContent = username;
+    if (greetingEl && capitalizedName) greetingEl.textContent = capitalizedName;
+    if (heroNameEl && capitalizedName) heroNameEl.textContent = capitalizedName;
     if (devLvlEl) devLvlEl.textContent = `Level ${currentUserData?.level || 4}`;
 
     updateDeveloperAvatar(capitalizedName);
