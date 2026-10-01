@@ -63,7 +63,7 @@ async function generateAIJSON(prompt, systemInstruction = 'You are a pedagogical
 // rather than being repeated (and eventually forgotten) on each one. The role
 // comes from the account row, so opening the teacher portal in the browser or
 // replaying a token issued before a role change grants nothing.
-router.use(auth, requireRole('teacher', 'developer'));
+router.use(auth, requireRole('teacher', 'admin'));
 
 // --- Helper: Unique Class Code Generator ---
 // Math.random() is predictable enough that, given a few codes, an attacker can
@@ -330,6 +330,7 @@ router.post('/classes/join', async (req, res) => {
         res.json({
             success: true,
             status: 'pending',
+            pending: true,
             message: `Request sent. ${classroom.name}-${classroom.section} will appear once the class owner approves it.`,
             classroom: { id: classroom.id, name: classroom.name, section: classroom.section, my_role: null, my_status: 'pending' }
         });
@@ -356,7 +357,8 @@ router.get('/classes/:id/teacher-requests', requireTeacherOfClass, requireClassP
 
 router.post('/classes/:id/teacher-requests/:teacherId', requireTeacherOfClass, requireClassPower('MANAGE_TEACHERS'), requireActiveClass, async (req, res) => {
     try {
-        const { decision, role } = req.body;
+        const { role } = req.body;
+        const decision = req.body.decision || (typeof req.body.approve === 'boolean' ? (req.body.approve ? 'approve' : 'reject') : undefined);
         const classId = req.params.id;
         const teacherId = Number(req.params.teacherId);
         if (!Number.isInteger(teacherId) || teacherId <= 0) {
@@ -369,11 +371,11 @@ router.post('/classes/:id/teacher-requests/:teacherId', requireTeacherOfClass, r
         const grantedRole = ASSIGNABLE_TEACHER_ROLES.includes(role) ? role : 'subject_teacher';
 
         const pending = await db.get(
-            `SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ? AND status = 'pending'`,
+            `SELECT tc.* FROM teacher_classes tc JOIN users u ON u.id=tc.teacher_id WHERE tc.class_id = ? AND tc.teacher_id = ? AND tc.status = 'pending' AND u.role IN ('teacher','admin')`,
             [classId, teacherId]
         );
         if (!pending) {
-            return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'No pending request from that teacher' } });
+            return res.status(409).json({ success: false, error: { code: 'NOT_FOUND', message: 'No pending request from that teacher' } });
         }
 
         if (decision === 'approve') {

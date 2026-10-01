@@ -71,7 +71,7 @@ function isRetryable(err) {
     const msg = String(err?.message || '');
     if ([404, 413, 429, 500, 502, 503, 504].includes(status)) return true;
     if (/rate.?limit|too large|does not exist|do not have access|overloaded|timed? ?out|ECONNRESET|ETIMEDOUT/i.test(msg)) return true;
-    return status === 400 && /response_format|reasoning_(format|effort)|not supported/i.test(msg);
+    return status === 400 && /response_format|reasoning_(format|effort)|not supported|json_validate_failed|failed to generate JSON/i.test(msg);
 }
 
 function groqClient() {
@@ -109,7 +109,7 @@ function reasoningParams(model, task) {
  * Falls back Groq → Gemini → '' so callers can always degrade gracefully.
  */
 async function generateText(prompt, systemInstruction = 'You are a helpful assistant.', opts = {}) {
-    const { task = 'general', json = false, maxTokens } = opts;
+    const { task = 'general', json = false, maxTokens, schema } = opts;
     const model = TASK_MODELS[task] || TASK_MODELS.general;
     // The on-demand tier caps total tokens/minute at 8000, and max_tokens
     // counts toward it — stay well under.
@@ -126,21 +126,24 @@ async function generateText(prompt, systemInstruction = 'You are a helpful assis
             ],
             temperature: 0.2,
             max_tokens: tokens,
-            ...(json ? { response_format: { type: 'json_object' } } : {}),
+            ...(json ? { response_format: schema && ['openai/gpt-oss-120b','openai/gpt-oss-20b','qwen/qwen3.8-27b'].includes(m)
+                ? { type:'json_schema',json_schema:{name:'study_material',strict:true,schema} }
+                : { type: 'json_object' } } : {}),
             ...reasoningParams(m, task)
         });
 
         for (const m of modelChain(model)) {
             try {
-                const c = await call(m, m === model ? budget : Math.min(budget, 3000));
+                const c = await call(m, m === model || schema ? budget : Math.min(budget, 3000));
                 const text = stripThink(c.choices[0]?.message?.content);
                 // An empty reply (reasoning spent the budget) is a miss, not an answer.
                 if (!text) { console.warn(`[AI] ${m} returned an empty answer — trying next model`); continue; }
                 if (m !== model) console.warn(`[AI] ${model} unavailable — answered with ${m}`);
                 return text;
             } catch (err) {
-                if (!isRetryable(err)) { console.warn('[AI] Groq error:', err.message); break; }
-                console.warn(`[AI] ${m} unavailable (${err.status || err.message}) — trying next model`);
+                // Provider errors may embed the entire generated private document.
+                if (!isRetryable(err)) { console.warn('[AI] Groq request failed:', err.status || 'network'); break; }
+                console.warn(`[AI] ${m} unavailable (${err.status || 'network'}) — trying next model`);
             }
         }
         return null;
@@ -152,11 +155,11 @@ async function generateText(prompt, systemInstruction = 'You are a helpful assis
         try {
             const { GoogleGenerativeAI } = require('@google/generative-ai');
             const genAI = new GoogleGenerativeAI(key);
-            const m = genAI.getGenerativeModel({ model: geminiModel() });
+            const m = genAI.getGenerativeModel({ model: geminiModel(),generationConfig:{maxOutputTokens:budget,...(json?{responseMimeType:'application/json'}:{})} });
             const result = await m.generateContent(`${systemInstruction}\n\n${prompt}`);
             return result.response.text() || null;
         } catch (e) {
-            console.warn('[AI] Gemini error:', e.message);
+            console.warn('[AI] Gemini request failed:', e.status || 'provider unavailable');
             return null;
         }
     };
@@ -184,7 +187,7 @@ async function generateJSON(prompt, systemInstruction, opts = {}, fallback = nul
         if (m) {
             try { return JSON.parse(m[0]); } catch (e2) { /* fall through */ }
         }
-        console.warn('[AI] JSON parse failed:', e.message);
+        console.warn('[AI] The response was not valid JSON.');
         return fallback;
     }
 }

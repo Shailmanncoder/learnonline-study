@@ -38,7 +38,7 @@ const api = {
         const res = await fetch(`${API_BASE_URL}/user/profile`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!res.ok) throw new Error('Failed to fetch profile');
+        if (!res.ok) { const error = new Error('Failed to fetch profile'); error.status = res.status; throw error; }
         return res.json();
     },
 
@@ -686,11 +686,11 @@ const api = {
         return res.json();
     },
 
-    generateStudyRoadmap: async (token, { examName, examDate, topics, hoursPerDay = 1.5 }) => {
+    generateStudyRoadmap: async (token, options) => {
         const res = await fetch(`${API_BASE_URL}/study/roadmap/generate`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ examName, examDate, topics, hoursPerDay })
+            body: JSON.stringify(options)
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.msg || 'Failed to generate roadmap');

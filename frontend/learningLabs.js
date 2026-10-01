@@ -1,0 +1,70 @@
+(() => {
+    'use strict';
+    const root=document.getElementById('ss-labs');
+    const labs={
+        motion:{name:'Motion & graphs',subject:'Physics',icon:'fa-chart-line',description:'See how velocity and acceleration shape a journey.',question:'A learner travels 18 metres in 6 seconds at constant speed. What is the speed in m/s?',answer:3,explain:'Speed = distance ÷ time = 18 ÷ 6 = 3 m/s.',prediction:'If velocity doubles while time stays the same, what happens to displacement?'},
+        algebra:{name:'Algebra you can see',subject:'Mathematics',icon:'fa-vector-square',description:'Discover why every term in an identity belongs.',question:'If a = 4 and b = 3, what is (a + b)² − (a² + b²)?',answer:24,explain:'The difference is 2ab = 2 × 4 × 3 = 24: the two rectangles.',prediction:'Is (a + b)² always equal to a² + b²? Predict which pieces would be missing.'},
+        fractions:{name:'Fractions, together',subject:'Mathematics',icon:'fa-circle-half-stroke',description:'Compare parts of a whole and find equivalent fractions.',question:'For the same whole, 3/4 equals how many twelfths? Enter the numerator.',answer:9,explain:'Multiply numerator and denominator by 3: 3/4 = 9/12.',prediction:'If you double both the numerator and denominator, does the shaded proportion change?'},
+        atoms:{name:'Build an atom',subject:'Chemistry',icon:'fa-atom',description:'Explore elements, isotopes and electric charge.',question:'An atom has 6 protons, 8 neutrons and 5 electrons. What is its net charge in elementary charge units?',answer:1,explain:'Only protons and electrons affect net charge: 6 − 5 = +1. Neutrons change mass number, not charge.',prediction:'What changes when you add a neutron? What changes when you add an electron?'},
+        probability:{name:'Chance & evidence',subject:'Mathematics',icon:'fa-dice',description:'Compare a probability with what trials actually produce.',question:'A fair six-sided die is rolled 60 times. What is the expected number of sixes?',answer:10,explain:'Each trial has probability 1/6, so the expected count is 60 × 1/6 = 10. Actual counts can vary.',prediction:'Will exactly half of 20 fair coin tosses be heads? Why might the result differ?'}
+    };
+    let active='',trials=0,heads=0;
+    const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const button=(id,text)=>`<button class="ss-btn" id="${id}" type="button">${text}</button>`;
+    function open() {
+        root.innerHTML=`<header class="ss-head"><div><span class="ss-eyebrow">Learning labs · 5 interactive explorations</span><h1>Make the idea visible.</h1><p>Predict what will happen. Change one thing. Explain what you notice.</p></div></header><div class="ss-grid">${Object.entries(labs).map(([id,l])=>`<article class="ss-card ss-pack"><div class="ss-icon"><i class="fa-solid ${l.icon}" aria-hidden="true"></i></div><span class="ss-eyebrow">${l.subject}</span><h3>${l.name}</h3><p>${l.description}</p><div class="ss-actions"><button class="ss-btn ss-primary" data-lab="${id}">Open lab</button></div></article>`).join('')}</div><div class="ss-note">These explorations use fixed mathematical models. The checks are practice only; opening a lab does not award mastery or increase your grade.</div>`;
+        root.querySelectorAll('[data-lab]').forEach(b=>b.onclick=()=>show(b.dataset.lab));
+    }
+    const range=(id,label,value,min,max,unit='')=>`<label class="ss-label">${label} <output id="${id}-value" data-unit="${unit}">${value}${unit}</output><input type="range" id="${id}" min="${min}" max="${max}" value="${value}" aria-label="${label}"></label>`;
+    function show(id) {
+        if(!labs[id])return;active=id;trials=0;heads=0;const l=labs[id];
+        root.innerHTML=`<header class="ss-head"><div><span class="ss-eyebrow">${l.subject} · Interactive lab</span><h1>${l.name}</h1><p>${l.description}</p></div>${button('lab-back','All labs')}</header><article class="ss-card"><label class="ss-label">01 · Predict<textarea id="lab-prediction" rows="2" placeholder="${esc(l.prediction)}"></textarea></label><p>${l.prediction}</p><h2 style="margin-top:24px">02 · Explore</h2><div class="ss-lab-layout"><div><div class="ss-lab-canvas" id="lab-canvas"></div><div class="ss-note ss-lab-output" id="lab-output" aria-live="polite"></div></div><div class="ss-lab-controls" id="lab-controls"></div></div><label class="ss-label" style="margin-top:20px">03 · Explain what changed<textarea id="lab-explanation" rows="3" placeholder="What did you change? What stayed the same? Does the result match your prediction?"></textarea></label><details><summary>04 · Try a fresh question</summary><form id="lab-check" class="ss-form"><label>${esc(l.question)}<input type="number" name="answer" step="any" required aria-label="Your answer"></label><button class="ss-btn ss-primary" style="width:fit-content">Check my answer</button><p id="lab-result" role="status"></p></form></details><p class="ss-mini">Your written observations stay on this screen until you leave. Download them to keep a copy.</p>${button('lab-download','Download observations')}</article>`;
+        const controls=root.querySelector('#lab-controls');
+        if(id==='motion')controls.innerHTML=range('lab-v','Starting velocity',4,-10,10,' m/s')+range('lab-a','Acceleration',1,-3,3,' m/s²')+range('lab-t','Time',5,1,10,' s')+'<p class="ss-mini">One-dimensional motion with constant acceleration. The graph shows displacement, which can be negative.</p>';
+        if(id==='algebra')controls.innerHTML=range('lab-a','Side a',4,1,9)+range('lab-b','Side b',3,1,9)+'<label class="ss-check"><input type="checkbox" id="lab-missing">Highlight what a² + b² leaves out</label><p class="ss-mini">The two rectangles each have area ab. Together they contribute 2ab.</p>';
+        if(id==='fractions')controls.innerHTML=range('lab-n','Numerator',3,1,4)+range('lab-d','Denominator',4,1,12)+range('lab-k','Multiply both by',2,1,4)+'<p class="ss-mini">Both bars represent the same-sized whole. Changing the partition does not change the fraction.</p>';
+        if(id==='atoms')controls.innerHTML=range('lab-p','Protons',6,1,10)+range('lab-n','Neutrons',6,0,14)+range('lab-e','Electrons',6,0,10)+'<p class="ss-mini">A simplified shell diagram for counting particles, not a to-scale quantum model. Some combinations are unstable.</p>';
+        if(id==='probability')controls.innerHTML=range('lab-p','Probability of heads',50,0,100,'%')+button('lab-toss','Run 20 trials')+button('lab-reset','Reset experiment')+'<p class="ss-mini">Changing the probability starts a new experiment. Each trial is sampled independently.</p>';
+        root.querySelector('#lab-back').onclick=open;
+        controls.querySelectorAll('input').forEach(input=>input.oninput=()=>{if(id==='probability'){trials=0;heads=0;}draw();});
+        root.querySelector('#lab-toss')?.addEventListener('click',()=>{const p=Number(root.querySelector('#lab-p').value)/100;const random=new Uint32Array(20);crypto.getRandomValues(random);for(const n of random){trials++;if(n/4294967296<p)heads++;}draw();});
+        root.querySelector('#lab-reset')?.addEventListener('click',()=>{trials=0;heads=0;draw();});
+        root.querySelector('#lab-check').onsubmit=e=>{e.preventDefault();const correct=Math.abs(Number(new FormData(e.currentTarget).get('answer'))-l.answer)<0.0001;root.querySelector('#lab-result').textContent=(correct?'Correct. ':'Try again. ')+l.explain;};
+        root.querySelector('#lab-download').onclick=()=>{const text=`${l.name}\n\nPrediction: ${root.querySelector('#lab-prediction').value}\n\nExperiment: ${root.querySelector('#lab-output').textContent}\n\nMy explanation: ${root.querySelector('#lab-explanation').value}`,url=URL.createObjectURL(new Blob([text],{type:'text/plain'})),a=document.createElement('a');a.href=url;a.download=id+'-observations.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+        draw();
+    }
+    const num=id=>Number(root.querySelector('#lab-'+id).value),fmt=n=>Number(n.toFixed(2));
+    const svg=(text,label)=>`<svg viewBox="0 0 500 310" role="img" aria-label="${esc(label)}" xmlns="http://www.w3.org/2000/svg">${text}</svg>`;
+    const rect=(x,y,w,h,color)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${color}" stroke="var(--ss-card)" stroke-width="2"/>`;
+    function draw() {
+        root.querySelectorAll('input[type=range]').forEach(i=>{const o=root.querySelector('#'+i.id+'-value');if(o)o.textContent=i.value+(o.dataset.unit||'');});
+        let graphic='',readout='';
+        if(active==='motion') {
+            const v=num('v'),a=num('a'),t=num('t'),points=Array.from({length:41},(_,i)=>{const time=i*t/40;return [time,v*time+0.5*a*time*time];}),min=Math.min(0,...points.map(p=>p[1])),max=Math.max(1,...points.map(p=>p[1])),height=max-min;
+            const px=x=>55+x/t*390,py=y=>260-(y-min)/height*220;
+            graphic=svg(`<path d="M55 25V260H455" stroke="var(--ss-muted)" fill="none"/>${[0,.25,.5,.75,1].map(f=>`<path d="M55 ${py(min+f*height)}H455" stroke="var(--ss-line)"/><text x="45" y="${py(min+f*height)+4}" text-anchor="end" font-size="11" fill="var(--ss-muted)">${fmt(min+f*height)}</text><text x="${px(f*t)}" y="279" text-anchor="middle" font-size="11" fill="var(--ss-muted)">${fmt(f*t)}</text>`).join('')}<polyline points="${points.map(([x,y])=>`${px(x)},${py(y)}`).join(' ')}" fill="none" stroke="var(--ss-accent)" stroke-width="4"/><text x="55" y="16" fill="var(--ss-muted)" font-size="12">Displacement (m)</text><text x="390" y="302" fill="var(--ss-muted)" font-size="12">Time (s)</text>`,'Displacement plotted against time');
+            readout=`After ${t} s: displacement = ${fmt(v*t+.5*a*t*t)} m; velocity = ${v+a*t} m/s. The graph curves when acceleration is nonzero. Displacement is not always distance travelled.`;
+        } else if(active==='algebra') {
+            const a=num('a'),b=num('b'),total=a+b,scale=240/total,A=a*scale,B=b*scale,missing=root.querySelector('#lab-missing').checked;
+            graphic=svg(rect(125,30,A,A,'#365bea')+rect(125+A,30,B,A,missing?'#df9350':'#90a7fa')+rect(125,30+A,A,B,missing?'#df9350':'#90a7fa')+rect(125+A,30+A,B,B,'#b6c5f9')+[[125+A/2,30+A/2,'a²'],[125+A+B/2,30+A/2,'ab'],[125+A/2,30+A+B/2,'ab'],[125+A+B/2,30+A+B/2,'b²']].map(([x,y,l])=>`<text x="${x}" y="${y+5}" font-size="18" text-anchor="middle" fill="${l==='a²'?'white':'#172443'}">${l}</text>`).join('')+`<text x="245" y="297" text-anchor="middle" fill="var(--ss-muted)" font-size="14">(${a} + ${b})² = ${a*a} + ${2*a*b} + ${b*b} = ${total*total}</text>`,'A square split into a squared, two ab rectangles and b squared');
+            readout=`a² + b² = ${a*a+b*b}. (a + b)² = ${total*total}. The two rectangles add ${2*a*b}, so the complete identity is a² + 2ab + b².`;
+        } else if(active==='fractions') {
+            const d=num('d'),nInput=root.querySelector('#lab-n');nInput.max=d;if(Number(nInput.value)>d)nInput.value=d;root.querySelector('#lab-n-value').textContent=nInput.value;
+            const n=num('n'),k=num('k');
+            graphic=svg([[n,d,65],[n*k,d*k,180]].map(([N,D,y])=>Array.from({length:D},(_,i)=>rect(40+i*420/D,y,420/D,55,i<N?'#5875df':'#dfe5f5')).join('')+`<text x="40" y="${y-14}" fill="var(--ss-ink)" font-size="18">${N}/${D}</text>`).join(''),'Two equal bars showing equivalent fractions');
+            readout=`${n}/${d} = ${n*k}/${d*k} = ${fmt(100*n/d)}% of the same whole. Multiplying both parts by ${k} preserves their ratio.`;
+        } else if(active==='atoms') {
+            const p=num('p'),n=num('n'),e=num('e'),names=['','Hydrogen','Helium','Lithium','Beryllium','Boron','Carbon','Nitrogen','Oxygen','Fluorine','Neon'];
+            graphic=svg(`<circle cx="250" cy="145" r="80" fill="none" stroke="var(--ss-line)"/><circle cx="250" cy="145" r="126" fill="none" stroke="var(--ss-line)"/><circle cx="250" cy="145" r="42" fill="#365bea"/><text x="250" y="140" text-anchor="middle" fill="white" font-size="16">${p} p⁺</text><text x="250" y="162" text-anchor="middle" fill="white" font-size="16">${n} n</text>${Array.from({length:e},(_,i)=>{const outer=i>=2,r=outer?126:80,count=outer?Math.max(1,e-2):Math.min(e,2),angle=(outer?i-2:i)*2*Math.PI/count;return `<circle cx="${250+Math.cos(angle)*r}" cy="${145+Math.sin(angle)*r}" r="9" fill="#dc965b"/>`;}).join('')}<text x="250" y="301" text-anchor="middle" fill="var(--ss-ink)" font-size="16">${names[p]} · mass number ${p+n} · charge ${p-e>0?'+':''}${p-e}</text>`,'Simplified atom showing particle counts and electron shells');
+            readout=`${p} protons determine ${names[p]}. Mass number = ${p+n}. Net charge = ${p-e>0?'+':''}${p-e}. Changing neutrons makes a different isotope; changing electrons makes an ion when the charge is nonzero.`;
+        } else {
+            const p=num('p')/100,observed=trials?heads/trials:0;
+            graphic=svg(rect(100,250-p*200,110,p*200,'#90a7fa')+rect(290,250-observed*200,110,observed*200,'#365bea')+`<path d="M65 250H440" stroke="var(--ss-muted)"/><text x="155" y="277" text-anchor="middle" fill="var(--ss-ink)" font-size="14">Expected ${fmt(p*100)}%</text><text x="345" y="277" text-anchor="middle" fill="var(--ss-ink)" font-size="14">Observed ${trials?fmt(observed*100)+'%':'—'}</text><text x="65" y="35" fill="var(--ss-muted)" font-size="12">Proportion of heads</text>`,'Expected probability compared with the observed proportion of heads');
+            readout=trials?`${heads} heads in ${trials} trials. Expected count: ${fmt(trials*p)}. Results vary by chance; a larger sample need not get closer on every batch.`:'Run trials to collect evidence. Expected probability is a long-run model, not a promise for one small sample.';
+        }
+        root.querySelector('#lab-canvas').innerHTML=graphic;root.querySelector('#lab-output').textContent=readout;
+    }
+    window.LearningLabs={open,show};
+    const start=()=>{if(document.getElementById('learning-labs').classList.contains('active'))open();};
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
+})();

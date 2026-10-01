@@ -161,3 +161,19 @@ and reconciling it needs a product decision. Sign-in still distinguishes
 which also confirms whether a username exists. Teacher self-registration remains
 open: anyone may choose a teacher account at signup, which is a product decision
 rather than a bug, but it means teacher-portal access is self-service.
+## My Learning workspace (September 2026)
+
+Open **My Learning** in the student sidebar for a daily plan combining due mistake reviews, flashcards, outstanding homework, and saved exam goals. Goals include a date, daily practice time, and syllabus topics. Daily check-ins persist per account and local calendar day; they represent activity, not verified mastery. Recent quiz accuracy helps prioritize matching syllabus topics. **Progress & export** downloads the account's goals, mistake history, quiz scores, and check-ins as JSON.
+
+New practice quizzes store their answer keys on the server. The browser submits a quiz ID and answers; duplicate submissions return the saved result without awarding XP again. Wrong answers enter the mistake notebook. Correct retests are scheduled one and three days apart, with retirement after three successful spaced reviews; incorrect retests become due after approximately ten minutes. These repeated questions measure retention, not independent concept mastery. Historical quiz scores are retained and may predate server-side grading.
+
+Classroom worksheet submissions require active enrollment in an active class and a published worksheet. Student list/feed responses omit solutions. Homework resubmission clears old grading; repeat homework and worksheet submissions do not repeatedly award completion XP. These routes no longer invent study minutes. Worksheet totals derive from question marks. Uncertain fallback grades are provisional and earn no XP until reviewed. Teachers use **Review queue** in their own sidebar to finalize flagged answers, write feedback, and notify students. Reviews are logged and validated against each question's maximum marks.
+
+The learning tables are created additively on first use for the configured SQLite or MySQL database. Multi-step scoring and rewards use transactions; SQLite requests are serialized so other requests cannot join an open transaction. Account deletion also removes the new learning records. No existing account data is reset by these additions.
+
+Validation: `npm test` includes isolated HTTP journeys for quiz ownership, duplicate submissions, mistake scheduling, goals and export isolation, answer-key hiding, enrollment, homework regrading, teacher reviews, and rollback. Browser checks covered the student workspace, saved goals, check-ins, retest feedback and direct reload. Live model generation, MySQL deployment behavior, and production capacity require deployment-specific verification. The new features do not change AI provider routing or configure model credentials.
+
+
+## Connected Study Studio (October 2026)
+
+Study Studio connects chapter sources, lessons, recall cards, guided working, teacher-reviewed assignments and four staged checks. Learning labs add five interactive explorations. New roadmaps persist to the account and continue generating server-side; My Learning includes Studio work and due retention checks. Shared student, teacher and developer surfaces use quieter cards, typography and controls. See [the implementation and validation notes](docs/connected-study-studio.md) for workflows, limits and deployment requirements.

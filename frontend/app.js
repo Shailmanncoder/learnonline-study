@@ -100,7 +100,7 @@ function handleAppRouting(initial = false) {
     // 1. Teacher Hub Routes
     if (route.first === 'teacher' || route.first === 'teacher-hub' || (!route.first && savedPortal === 'teacher')) {
         const user = JSON.parse(localStorage.getItem('studyUser') || '{}');
-        if (user && user.role === 'student') {
+        if (!['teacher', 'admin'].includes(user?.role)) {
             // Role-locked. Return them to their own hub rather than dangling
             // a sign-in they'd have to log out of this account to use, and
             // correct the URL so a refresh doesn't retry the same route.
@@ -154,6 +154,9 @@ function handleAppRouting(initial = false) {
         'leaderboard': 'leaderboard',
         'flashcards': 'flashcards',
         'online-auto-study': 'online-auto-study',
+        'learning-hub': 'learning-hub',
+        'study-studio': 'study-studio',
+        'learning-labs': 'learning-labs',
         'quiz-generator': 'quiz-generator',
         'quiz': 'quiz-generator',
         'study-roadmap': 'study-roadmap',
@@ -208,10 +211,15 @@ async function initApp() {
             loadAiModelPicker();
         } catch (err) {
             console.error(err);
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('token');
-            authToken = null;
-            showAuth();
+            if (err.status === 401 || err.status === 403) {
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('token');
+                authToken = null;
+                showAuth();
+            } else {
+                showLandingOnly(false);
+                showToast('Your account could not be loaded. Refresh to retry; your session is kept.', 'error');
+            }
         }
     } else {
         showAuth();
@@ -230,6 +238,7 @@ function showApp() {
     authModal.style.display = 'none';
     if (window.hideLanding) window.hideLanding();
     handleAppRouting(true);
+    updateDashboardUI();renderActivity();loadTools();loadNotes();loadAiModelPicker();
     showWelcomeSplash();
 }
 
@@ -249,6 +258,65 @@ function logout() {
 
 // Everything the session owns. `theme` is deliberately kept — it's a device
 // preference, not account data.
+// ── Which model answers ───────────────────────────────────────────
+// 'auto' lets the server route each question and report what it picked. The
+// options come from GET /api/ai/models, so the picker can never offer a model
+// the server would reject — when one is retired server-side it simply stops
+// appearing here.
+const MODEL_CHOICE_PREFIX = 'ai-model:';
+function modelChoiceKey() {
+    return MODEL_CHOICE_PREFIX + ((currentUserData && currentUserData.id) || 'anon');
+}
+
+// Resolved at send time, not cached in a variable: the picker loads
+// asynchronously, so a question asked in the first moment after a reload would
+// otherwise be sent as 'auto', silently ignoring the student's saved choice.
+function currentModelChoice() {
+    const select = document.getElementById('grok-model-select');
+    if (select && select.value) return select.value;
+    try {
+        return localStorage.getItem(modelChoiceKey()) || 'auto';
+    } catch (e) {
+        return 'auto';
+    }
+}
+
+async function loadAiModelPicker() {
+    const wrap = document.getElementById('grok-model-pick');
+    const select = document.getElementById('grok-model-select');
+    if (!wrap || !select || !authToken) return;
+    let info;
+    try {
+        info = await api.getAiModels(authToken);
+    } catch (e) {
+        wrap.hidden = true;   // no picker rather than a broken one
+        return;
+    }
+    // These are Gemini models. If Groq is answering, choosing one would change
+    // nothing, so the control is not offered.
+    if (!info.selectable) { wrap.hidden = true; return; }
+
+    const options = [info.auto, ...(info.models || [])].filter(Boolean);
+    select.innerHTML = options.map(m =>
+        `<option value="${escapeHtml(m.id)}" title="${escapeHtml(m.bestFor || '')}">${escapeHtml(m.label)}</option>`
+    ).join('');
+
+    let saved = null;
+    try { saved = localStorage.getItem(modelChoiceKey()); } catch (e) { saved = null; }
+    const initial = options.some(m => m.id === saved) ? saved : (info.default || 'auto');
+    select.value = initial;
+    select.title = (options.find(m => m.id === initial) || {}).bestFor || '';
+    wrap.hidden = false;
+
+    select.onchange = () => {
+        const chosenId = select.value;
+        const picked = options.find(m => m.id === chosenId);
+        select.title = (picked && picked.bestFor) || '';
+        try { localStorage.setItem(modelChoiceKey(), chosenId); } catch (e) { /* private mode */ }
+        if (picked) showToast(`${picked.label}: ${picked.bestFor}`, 'info');
+    };
+}
+
 const SESSION_KEYS = [
     'authToken', 'token', 'studyUser',
     'activePortalMode', 'activeTeacherTab', 'activeDevTab',
@@ -482,7 +550,7 @@ if (devAuthForm) {
             if (window.isDevLoginMode) {
                 res = await api.login(username, password);
             } else {
-                res = await api.register(username, password);
+                res = await api.register(username, password, 'developer');
             }
             authToken = res.token;
             localStorage.setItem('authToken', authToken);
@@ -872,24 +940,16 @@ function setHeroGreeting() {
 
 // Extract clean first name from email or username (e.g. asha.verma@example.com -> Asha)
 function getCleanStudentName(raw) {
-    const rawUser = raw || (currentUserData && (currentUserData.username || currentUserData.email)) || localStorage.getItem('username') || 'Shailmann';
-    let str = rawUser.includes('@') ? rawUser.split('@')[0] : rawUser;
-    // Strip trailing suffixes like coder, dev, student, official, numbers
-    str = str.replace(/(coder|dev|student|official|user|[0-9_.-]+)+$/gi, '');
-    if (str.length < 2) {
-        str = rawUser.split('@')[0].replace(/[0-9_.-]+/g, '') || 'Shailmann';
-    }
-    // Clean duplicate mm to single m (e.g. shailmmann -> Shailmann)
-    str = str.replace(/mm/gi, 'm');
-    return str.charAt(0).toUpperCase() + str.slice(1);
+    const name=String(raw || currentUserData?.username || '').trim();
+    return name.includes('@') ? name.split('@')[0] : name || 'Learner';
 }
 
 function updateDashboardUI() {
     setHeroGreeting();
 
-    let rawUser = (currentUserData && currentUserData.username) || (currentUserData && currentUserData.email) || localStorage.getItem('username') || 'Shailmann';
+    let rawUser = (currentUserData && currentUserData.username) || (currentUserData && currentUserData.email) || 'Learner';
     let displayName = getCleanStudentName(rawUser);
-    let userEmail = (currentUserData && currentUserData.email) || (rawUser.includes('@') ? rawUser : `${rawUser.toLowerCase()}@gmail.com`);
+    let userEmail = (currentUserData && currentUserData.email) || rawUser;
 
     const heroName = document.getElementById('hero-username');
     if (heroName) heroName.textContent = displayName;
@@ -897,13 +957,13 @@ function updateDashboardUI() {
     const grokWelcomeName = document.getElementById('grok-user-welcome-name');
     if (grokWelcomeName) grokWelcomeName.textContent = displayName;
 
-    const xp = (currentUserData && currentUserData.xp !== undefined) ? currentUserData.xp : 160;
-    const level = (currentUserData && currentUserData.level !== undefined) ? currentUserData.level : 2;
+    const xp = (currentUserData && currentUserData.xp !== undefined) ? currentUserData.xp : 0;
+    const level = (currentUserData && currentUserData.level !== undefined) ? currentUserData.level : 1;
     // Studied Today: Resets every 24 hours / daily
     const time = (currentUserData && currentUserData.studied_today !== undefined) 
         ? currentUserData.studied_today 
         : (currentUserData && currentUserData.time_spent !== undefined ? currentUserData.time_spent : 0);
-    const streak = (currentUserData && currentUserData.streak !== undefined) ? currentUserData.streak : 1;
+    const streak = (currentUserData && currentUserData.streak !== undefined) ? currentUserData.streak : 0;
 
     const xpEl = document.getElementById('dash-xp');
     if (xpEl) animateCount(xpEl, xp);
@@ -974,14 +1034,18 @@ setInterval(() => {
 }, 15000); // Checks every 15 seconds for instantaneous 24h midnight rollover
 
 // ---- Recent activity feed ----
+function accountStorageKey(name) {
+    return `${name}:${currentUserData?.id || 'guest'}`;
+}
 function loadActivity() {
     try {
-        const raw = localStorage.getItem('recent_activity');
-        return raw ? JSON.parse(raw) : [];
+        const raw = localStorage.getItem(accountStorageKey('recent_activity'));
+        const items = raw ? JSON.parse(raw) : [];
+        return Array.isArray(items) ? items.filter(x => x && typeof x.name === 'string') : [];
     } catch (e) { return []; }
 }
 function saveActivity(list) {
-    try { localStorage.setItem('recent_activity', JSON.stringify(list.slice(0, 8))); } catch (e) {}
+    try { localStorage.setItem(accountStorageKey('recent_activity'), JSON.stringify(list.slice(0, 8))); } catch (e) {}
 }
 function recordActivity(toolName, icon, xpGained) {
     const list = loadActivity();
@@ -1016,12 +1080,12 @@ function renderActivity() {
     }
     ul.innerHTML = list.map(item => `
         <li class="activity-item">
-            <div class="activity-item-icon"><i class="${item.icon}"></i></div>
+            <div class="activity-item-icon"><i class="${escapeHtml(item.icon)}"></i></div>
             <div class="activity-item-text">
-                <h5>${item.name}</h5>
+                <h5>${escapeHtml(item.name)}</h5>
                 <span>${timeAgo(item.time)}</span>
             </div>
-            ${item.xp ? `<div class="activity-item-xp">+${item.xp} XP</div>` : ''}
+            ${item.xp ? `<div class="activity-item-xp">+${Number(item.xp) || 0} XP</div>` : ''}
         </li>
     `).join('');
 }
@@ -1048,6 +1112,8 @@ const navItems = document.querySelectorAll('.nav-item[data-target]');
 const sections = document.querySelectorAll('.section-container');
 
 function navigateToSection(target, updateUrl = true) {
+    if(target!=='study-studio')window.StudyStudio?.close();
+    if (target === 'study-roadmap') setTimeout(rmRestore, 0);
     navItems.forEach(n => n.classList.remove('active'));
     const activeItem = document.querySelector(`.nav-item[data-target="${target}"]`);
     if (activeItem) activeItem.classList.add('active');
@@ -1060,6 +1126,9 @@ function navigateToSection(target, updateUrl = true) {
         const frame = document.getElementById('auto-study-frame');
         if (frame && !frame.hasAttribute('src')) frame.src = frame.dataset.src;
     }
+    if (target === 'learning-hub') window.loadLearningWorkspace?.();
+    if (target === 'study-studio') window.StudyStudio?.open(false);
+    if (target === 'learning-labs') window.LearningLabs?.open();
     if (target === 'leaderboard') loadLeaderboard();
     if (target === 'tools') loadTools();
     if (target === 'notes') loadNotes();
@@ -1245,7 +1314,8 @@ let toolsSearchQuery = '';
 
 function getFavoritesList() {
     try {
-        return JSON.parse(localStorage.getItem('favTools') || '[]');
+        const stored = JSON.parse(localStorage.getItem(accountStorageKey('favTools')) || '[]');
+        return Array.isArray(stored) ? stored.filter(x => typeof x === 'string') : [];
     } catch {
         return [];
     }
@@ -1260,7 +1330,7 @@ function toggleFavoriteTool(toolId) {
         favs.push(toolId);
         showToast('⭐ Saved to favorites!', 'success');
     }
-    localStorage.setItem('favTools', JSON.stringify(favs));
+    localStorage.setItem(accountStorageKey('favTools'), JSON.stringify(favs));
     updateCategoryCounts();
     loadTools();
     updateActiveToolFavBtn();
@@ -1795,7 +1865,8 @@ document.getElementById('summarize-note-btn').addEventListener('click', async ()
         const response = await api.generateAI(authToken, `Summarize this text in bullet points: ${content}`, "You are a summarizing assistant.");
         document.getElementById('note-content').value = response.result;
     } catch (err) {
-        document.getElementById('note-content').value = "Failed to summarize.";
+        document.getElementById('note-content').value = content;
+        showToast('Summary failed. Your original note has been restored.', 'error');
     }
 });
 
@@ -1805,6 +1876,13 @@ async function loadLeaderboard() {
         const data = await api.getLeaderboard(authToken);
         const leaders = data.leaders || data; // backward compat
         const currentUserRank = data.currentUserRank || null;
+        const position = leaders.findIndex(user => user.id === currentUserData?.id);
+        const own = position >= 0 ? { ...leaders[position], rank: position + 1 } : currentUserRank;
+        document.getElementById('rank-banner-name').textContent = own?.username || currentUserData?.username || 'Your ranking';
+        document.getElementById('rank-banner-avatar').textContent = (own?.username || currentUserData?.username || '?').slice(0, 1).toUpperCase();
+        document.getElementById('rank-banner-tier').textContent = `Level ${Number(own?.level ?? currentUserData?.level) || 1}`;
+        document.getElementById('user-global-rank').textContent = own?.rank ? `#${own.rank}` : 'Unranked';
+        document.getElementById('user-banner-xp').textContent = `${Number(own?.xp ?? currentUserData?.xp) || 0} XP`;
         const list = document.getElementById('leaderboard-list');
         list.innerHTML = '';
 
@@ -1820,7 +1898,7 @@ async function loadLeaderboard() {
                     <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(user.username)}" style="background:#1a1a2e; width: 40px; height: 40px; border-radius: 50%;">
                     <div>
                         <div style="font-weight: 600; font-size: 16px;">${escapeHtml(user.username)}${isMe ? ' <span style="color:#a855f7">✨ You</span>' : ''}</div>
-                        ${user.bio ? `<div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${user.bio}</div>` : ''}
+                        ${user.bio ? `<div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${escapeHtml(user.bio)}</div>` : ''}
                     </div>
                 </div>
                 <div class="lb-stats">
@@ -3577,26 +3655,42 @@ let currentRenderedDevNotes = '';
 // Persistent & Interactive Developer Skills Store
 function getDeveloperSkills() {
     try {
-        const stored = localStorage.getItem('devUserSkills');
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-    } catch(e) {}
-    
-    // Default initial skills
-    return [
-        { name: 'JavaScript', level: 'Advanced' },
-        { name: 'React', level: 'Advanced' },
-        { name: 'Node.js', level: 'Intermediate' },
-        { name: 'Python', level: 'Intermediate' },
-        { name: 'SQL', level: 'Intermediate' }
-    ];
+        const stored = JSON.parse(localStorage.getItem(accountStorageKey('devUserSkills')) || '[]');
+        return Array.isArray(stored) ? stored.filter(s => s && typeof s.name === 'string' && typeof s.level === 'string') : [];
+    } catch { return []; }
 }
 
 function saveDeveloperSkills(skills) {
-    localStorage.setItem('devUserSkills', JSON.stringify(skills));
+    try { localStorage.setItem(accountStorageKey('devUserSkills'), JSON.stringify(skills)); }
+    catch { showToast('Browser storage is full. Your skills were not saved.', 'error'); }
     renderDevSkills();
+}
+
+// These are browser-local practice results, never school grades or credentials.
+function getDeveloperProgress() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(accountStorageKey('devProgress')) || '{}');
+        return { tests: Number(saved.tests) || 0, reviews: Number(saved.reviews) || 0, events: Array.isArray(saved.events) ? saved.events : [] };
+    } catch { return { tests: 0, reviews: 0, events: [] }; }
+}
+function recordDeveloperProgress(kind, title, detail) {
+    const progress = getDeveloperProgress();
+    if (kind === 'test') progress.tests++;
+    if (kind === 'review') progress.reviews++;
+    progress.events.unshift({kind, title, detail, time: Date.now()});
+    progress.events = progress.events.slice(0, 12);
+    try { localStorage.setItem(accountStorageKey('devProgress'), JSON.stringify(progress)); }
+    catch { showToast('This result could not be saved in your browser.', 'info'); }
+    renderDeveloperProgress();
+}
+function renderDeveloperProgress() {
+    const p = getDeveloperProgress();
+    document.getElementById('devhub-stat-tests').textContent = p.tests;
+    document.getElementById('devhub-stat-projects').textContent = p.reviews;
+    const lastReview = p.events.find(e => e.kind === 'review');
+    document.getElementById('devhub-stat-score').textContent = lastReview?.detail || '—';
+    const container = document.getElementById('devhub-real-activity');
+    if (container) container.innerHTML = p.events.length ? p.events.map(e => `<div class="devhub-act-row-jsx"><div class="devhub-act-content-jsx"><p class="devhub-act-main-jsx">${escapeHtml(e.title)}</p><p class="devhub-act-sub-jsx">${escapeHtml(e.detail)} · ${timeAgo(e.time)}</p></div></div>`).join('') : '<p>Your completed practice and code reviews will appear here. History is saved for this account in this browser.</p>';
 }
 
 function renderDevSkills() {
@@ -3650,7 +3744,7 @@ function renderDevSkills() {
     }
 
     // Feed skills into Mock Test Subject Dropdown
-    const testSubjectSelect = document.getElementById('devhub-test-subject');
+    const testSubjectSelect = document.getElementById('devhub-test-skill-select');
     if (testSubjectSelect) {
         const currentVal = testSubjectSelect.value;
         testSubjectSelect.innerHTML = '';
@@ -3674,15 +3768,15 @@ function renderDevSkills() {
 
 // Letter Avatar Generation (Never Use Human Face Photos)
 function updateDeveloperAvatar(name) {
-    const cleanName = (name || 'Arjun').trim();
-    const firstLetter = cleanName.charAt(0).toUpperCase() || 'A';
+    const cleanName = (name || 'Developer').trim();
+    const firstLetter = cleanName.charAt(0).toUpperCase() || 'D';
     const avatarEl = document.getElementById('devhub-avatar-initial');
     if (avatarEl) {
         avatarEl.textContent = firstLetter;
     }
 }
 
-function showDeveloperPortal(defaultTab = 'dashboard') {
+function showDeveloperPortal(defaultTab = 'dashboard', updateUrl = true) {
     localStorage.setItem('activePortalMode', 'developer');
     if (authModal) authModal.style.display = 'none';
     if (window.hideLanding) window.hideLanding();
@@ -3698,8 +3792,8 @@ function showDeveloperPortal(defaultTab = 'dashboard') {
     }
 
     // Populate user profile info in Developer Hub with pure letter avatar
-    const username = currentUserData?.username || 'Arjun Dev';
-    const cleanName = username.split('@')[0] || 'Arjun';
+    const username = currentUserData?.username || 'Developer';
+    const cleanName = username.split('@')[0] || 'Developer';
     const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
 
     const devNameEl = document.getElementById('devhub-user-name');
@@ -3707,17 +3801,18 @@ function showDeveloperPortal(defaultTab = 'dashboard') {
     const heroNameEl = document.getElementById('devhub-hero-name');
     const devLvlEl = document.getElementById('devhub-user-lvl');
 
-    if (devNameEl) devNameEl.textContent = `${capitalizedName} Dev`;
+    if (devNameEl) devNameEl.textContent = capitalizedName;
     if (greetingEl) greetingEl.textContent = capitalizedName;
     if (heroNameEl) heroNameEl.textContent = capitalizedName;
-    if (devLvlEl) devLvlEl.textContent = `Level ${currentUserData?.level || 4}`;
+    if (devLvlEl) devLvlEl.textContent = `Level ${currentUserData?.level || 1}`;
 
     updateDeveloperAvatar(capitalizedName);
     renderDevSkills();
+    renderDeveloperProgress();
 
     // Switch to target or saved tab
     const tabToOpen = defaultTab || localStorage.getItem('activeDevTab') || 'dashboard';
-    switchDevTab(tabToOpen);
+    switchDevTab(tabToOpen, updateUrl);
 }
 
 function showStudentPortal() {
@@ -3775,6 +3870,8 @@ devBackdropEl?.addEventListener('click', () => {
 
 // Tab Switcher inside Developer Hub
 function switchDevTab(tabId, updateUrl = true) {
+    if (tabId === 'settings') { switchPortal('student', false); navigateToSection('profile', updateUrl); return; }
+    if (!['dashboard', 'tests', 'notes', 'review', 'skills', 'projects'].includes(tabId)) tabId = 'dashboard';
     localStorage.setItem('activeDevTab', tabId);
     if (updateUrl) {
         syncUrl(tabId === 'dashboard' ? '/developer' : `/developer/${tabId}`);
@@ -3954,6 +4051,7 @@ document.getElementById('devhub-run-test-now-btn')?.addEventListener('click', as
     const skill = document.getElementById('devhub-test-skill-select')?.value;
     const level = document.getElementById('devhub-test-level-select')?.value;
     const count = parseInt(document.getElementById('devhub-test-q-count')?.value, 10) || 5;
+    if (devExamClockInterval) clearInterval(devExamClockInterval);
     const loading = document.getElementById('devhub-test-loading-msg');
 
     if (loading) loading.style.display = 'block';
@@ -3978,7 +4076,9 @@ Return ONLY a valid JSON array of objects with NO surrounding markdown backticks
 
     try {
         const res = await api.generateAI(authToken, prompt, "You are a senior tech lead formatting strictly as JSON.");
-        const questions = extractJsonPayload(res.result, true);
+        const parsed = extractJsonPayload(res.result, true);
+        if (!Array.isArray(parsed) || parsed.length !== count || !parsed.every(q => q && typeof q.question === 'string' && Array.isArray(q.options) && q.options.length === 4 && q.options.every(o => typeof o === 'string') && q.options.includes(q.correct_answer))) throw new Error('Incomplete practice questions');
+        const questions = parsed.map((q, i) => ({ ...q, id: i + 1, code_snippet: typeof q.code_snippet === 'string' ? q.code_snippet : '' }));
         currentDevExamQuestions = questions;
 
         document.getElementById('devhub-exam-paper-title').textContent = `${skill} • ${level}`;
@@ -4063,6 +4163,7 @@ Return ONLY a valid JSON array of objects with NO surrounding markdown backticks
 // Submit Exam for AI Grading
 document.getElementById('devhub-submit-exam-btn')?.addEventListener('click', async () => {
     const btn = document.getElementById('devhub-submit-exam-btn');
+    if (!currentDevExamQuestions.length) return;
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Grading with AI...';
     if (devExamClockInterval) clearInterval(devExamClockInterval);
@@ -4104,7 +4205,12 @@ ${JSON.stringify(studentAnswers, null, 2)}`;
         const res = await api.generateAI(authToken, prompt, "You are a technical evaluation engine. Output strictly JSON.");
         const grading = extractJsonPayload(res.result, false);
 
-        document.getElementById('devhub-final-score-text').textContent = grading.score || '85%';
+        if (!Array.isArray(grading.feedback) || grading.feedback.length !== studentAnswers.length || !grading.feedback.every((f, i) => f && f.id === studentAnswers[i].id && typeof f.correct === 'boolean' && typeof f.explanation === 'string')) {
+            throw new Error('Incomplete assessment feedback');
+        }
+        const correctCount = grading.feedback.filter(f => f.correct).length;
+        const scoreText = `${correctCount}/${studentAnswers.length} (${Math.round(correctCount / studentAnswers.length * 100)}%)`;
+        document.getElementById('devhub-final-score-text').textContent = scoreText;
         const fbContainer = document.getElementById('devhub-exam-feedback-list');
         fbContainer.innerHTML = '';
 
@@ -4153,12 +4259,7 @@ ${JSON.stringify(studentAnswers, null, 2)}`;
             });
         }
 
-        // Increment tests taken stat in dashboard
-        const testCountEl = document.getElementById('devhub-stat-tests');
-        if (testCountEl) {
-            const c = parseInt(testCountEl.textContent, 10) || 24;
-            testCountEl.textContent = c + 1;
-        }
+        recordDeveloperProgress('test', 'Completed technical practice', scoreText + ' · AI assessment');
 
         document.getElementById('devhub-exam-results-area').style.display = 'block';
         document.getElementById('devhub-exam-results-area').scrollIntoView({ behavior: 'smooth' });
@@ -4213,7 +4314,7 @@ Structure your guide in clean Markdown with:
         document.getElementById('devhub-rendered-notes-title').textContent = `${topic} • ${level}`;
         const bodyEl = document.getElementById('devhub-rendered-notes-body');
         if (typeof marked !== 'undefined') {
-            bodyEl.innerHTML = marked.parse(currentRenderedDevNotes);
+            renderOutputWithMath(bodyEl, currentRenderedDevNotes);
         } else {
             bodyEl.textContent = currentRenderedDevNotes;
         }
@@ -4278,22 +4379,17 @@ Provide a comprehensive code review report formatted in Markdown:
 
         // Extract score if present
         const match = text.match(/Score[:\s]+(\d+)\s*\/\s*100/i) || text.match(/(\d+)\s*\/\s*100/);
-        const scoreVal = match ? match[1] : '88';
-        document.getElementById('devhub-reviewed-score-val').textContent = `${scoreVal}/100`;
+        const scoreVal = match && Number(match[1]) <= 100 ? `${Number(match[1])}/100` : 'Not scored';
+        document.getElementById('devhub-reviewed-score-val').textContent = scoreVal;
 
         const bodyEl = document.getElementById('devhub-reviewed-feedback-body');
         if (typeof marked !== 'undefined') {
-            bodyEl.innerHTML = marked.parse(text);
+            renderOutputWithMath(bodyEl, text);
         } else {
             bodyEl.textContent = text;
         }
 
-        // Increment projects count in dashboard
-        const projCountEl = document.getElementById('devhub-stat-projects');
-        if (projCountEl) {
-            const p = parseInt(projCountEl.textContent, 10) || 8;
-            projCountEl.textContent = p + 1;
-        }
+        recordDeveloperProgress('review', title || 'Code review', scoreVal);
 
         document.getElementById('devhub-review-render-area').style.display = 'block';
         if (loading) loading.style.display = 'none';
@@ -4551,6 +4647,8 @@ document.getElementById('grok-new-chat-btn')?.addEventListener('click', () => {
 document.getElementById('grok-clear-chat-btn')?.addEventListener('click', () => {
     if (confirm('Clear all conversation messages?')) {
         grokChatHistory = [];
+        activeChatThreadId = null;
+        try { localStorage.removeItem('activeChatThreadId'); } catch (e) {}
         if (grokChatStream) {
             grokChatStream.innerHTML = '';
             if (grokWelcomeView) {
@@ -4563,12 +4661,16 @@ document.getElementById('grok-clear-chat-btn')?.addEventListener('click', () => 
 });
 
 // Send Message Handler with Adaptive Thinking & Tool Routing
+let companionSending = false;
 async function sendGrokMessage() {
+    if (companionSending) return;
     const text = grokChatInput?.value?.trim();
     if (!text) return;
 
     // Every exchange belongs to a thread — that's what gives the tutor memory.
-    await ensureChatThread();
+    companionSending = true;
+    const sendingThreadId = await ensureChatThread();
+    if (!sendingThreadId) { companionSending = false; showToast('Could not open your conversation. Please retry.', 'error'); return; }
 
     setGrokWelcomeVisible(false);
     if (grokSlashPopup) grokSlashPopup.style.display = 'none';
@@ -4588,10 +4690,10 @@ async function sendGrokMessage() {
     const domainMatch = text.match(/([a-zA-Z0-9-]+\.(?:org|live|com|net|in|io|edu|gov|co|app|tech))/i);
     const isDomainLookup = Boolean(domainMatch);
     const targetDomain = domainMatch ? domainMatch[1] : '';
-    const isSearchCmd = cleanLower.startsWith('search') || cleanLower.startsWith('lookup') || cleanLower.startsWith('find') || cleanLower.includes('search for') || isDomainLookup;
+    const isSearchCmd = /^(?:(?:can|could|would) you\s+)?(?:please\s+)?(?:\/research\b|search\b|look\s*up\b|browse\b|research\b|find\s+(?:online|on the web)\b)/i.test(text) || isDomainLookup;
     const isStemQuery = /(roots\s+of|derivative|integral|\b\d+[xX]\^|solve\s+|equation|calculate|prove\b)/i.test(cleanLower);
 
-    const cleanTopic = targetDomain || (isSearchCmd ? text.replace(/^(search\s+for|search|lookup|find)\s+/i, '') : text.substring(0, 45));
+    const cleanTopic = targetDomain || (isSearchCmd ? text.replace(/^(search\s+(?:for|on|about)|search|lookup|find)\s+/i, '') : text.substring(0, 45));
 
     // 3. Render the live working panel.
     // Every step shown here is one the server actually recorded for this
@@ -4645,6 +4747,17 @@ async function sendGrokMessage() {
                 const r = await api.getAiProgress(authToken, requestId);
                 if (!livePolling) break;
                 renderLiveSteps(r && r.steps);
+                if (r && typeof r.answer === 'string') {
+                    let draft = aiRow.querySelector('.grok-stream-draft');
+                    if (!draft) {
+                        draft = document.createElement('div');
+                        draft.className = 'grok-stream-draft';
+                        draft.style.whiteSpace = 'pre-wrap';
+                        draft.setAttribute('aria-label', 'Answer being written');
+                        aiRow.querySelector('.grok-ai-bubble').appendChild(draft);
+                    }
+                    draft.textContent = r.answer;
+                }
                 if (r && r.done) break;
             } catch (e) { /* the answer still arrives without live steps */ }
             await new Promise((resolve) => setTimeout(resolve, 500));
@@ -4659,59 +4772,35 @@ async function sendGrokMessage() {
         const studentName = getCleanStudentName();
         const tutorMode = document.getElementById('grok-tutor-mode')?.value || 'tools';
         let toolNameBadge = '';
-        let systemPrompt = `You are a personalized, world-class AI Study Companion inspired by Grok for ${studentName}. Naturally address the student warmly by name in your responses (e.g. "Hello ${studentName}!" or "Sure ${studentName}, let's solve this:"). Provide ultra-clear, intelligent, step-by-step academic explanations formatted with rich markdown, headings, bullet points, and LaTeX equations when applicable ($...$ for inline and $$...$$ for display math).`;
+        let systemPrompt = `You are a personalized, world-class AI Study Companion inspired by Grok for ${studentName}. Answer directly without repetitive greetings. Begin with a short answer, then add explanation when useful. Provide clear explanations formatted with rich markdown, headings, bullet points, and LaTeX equations when applicable ($...$ for inline and $$...$$ for display math).`;
 
         let promptToSend = text;
 
         if (isDomainLookup || isSearchCmd) {
-            toolNameBadge = `<div class="grok-tool-execution-badge"><i class="fa-solid fa-globe"></i> Web Search &amp; Domain Intelligence: ${escapeHtml(cleanTopic)}</div>`;
-            systemPrompt = `You are a real-time web search and domain intelligence researcher inspired by Grok and Perplexity. Provide a comprehensive, professional, and structured research report on "${cleanTopic}".
-Format your response in GitHub Markdown using this exact structure:
-
-### 🔍 Research Overview & Status
-Provide a transparent summary of the search status, domain reachability, and key findings. Include a Markdown table summarizing possibilities (e.g. Active Portal vs Under Development vs Private Portal, and What it means).
-
----
-
-### 📋 Full Profile & Intelligence Report: "${cleanTopic}"
-Use clear sections with emojis:
-1️⃣ **Overview & Purpose**: Tagline, entity/organization that operates it, primary service and mission.
-2️⃣ **Core Features & Services**: Registration flow, core tools, digital services, certificate/document downloads, integrations, and mobile/PWA availability.
-3️⃣ **Target Audience & Use Cases**: Who uses it (students, developers, citizens, enterprises), regional vs global scope.
-4️⃣ **Access & Navigation (Step-by-Step)**: Numbered step-by-step walkthrough from visiting the URL to logging in, using features, and accessing support.
-5️⃣ **Requirements, Documents & Pro-Tips**: Supported browsers, required credentials/documents, speed requirements, and security guidelines.
-
----
-
-### 🛠️ Actionable Research & Investigation Toolkit
-Provide actionable tips on how to independently verify or investigate this domain (e.g., WHOIS lookups, search syntax like \`site:\`, public records, and contact channels).
-
----
-
-### 📌 Bottom Line
-Provide a clear, 2-sentence executive summary with recommended next steps.`;
+            toolNameBadge = `<div class="grok-tool-execution-badge"><i class="fa-solid fa-globe"></i> Web lookup: ${escapeHtml(cleanTopic)}</div>`;
+            systemPrompt = 'Answer the actual search request using only retrieved references for current facts. Start with a short direct answer, then explain as needed. Cite sources. Disclose lookup failures and never invent browsing actions or website features.';
         } else if (text.startsWith('/quiz') || text.toLowerCase().includes('quiz')) {
-            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-square-check"></i> Executed: AI Quiz Generator</div>';
+            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-square-check"></i> Requested: AI Quiz Generator</div>';
             systemPrompt = "You are an expert examiner. Generate an interactive practice quiz on the requested topic. Provide 4 multiple-choice questions with options (A, B, C, D), correct answers, and clear step-by-step rationales.";
             promptToSend = text.replace('/quiz', '').trim();
         } else if (text.startsWith('/notes') || text.toLowerCase().includes('notes on')) {
-            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-book-bookmark"></i> Executed: Smart Note Taker</div>';
+            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-book-bookmark"></i> Requested: Smart Note Taker</div>';
             systemPrompt = "You are a master educator. Create structured, high-yield study notes with Core Concepts, Key Formulas, Bulleted Highlights, Real-World Examples, and Common Exam Pitfalls.";
             promptToSend = text.replace('/notes', '').trim();
         } else if (text.startsWith('/solve') || isStemQuery) {
-            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-calculator"></i> Executed: Step-by-Step STEM Solver</div>';
+            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-calculator"></i> Requested: Step-by-Step STEM Solver</div>';
             systemPrompt = "You are a master mathematics and physics professor. Solve step-by-step showing the core principle, each algebraic transformation, LaTeX equations ($...$ and $$...$$), and finish with a bold Final Answer.";
             promptToSend = text.replace('/solve', '').trim();
         } else if (text.startsWith('/flashcards') || text.toLowerCase().includes('flashcards')) {
-            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-clone"></i> Executed: Flashcard Creator</div>';
+            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-clone"></i> Requested: Flashcard Creator</div>';
             systemPrompt = "Create a set of spaced-repetition flashcards formatted as Q: [Question] and A: [Answer] with crisp, memorable definitions.";
             promptToSend = text.replace('/flashcards', '').trim();
         } else if (text.startsWith('/research') || tutorMode === 'research') {
-            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-magnifying-glass-chart"></i> Executed: Deep Academic Research</div>';
+            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-magnifying-glass-chart"></i> Requested: Deep Academic Research</div>';
             systemPrompt = "Perform a deep academic synthesis. Provide an Executive Summary, Key Findings, Scientific Evidence with inline citations [1], [2], Comparison of theories, and Conclusions.";
             promptToSend = text.replace('/research', '').trim();
         } else if (text.startsWith('/summary')) {
-            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-compress"></i> Executed: Multi-Format Summarizer</div>';
+            toolNameBadge = '<div class="grok-tool-execution-badge"><i class="fa-solid fa-compress"></i> Requested: Multi-Format Summarizer</div>';
             systemPrompt = "Provide a high-impact summary with 5 core bullet takeaways, key definitions, and actionable study insights.";
             promptToSend = text.replace('/summary', '').trim();
         } else if (tutorMode === 'socratic') {
@@ -4719,11 +4808,12 @@ Provide a clear, 2-sentence executive summary with recommended next steps.`;
         }
 
         const res = await api.generateAI(authToken, promptToSend, systemPrompt, currentModelChoice(), {
-            threadId: activeChatThreadId,
+            threadId: sendingThreadId,
+            task: tutorMode === 'research' ? 'research' : undefined,
             useMemory: true,
             requestId
         });
-        if (res.threadId) activeChatThreadId = res.threadId;
+        // Do not change the selected conversation when an older request finishes.
         clearInterval(timerInterval);
         stopLiveSteps();
 
@@ -4736,19 +4826,7 @@ Provide a clear, 2-sentence executive summary with recommended next steps.`;
         // The finished panel keeps the same real steps, collapsed.
         const steps = Array.isArray(res.steps) ? res.steps : [];
         const retrievedCount = Array.isArray(res.sources) ? res.sources.length : 0;
-        let thinkingHtml = '';
-        if (steps.length) {
-            thinkingHtml = `
-                <div class="grok-think-pill-toggle" id="toggle-think-${msgId}">
-                    <i class="fa-regular fa-lightbulb"></i> ${steps.length} step${steps.length === 1 ? '' : 's'} · ${elapsedSeconds}s <i class="fa-solid fa-chevron-down" style="font-size: 10px; margin-left: 4px;"></i>
-                </div>
-                <div class="grok-thinking-block" id="completed-think-${msgId}" style="display: none;">
-                    <ol class="grok-live-list is-done">
-                        ${steps.map(t => `<li class="grok-live-step">${escapeHtml(t)}</li>`).join('')}
-                    </ol>
-                </div>
-            `;
-        }
+        const thinkingHtml = renderThinking(steps, elapsedSeconds);
 
         // Real citations: these are the NCERT pages the server actually
         // retrieved and put in front of the model, not a decoration.
@@ -4776,6 +4854,10 @@ Provide a clear, 2-sentence executive summary with recommended next steps.`;
                                 : 'From your NCERT textbook'}</div>
                     <ul>${items}</ul>
                 </div>`;
+        }
+
+        if (Array.isArray(res.webSources) && res.webSources.length) {
+            sourcesHtml += '<div class="grok-sources"><div class="grok-sources-head">Web references</div><ul>' + res.webSources.filter(src => /^https:\/\//i.test(src.url)).map(src => `<li><a href="${escapeHtml(src.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(src.title)}</a> · ${escapeHtml(src.source || 'Website')}</li>`).join('') + '</ul></div>';
         }
 
         // Verified Source Library cards: built from the server's citation
@@ -4832,16 +4914,8 @@ Provide a clear, 2-sentence executive summary with recommended next steps.`;
         if (window.SourceLibraryUI) window.SourceLibraryUI.wire(bubbleEl);
         if (window.ChatToolsUI) window.ChatToolsUI.wire(bubbleEl);
 
-        // Toggle thinking step visibility
-        if (thinkingHtml) {
-            const toggleBtn = document.getElementById(`toggle-think-${msgId}`);
-            const thinkBox = document.getElementById(`completed-think-${msgId}`);
-            toggleBtn?.addEventListener('click', () => {
-                const isHidden = thinkBox.style.display === 'none';
-                thinkBox.style.display = isHidden ? 'block' : 'none';
-                toggleBtn.querySelector('.fa-chevron-down, .fa-chevron-up').className = isHidden ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down';
-            });
-        }
+        // Opening and closing the thinking panel is handled once, by delegation
+        // (see renderThinking), so it also works on chats reopened later.
 
         // Wire up response action buttons
         bubbleEl.querySelector('.grok-copy-btn')?.addEventListener('click', () => {
@@ -4923,10 +4997,15 @@ Provide a clear, 2-sentence executive summary with recommended next steps.`;
         `;
     }
 
+    companionSending = false;
     grokChatStream.scrollTop = grokChatStream.scrollHeight;
 }
 
 grokSendBtn?.addEventListener('click', sendGrokMessage);
+document.getElementById('grok-video-suggest-btn')?.addEventListener('click', () => {
+    grokChatInput.value = 'Suggest a YouTube video for ' + (grokChatInput.value.trim() || '[class, board, chapter/topic and preferred language]');
+    grokChatInput.focus();
+});
 
 grokChatInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -4963,7 +5042,7 @@ function switchPortal(portal, updateUrl = true) {
         // persist the denied portal, or every reload bounces the student
         // back into this modal.
         const user = JSON.parse(localStorage.getItem('studyUser') || '{}');
-        if (user && user.role === 'student') {
+        if (!['teacher', 'admin'].includes(user?.role)) {
             showToast('Teacher Hub requires a teacher account.', 'info');
             return;
         }
@@ -4982,13 +5061,14 @@ function switchPortal(portal, updateUrl = true) {
         // Tab loaders read activeTeacherClasses, so the portal data has to
         // land before the tab renders — otherwise a refresh straight into
         // /teacher/<tab> shows an empty pane.
-        loadTeacherPortal().then(() => switchTeacherTab(savedTab, updateUrl));
+        loadTeacherPortal().then(() => {
+            if (currentPortal === 'teacher') switchTeacherTab(localStorage.getItem('activeTeacherTab') || savedTab, updateUrl);
+        });
     } else if (portal === 'developer') {
         if (studentApp) studentApp.style.display = 'none';
         if (teacherApp) teacherApp.style.display = 'none';
         if (devApp) devApp.style.display = 'flex';
-        if (typeof initDeveloperPortal === 'function') initDeveloperPortal();
-        if (updateUrl) syncUrl('/developer');
+        showDeveloperPortal(localStorage.getItem('activeDevTab') || 'dashboard', updateUrl);
     } else {
         // Default to student
         if (devApp) devApp.style.display = 'none';
@@ -5036,7 +5116,10 @@ document.querySelectorAll('.teacher-nav-item').forEach(item => {
 });
 
 function switchTeacherTab(tabName, updateUrl = true) {
+    if(tabName!=='learning')window.StudyStudio?.close();
+    if (tabName === 'reviews') window.loadTeacherReviews?.();
     if (tabName === 'studio') window.loadTeachingStudio?.();
+    if (tabName === 'learning') window.StudyStudio?.open(true);
     document.querySelectorAll('.teacher-nav-item').forEach(el => {
         el.classList.toggle('active', el.getAttribute('data-teacher-tab') === tabName);
     });
@@ -5130,7 +5213,7 @@ function populateTeacherClassDropdowns() {
         if (!sel) return;
         sel.innerHTML = activeTeacherClasses.length === 0
             ? '<option value="">No classes found (Create one first)</option>'
-            : activeTeacherClasses.map(c => `<option value="${c.id}">${c.name}-${c.section} · ${c.subject || 'All'}</option>`).join('');
+            : activeTeacherClasses.map(c => `<option value="${c.id}">${escapeHtml(c.name)}-${escapeHtml(c.section)} · ${escapeHtml(c.subject || 'All')}</option>`).join('');
         if (selectedTeacherClassId) {
             sel.value = selectedTeacherClassId;
         }
@@ -5276,7 +5359,7 @@ document.getElementById('submit-teacher-join-btn')?.addEventListener('click', as
 
     try {
         const res = await api.joinTeacherClass(authToken, classCode, subject, 'subject_teacher');
-        showToast(`Joined ${res.classroom.name}-${res.classroom.section} as Subject Teacher! 👨‍🏫`, 'success');
+        showToast(res.pending ? res.message : 'Teacher access approved.', 'success');
         closeTeacherJoinModal();
         loadTeacherPortal();
     } catch (err) {
@@ -5888,7 +5971,7 @@ async function loadStudentClassrooms() {
                 <div class="class-card-body">
                     <div class="class-card-meta-row">
                         <span><i class="fa-solid fa-chalkboard-user"></i> Teachers</span>
-                        <strong>${escapeHtml((c.teachers || []).map(t => t.username).join(', ')) || 'Faculty'}</strong>
+                        <strong>${(c.teachers || []).map(t => escapeHtml(t.username)).join(', ') || 'Faculty'}</strong>
                     </div>
                     <div class="class-card-meta-row">
                         <span><i class="fa-solid fa-book-open"></i> Homework</span>
@@ -6155,7 +6238,7 @@ function renderStudentHomeworkPane(homeworkList) {
             </div>
 
             <div>
-                <button class="btn btn-primary" onclick="openStudentSubmitHomeworkModal(${h.id}, '${escapeHtml(h.title)}')" style="font-size: 13px; padding: 9px 16px;">
+                <button class="btn btn-primary" data-homework-submit="${Number(h.id)}" data-homework-title="${escapeHtml(h.title)}" style="font-size: 13px; padding: 9px 16px;">
                     <i class="fa-solid fa-arrow-up-from-bracket"></i> ${h.submission_status === 'submitted' || h.submission_status === 'graded' ? 'Update Submission' : 'Turn In Work'}
                 </button>
             </div>
@@ -6684,66 +6767,6 @@ document.querySelectorAll('.fc-grade-btn').forEach(btn => {
 
 // Identity of the worksheet attempt currently open, and whether the server
 // said this student may still submit it.
-// ── Which model answers ───────────────────────────────────────────
-// 'auto' lets the server route each question and report what it picked. The
-// options come from GET /api/ai/models, so the picker can never offer a model
-// the server would reject — when one is retired server-side it simply stops
-// appearing here.
-const MODEL_CHOICE_PREFIX = 'ai-model:';
-function modelChoiceKey() {
-    return MODEL_CHOICE_PREFIX + ((currentUserData && currentUserData.id) || 'anon');
-}
-
-// Resolved at send time, not cached in a variable: the picker loads
-// asynchronously, so a question asked in the first moment after a reload was
-// being sent as 'auto' and silently ignoring the student's saved choice.
-// The live control wins; the stored preference covers the gap before it loads.
-function currentModelChoice() {
-    const select = document.getElementById('grok-model-select');
-    if (select && select.value) return select.value;
-    try {
-        return localStorage.getItem(modelChoiceKey()) || 'auto';
-    } catch (e) {
-        return 'auto';
-    }
-}
-async function loadAiModelPicker() {
-    const wrap = document.getElementById('grok-model-pick');
-    const select = document.getElementById('grok-model-select');
-    if (!wrap || !select || !authToken) return;
-    let info;
-    try {
-        info = await api.getAiModels(authToken);
-    } catch (e) {
-        // No picker rather than a broken one; the server still routes sensibly.
-        wrap.hidden = true;
-        return;
-    }
-    // These are Gemini models. If Groq is answering, choosing one would change
-    // nothing, so the control is not offered.
-    if (!info.selectable) { wrap.hidden = true; return; }
-
-    const options = [info.auto, ...(info.models || [])].filter(Boolean);
-    select.innerHTML = options.map(m =>
-        `<option value="${escapeHtml(m.id)}" title="${escapeHtml(m.bestFor || '')}">${escapeHtml(m.label)}</option>`
-    ).join('');
-
-    let saved = null;
-    try { saved = localStorage.getItem(modelChoiceKey()); } catch (e) { saved = null; }
-    const initial = options.some(m => m.id === saved) ? saved : (info.default || 'auto');
-    select.value = initial;
-    select.title = (options.find(m => m.id === initial) || {}).bestFor || '';
-    wrap.hidden = false;
-
-    select.onchange = () => {
-        const chosenId = select.value;
-        const picked = options.find(m => m.id === chosenId);
-        select.title = (picked && picked.bestFor) || '';
-        try { localStorage.setItem(modelChoiceKey(), chosenId); } catch (e) { /* private mode */ }
-        if (picked) showToast(`${picked.label}: ${picked.bestFor}`, 'info');
-    };
-}
-
 let currentWorksheetSubmissionKey = null;
 let currentWorksheetCanSubmit = true;
 
@@ -6830,7 +6853,6 @@ function selectQuizAnswer(selectedIndex) {
         btn.classList.toggle('qz-option-selected', chosen);
         btn.setAttribute('aria-pressed', String(chosen));
     });
-
     const feedback = document.getElementById('qz-feedback');
     feedback.style.display = 'block';
     feedback.className = 'qz-feedback-selected';
@@ -6855,6 +6877,7 @@ async function finishQuiz() {
 
     try {
         const res = await api.submitQuiz(authToken, qzQuizId, qzAnswers);
+        qzQuestions = qzQuestions.map((q, i) => ({ ...q, ...res.results[i] }));
         const pct = Math.round((res.score / res.total) * 100);
 
         document.getElementById('qz-score-text').textContent = `${res.score}/${res.total}`;
@@ -6866,7 +6889,7 @@ async function finishQuiz() {
         const sub = document.getElementById('qz-results-sub');
         if (pct >= 80) {
             title.textContent = "Excellent work! 🌟";
-            sub.textContent = `You nailed ${res.score} out of ${res.total} — that's real mastery showing.`;
+            sub.textContent = `You nailed ${res.score} out of ${res.total} — review your explanations to strengthen retention.`;
         } else if (pct >= 50) {
             title.textContent = "Solid effort! 💪";
             sub.textContent = `${res.score} out of ${res.total} — you're building real understanding here.`;
@@ -7161,6 +7184,8 @@ let rmCurrentPlan = null;
 // Default the date picker to 2 weeks out so the field never looks broken/empty
 (function initRoadmapDateDefault() {
     const dateInput = document.getElementById('rm-exam-date');
+    const startInput=document.getElementById('rm-start-date');
+    if(startInput)startInput.value=new Date().toLocaleDateString('en-CA');
     if (dateInput) {
         const twoWeeksOut = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
         dateInput.min = new Date().toISOString().split('T')[0];
@@ -7168,33 +7193,89 @@ let rmCurrentPlan = null;
     }
 })();
 
-document.getElementById('rm-generate-btn')?.addEventListener('click', async () => {
-    const btn = document.getElementById('rm-generate-btn');
-    const status = document.getElementById('rm-generate-status');
-    const examName = document.getElementById('rm-exam-name').value.trim();
-    const examDate = document.getElementById('rm-exam-date').value;
-    const topics = document.getElementById('rm-topics').value.trim();
-    const hoursPerDay = document.getElementById('rm-hours').value;
-
-    if (!examName || !examDate || topics.length < 5) {
-        showToast('Add your exam name, date, and at least a few topics to plan around.', 'info');
-        return;
-    }
-
-    btn.disabled = true;
-    status.style.display = 'block';
+let rmBusy = false, rmPause = false, rmVisible = 30;
+function rmRestore() {
+    if(rmBusy || !currentUserData)return;
+    if(rmCurrentPlan?.ownerKey===rmStorageKey())return renderRoadmap(rmCurrentPlan);
+    rmCurrentPlan=null;
+    document.getElementById('rm-results-box').style.display='none';
     try {
-        const res = await api.generateStudyRoadmap(authToken, { examName, examDate, topics, hoursPerDay });
-        rmCurrentPlan = res;
-        renderRoadmap(res);
-        showToast(`Your ${res.daysUntil}-day roadmap is ready — you've got this! 💪`, 'success');
-        api.addXp(authToken, 10, 5, 'Study Roadmap Generation').then(r => applyXpResult(r));
-    } catch (err) {
-        showToast(err.message || "Couldn't generate the roadmap — please try again.", 'error');
-    } finally {
-        btn.disabled = false;
-        status.style.display = 'none';
-    }
+        const saved=JSON.parse(localStorage.getItem(rmStorageKey()));
+        if(saved?.ownerKey===rmStorageKey() && Number.isSafeInteger(saved.daysUntil) && saved.daysUntil>0 && Array.isArray(saved.plan) && saved.plan.length<=saved.daysUntil && saved.plan.every((d,i)=>d.day===i+1)) {
+            rmCurrentPlan={...saved,complete:saved.plan.length===saved.daysUntil,state:saved.plan.length===saved.daysUntil?'complete':'paused'};
+            renderRoadmap(rmCurrentPlan);
+        }
+    } catch {document.getElementById('rm-save-status').textContent='Saved plan could not be read. Your stored data has not been overwritten.';}
+}
+const rmStorageKey = () => `studyhub-roadmap-${currentUserData?.id || currentUserData?.username || 'local'}`;
+function rmSave() {
+    try { localStorage.setItem(rmCurrentPlan.ownerKey || rmStorageKey(), JSON.stringify(rmCurrentPlan)); document.getElementById('rm-save-status').textContent = 'Progress saved on this browser.'; }
+    catch { document.getElementById('rm-save-status').textContent = 'Browser storage is full. Download the plan before leaving.'; }
+}
+async function continueRoadmap() {
+    if(rmBusy || !rmCurrentPlan)return;
+    const start=async()=>{
+        try {
+            const saved=JSON.parse(localStorage.getItem(rmStorageKey()));
+            if(saved && saved.id!==rmCurrentPlan.id)return showToast('A different plan was saved in another tab. Refresh to open it.','info');
+            if(saved?.plan?.length>rmCurrentPlan.plan.length)rmCurrentPlan=saved;
+        }catch{}
+        return runRoadmap();
+    };
+    if(navigator.locks)return navigator.locks.request(rmStorageKey(),{ifAvailable:true},lock=>lock?start():showToast('This plan is generating in another tab. Pause it there before resuming here.','info'));
+    return start();
+}
+async function runRoadmap() {
+    if(rmBusy || !rmCurrentPlan) return;
+    rmBusy=true;rmPause=false;
+    const ownerKey=rmStorageKey();
+    rmCurrentPlan.state='generating';renderRoadmap(rmCurrentPlan);
+    const btn=document.getElementById('rm-generate-btn'),status=document.getElementById('rm-generate-status');
+    btn.disabled=true;status.style.display='block';
+    try {
+        while(!rmPause && !rmCurrentPlan.complete) {
+            if(rmCurrentPlan.ownerKey !== rmStorageKey()) throw new Error('Account changed. Return to the original account to resume.');
+            const nextDay=rmCurrentPlan.plan.length+1;
+            status.textContent=`Building days ${nextDay}–${Math.min(nextDay+2,rmCurrentPlan.daysUntil)} of ${rmCurrentPlan.daysUntil}. You can pause after this batch.`;
+            const result=await api.generateStudyRoadmap(authToken,{...rmCurrentPlan,days:rmCurrentPlan.daysUntil,nextDay,previous:rmCurrentPlan.plan.slice(-42),plan:undefined});
+            if(ownerKey!==rmStorageKey())throw new Error('Account changed. Generation stopped.');
+            if(!Array.isArray(result.plan))throw new Error('Incomplete response. Resume to retry.');
+            if((result.plan.length<1 || result.plan.length>Math.min(3,rmCurrentPlan.daysUntil-nextDay+1)) || result.plan.some((d,i)=>d.day!==nextDay+i)) throw new Error('The response skipped a day. Resume to retry this batch.');
+            rmCurrentPlan={...rmCurrentPlan,examDate:result.examDate,outline:result.outline,sourceBasis:result.sourceBasis,qualityVersion:rmCurrentPlan.qualityVersion || 1,plan:[...rmCurrentPlan.plan,...result.plan],complete:rmCurrentPlan.plan.length + result.plan.length === rmCurrentPlan.daysUntil};
+            renderRoadmap(rmCurrentPlan);rmSave();
+        }
+        rmCurrentPlan.state=rmCurrentPlan.complete?'complete':'paused';
+        status.textContent=rmCurrentPlan.complete?`Complete: all ${rmCurrentPlan.daysUntil} days generated.`:`Paused: ${rmCurrentPlan.plan.length} of ${rmCurrentPlan.daysUntil} days saved. Resume when ready.`;
+    } catch(err) { rmCurrentPlan.state='paused';status.textContent='Paused: '+err.message+' Use Resume saved plan to retry.';rmSave(); }
+    finally {rmBusy=false;btn.disabled=false;if(ownerKey===rmStorageKey()){renderRoadmap(rmCurrentPlan);rmSave();}else{rmCurrentPlan=null;document.getElementById('rm-results-box').style.display='none';}}
+}
+document.getElementById('rm-generate-btn')?.addEventListener('click',()=>{
+    if(rmBusy)return;
+    if(!authToken || !currentUserData)return showToast('Sign in to save your roadmap.','info');
+    const examName=document.getElementById('rm-exam-name').value.trim(),topics=document.getElementById('rm-topics').value.trim();
+    const startDate=document.getElementById('rm-start-date').value || new Date().toLocaleDateString('en-CA');
+    const daysValue=document.getElementById('rm-days').value;
+    const examDate=document.getElementById('rm-exam-date').value;
+    const days=daysValue?Number(daysValue):Math.round((Date.parse(examDate+'T00:00:00Z')-Date.parse(startDate+'T00:00:00Z'))/86400000);
+    if(!examName||!topics||!Number.isSafeInteger(days)||days<1) return showToast('Add a goal, topics and a positive number of days or future target date.','info');
+    const hoursPerDay=Number(document.getElementById('rm-hours').value);
+    if(!Number.isFinite(hoursPerDay)||hoursPerDay<0.25||hoursPerDay>24)return showToast('Choose 0.25 to 24 hours per day.','info');
+    try {const existing=localStorage.getItem(rmStorageKey());if(existing)localStorage.setItem(rmStorageKey()+'-previous',existing);}catch{return showToast('Download your saved plan or free browser space before replacing it.','info');}
+    rmCurrentPlan={ownerKey:rmStorageKey(),id:crypto.randomUUID(),examName,topics,curriculum:document.getElementById('rm-curriculum').value.trim(),startDate,examDate,hoursPerDay,daysUntil:days,plan:[],complete:false,state:'paused',qualityVersion:2};
+    rmVisible=30;renderRoadmap(rmCurrentPlan);rmSave();continueRoadmap();
+});
+document.getElementById('rm-pause-btn')?.addEventListener('click',()=>{if(!rmBusy)return;rmPause=true;document.getElementById('rm-generate-status').textContent='Pausing after the current batch finishes…';});
+document.getElementById('rm-resume-btn')?.addEventListener('click',()=>{
+    if(rmBusy)return;
+    if(!rmCurrentPlan || rmCurrentPlan.ownerKey !== rmStorageKey()) {try{rmCurrentPlan=JSON.parse(localStorage.getItem(rmStorageKey()));}catch{}}
+    if(!rmCurrentPlan || !Array.isArray(rmCurrentPlan.plan)) return showToast('No saved roadmap for this account in this browser.','info');
+    renderRoadmap(rmCurrentPlan);continueRoadmap();
+});
+document.getElementById('rm-more-btn')?.addEventListener('click',()=>{rmVisible+=30;if(rmCurrentPlan)renderRoadmap(rmCurrentPlan);});
+document.getElementById('rm-json-btn')?.addEventListener('click',()=>{
+    if(!rmCurrentPlan)return;
+    const url=URL.createObjectURL(new Blob([JSON.stringify(rmCurrentPlan,null,2)],{type:'application/json'}));
+    const a=document.createElement('a');a.href=url;a.download=rmCurrentPlan.complete?'learning-roadmap.json':'learning-roadmap-partial.json';a.click();URL.revokeObjectURL(url);
 });
 
 const RM_TYPE_META = {
@@ -7208,10 +7289,16 @@ const RM_TYPE_META = {
 function renderRoadmap(res) {
     document.getElementById('rm-results-box').style.display = 'block';
     document.getElementById('rm-results-title').textContent = `${res.examName} — ${res.daysUntil}-Day Plan`;
-    document.getElementById('rm-results-sub').textContent = `Exam date: ${new Date(res.examDate).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+    document.getElementById('rm-results-sub').textContent = `${res.plan.length} of ${res.daysUntil} days ready · ${res.plan.filter(d=>d.completed).length} studied · ${res.complete ? 'All days generated' : res.state==='generating'?'Generating':'Paused — resume to continue'} · ${res.hoursPerDay} hours/day`;
+    document.getElementById('rm-source-status').textContent=res.qualityVersion===2 ? (res.sourceBasis || 'Preparing your plan. Textbook edition and syllabus alignment are not verified.') : 'Older draft: chapter references and practice resources have not been checked. Generate a new plan to use the improved planner.';
+    document.getElementById('rm-json-btn').textContent=res.complete?'Download complete plan':`Download ${res.plan.length} generated days`;
+    document.getElementById('rm-pause-btn').disabled=!rmBusy;
+    document.getElementById('rm-resume-btn').disabled=rmBusy || res.complete;
+    document.getElementById('rm-more-btn').hidden = res.plan.length <= rmVisible;
+    document.getElementById('rm-export-ics-btn').disabled = !res.complete;
 
     const timeline = document.getElementById('rm-timeline');
-    timeline.innerHTML = res.plan.map(day => {
+    timeline.innerHTML = (res.outline?.length ? '<details><summary>Overall progression</summary><ol>' + res.outline.map(p=>`<li>Days ${p.startDay}–${p.endDay}: ${escapeHtml(p.focus)}</li>`).join('') + '</ol></details>' : '') + res.plan.slice(0,rmVisible).map(day => {
         const meta = RM_TYPE_META[day.type] || RM_TYPE_META.study;
         return `
             <div class="rm-day-row">
@@ -7219,15 +7306,29 @@ function renderRoadmap(res) {
                 <div class="rm-day-content">
                     <div class="rm-day-top">
                         <span class="rm-day-num">Day ${day.day}</span>
-                        <span class="rm-day-date">${new Date(day.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                        <span class="rm-day-date">${new Date(day.date+'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric',timeZone:'UTC' })}</span>
                         <span class="rm-day-type-pill" style="color:${meta.color}; background:${meta.color}1a;">${meta.label}</span>
                     </div>
-                    <p>${escapeHtml(day.focus)}</p>
+                    <p><strong>${escapeHtml(day.focus)}</strong></p>
+                    ${day.lesson?`<details><summary>Read the explanation</summary><p>${escapeHtml(day.lesson)}</p></details>`:''}
+                    ${day.workedExample?`<details><summary>Study the worked example</summary><p>${escapeHtml(day.workedExample)}</p></details>`:''}
+                    <ol>${(day.tasks || []).map(t=>`<li>${escapeHtml(t.action)} <strong>(${Number(t.minutes)} min)</strong></li>`).join('')}</ol>
+                    <p><strong>Deliverable:</strong> ${escapeHtml(day.outcome || '')}</p>
+                    <p><strong>Success check:</strong> ${escapeHtml(day.check || '')}</p>
+                    ${day.reviewOf?`<p>Review of day ${Number(day.reviewOf)} — apply the skill again.</p>`:''}
+                    ${(day.practice||[]).map((p,i)=>`<section><h4>Practice ${i+1}</h4><p>${escapeHtml(p.prompt)}</p><details><summary>Show worked answer / checking guide</summary><p>${escapeHtml(p.answer)}</p></details></section>`).join('')}
+                    <label><input type="checkbox" data-roadmap-day="${day.day}" ${day.completed?'checked':''}> Mark day complete</label>
                 </div>
             </div>
         `;
     }).join('');
+    if(typeof renderMathInElement==='function')renderMathInElement(timeline,{delimiters:[{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false});
 }
+
+document.getElementById('rm-timeline')?.addEventListener('change',e=>{
+    const day=rmCurrentPlan?.plan.find(d=>d.day===Number(e.target.dataset.roadmapDay));
+    if(day){day.completed=e.target.checked;rmSave();document.getElementById('rm-results-sub').textContent=`${rmCurrentPlan.plan.length} of ${rmCurrentPlan.daysUntil} days ready · ${rmCurrentPlan.plan.filter(d=>d.completed).length} studied · ${rmCurrentPlan.complete?'All days generated':rmBusy?'Generating':'Paused — resume to continue'} · ${rmCurrentPlan.hoursPerDay} hours/day`;}
+});
 
 document.getElementById('rm-export-ics-btn')?.addEventListener('click', () => {
     if (!rmCurrentPlan) return;
@@ -7248,6 +7349,8 @@ function icsDate(dateStr) {
     return dateStr.replace(/-/g, '');
 }
 
+function icsEscape(value) { return String(value).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n'); }
+
 function buildICS(res) {
     const lines = [
         'BEGIN:VCALENDAR',
@@ -7261,17 +7364,17 @@ function buildICS(res) {
         const dateOnly = icsDate(day.date);
         // All-day event: DTSTART is the day, DTEND is the next day (exclusive, per iCal spec)
         const nextDay = new Date(day.date);
-        nextDay.setDate(nextDay.getDate() + 1);
+        nextDay.setUTCDate(nextDay.getUTCDate() + 1);
         const dateEnd = icsDate(nextDay.toISOString().split('T')[0]);
 
         lines.push(
             'BEGIN:VEVENT',
-            `UID:studyhub-roadmap-${res.examName.replace(/[^a-z0-9]+/gi, '')}-day${day.day}@studyhub`,
+            `UID:studyhub-roadmap-${res.id || res.startDate+'-'+res.examName.replace(/[^a-z0-9]+/gi, '')}-day${day.day}@studyhub`,
             `DTSTAMP:${icsDate(new Date().toISOString().split('T')[0])}T000000Z`,
             `DTSTART;VALUE=DATE:${dateOnly}`,
             `DTEND;VALUE=DATE:${dateEnd}`,
-            `SUMMARY:${meta.label} — ${res.examName} (Day ${day.day})`,
-            `DESCRIPTION:${String(day.focus).replace(/\n/g, '\\n')}`,
+            `SUMMARY:${icsEscape(meta.label+' — '+res.examName+' (Day '+day.day+')')}`,
+            `DESCRIPTION:${String([day.focus,...(day.tasks||[]).map(t=>`${t.minutes} min: ${t.action}`),day.outcome,day.check].filter(Boolean).join('\n')).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')}`,
             'END:VEVENT'
         );
     });
@@ -7282,8 +7385,8 @@ function buildICS(res) {
         `UID:studyhub-roadmap-${res.examName.replace(/[^a-z0-9]+/gi, '')}-examday@studyhub`,
         `DTSTAMP:${icsDate(new Date().toISOString().split('T')[0])}T000000Z`,
         `DTSTART;VALUE=DATE:${icsDate(res.examDate)}`,
-        `SUMMARY:🎯 ${res.examName} — Exam Day!`,
-        `DESCRIPTION:You've prepared for this. Good luck!`,
+        `SUMMARY:${icsEscape(res.examName+' — Target day')}`,
+        `DESCRIPTION:Review your final deliverable and reflect on your progress.`,
         'END:VEVENT'
     );
 
@@ -7821,6 +7924,41 @@ document.getElementById('player-result-done-btn')?.addEventListener('click', () 
 // Restores the last thread so context survives a refresh, and lists
 // recent conversations so a student can pick one back up.
 // ================================================================
+// ── The thinking panel ─────────────────────────────────────────────
+// What the tutor actually did for an answer — the searches it ran and what
+// they found — stays OPEN under a "Thought for 4s" header once the answer
+// arrives, instead of folding away into a pill. A student who closes it
+// keeps it closed: the choice is remembered for later answers.
+const THINKING_PREF = 'grokThinkingOpen';
+function thinkingOpenByDefault() {
+    try { return localStorage.getItem(THINKING_PREF) !== '0'; } catch (e) { return true; }
+}
+function renderThinking(steps, seconds) {
+    const list = Array.isArray(steps) ? steps.filter(Boolean) : [];
+    if (!list.length) return '';
+    const open = thinkingOpenByDefault();
+    const secs = Number(seconds) > 0 ? `Worked for ${Math.round(Number(seconds))}s` : 'What I did';
+    return `<div class="grok-thought${open ? ' is-open' : ''}">
+        <button type="button" class="grok-thought-toggle" aria-expanded="${open}">
+            <i class="fa-regular fa-lightbulb"></i>
+            <span>${secs} · ${list.length} step${list.length === 1 ? '' : 's'}</span>
+            <i class="fa-solid fa-chevron-down grok-thought-chevron"></i>
+        </button>
+        <ol class="grok-thought-list">
+            ${list.map(t => `<li class="grok-thought-step">${escapeHtml(t)}</li>`).join('')}
+        </ol>
+    </div>`;
+}
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest ? e.target.closest('.grok-thought-toggle') : null;
+    if (!btn) return;
+    const box = btn.closest('.grok-thought');
+    const open = !box.classList.contains('is-open');
+    box.classList.toggle('is-open', open);
+    btn.setAttribute('aria-expanded', String(open));
+    try { localStorage.setItem(THINKING_PREF, open ? '1' : '0'); } catch (err) { /* private mode */ }
+});
+
 // `onlyIfIdle` is for the automatic restore after page load. It ran 2.2s
 // after load and replaced the whole stream — so a student who had already
 // asked something lost the answer on screen, and a worksheet card was swapped
@@ -7855,7 +7993,8 @@ async function restoreChatThread({ onlyIfIdle = false } = {}) {
                 const saved = m.attachments || {};
                 const toolHtml = saved.tool && window.ChatToolsUI ? window.ChatToolsUI.render({ tool: saved.tool }) : '';
                 const libraryHtml = saved.library && window.SourceLibraryUI ? window.SourceLibraryUI.render({ library: saved.library }) : '';
-                row.innerHTML = `<div class="grok-ai-bubble"><div class="grok-response-body">${body}</div>${toolHtml}${libraryHtml}</div>`;
+                const thinking = renderThinking(saved.steps, saved.seconds);
+                row.innerHTML = `<div class="grok-ai-bubble">${thinking}<div class="grok-response-body">${body}</div>${toolHtml}${libraryHtml}</div>`;
             }
             grokChatStream.appendChild(row);
             if (m.role !== 'user') {
@@ -7960,14 +8099,14 @@ Contact: <a href="mailto:support@learnonline.study">support@learnonline.study</a
 <p>When you use an AI feature, your prompt is sent to an AI provider. That prompt can include your name, class, recent scores and the questions you got wrong, because the tutor uses them to give relevant help.</p>
 <ul>
   <li><strong>Groq</strong> (United States) — AI text generation. Receives prompts and conversation history.</li>
-  <li><strong>Google Gemini</strong> — used only as a fallback if Groq is unavailable.</li>
+  <li><strong>Google Gemini</strong> — AI text generation; may be the primary provider or a fallback depending on the configured model.</li>
   <li><strong>Sarvam AI</strong> (India) — text-to-speech. Receives the text to be read aloud, which may include your first name.</li>
   <li><strong>Pollinations.ai</strong> — image generation. Receives only the image prompt you type.</li>
 </ul>
 <p>We do not sell your data, and we do not use it for advertising.</p>
 
 <h4>What stays on your device</h4>
-<p>PDF text extraction and image OCR run entirely in your browser. Those files are not uploaded to us unless you paste the extracted text into a tool.</p>
+<p>Some tools extract text in your browser. Files attached to AI Companion or Teaching Studio are uploaded to the server; extracted content may be sent to the configured AI provider when you ask it to use that material. Roadmaps are saved to your account, and background generation can continue while this page is closed.</p>
 
 <h4>Students under 18</h4>
 <p class="legal-warn"><strong>Important.</strong> This service is used by school students, and India's Digital Personal Data Protection Act, 2023 requires verifiable parental consent before processing a child's personal data.
@@ -8166,5 +8305,28 @@ function renderAiMarkdown(text) {
         // A stashed code fence still needs to become real markup.
         return raw.startsWith('```') ? marked.parse(raw) : raw;
     });
-    return html;
+    // Sanitize AFTER restoring code/math placeholders, so every path is covered.
+    if (typeof DOMPurify === 'undefined') return `<p>${escapeHtml(src)}</p>`;
+    return DOMPurify.sanitize(html, { USE_PROFILES: { html: true },
+        FORBID_TAGS: ['img', 'form', 'input', 'button', 'textarea', 'select', 'style'],
+        FORBID_ATTR: ['style', 'id', 'name'] });
 }
+
+// Keep user-authored titles out of inline JavaScript attributes.
+document.addEventListener('click',event=>{
+ const button=event.target.closest('[data-homework-submit]');
+ if(button)openStudentSubmitHomeworkModal(Number(button.dataset.homeworkSubmit),button.dataset.homeworkTitle);
+});
+
+// The public developer entry uses the same sign-in flow as its hero button.
+document.querySelectorAll('[data-open-developer]').forEach(link => link.addEventListener('click', event => { event.preventDefault(); document.getElementById('hero-dev-btn')?.click(); }));
+
+document.getElementById('devhub-search-input')?.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    const query = event.target.value.trim().toLowerCase();
+    if (!query) return;
+    const tools = [{id:'tests',name:'tests mock tests assessment quiz'}, {id:'notes',name:'notes learning study'}, {id:'review',name:'code review projects upload'}, {id:'skills',name:'skills frameworks'}, {id:'settings',name:'settings profile'}];
+    const match = tools.find(tool => tool.name.includes(query));
+    if (match) { switchDevTab(match.id); event.target.value = ''; }
+    else showToast('Try tests, notes, code review, skills or settings.', 'info');
+});

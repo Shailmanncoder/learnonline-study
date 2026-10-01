@@ -240,7 +240,7 @@ async function requireEnrolledOrTeacher(req, res, next) {
 
         // Check if teacher — a pending or revoked membership is not one.
         const tc = await db.get(
-            "SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ? AND (status IS NULL OR status = 'active')",
+            "SELECT tc.* FROM teacher_classes tc JOIN users u ON u.id=tc.teacher_id WHERE class_id = ? AND teacher_id = ? AND (tc.status IS NULL OR tc.status = 'active') AND u.role IN ('teacher','admin')",
             [classId, req.user.id]
         );
         if (tc) {
@@ -523,6 +523,9 @@ router.post('/homework/:id/submit', auth, rateLimit({
             return res.status(409).json({ success: false, error: { code: 'CLASS_NOT_ACTIVE', message: `This classroom is ${hw.class_status} and is no longer accepting work.` } });
         }
 
+        if (hw.status !== 'assigned') return res.status(403).json({success:false,error:{message:'This homework is not open for submission.'}});
+        if(content!=null && (typeof content!=='string'||content.length>50000))return res.status(400).json({msg:'Submission text must be at most 50,000 characters.'});
+        if(attachments!=null && (!Array.isArray(attachments)||attachments.length>10||JSON.stringify(attachments).length>100000))return res.status(400).json({msg:'Invalid submission attachments.'});
         // Ensure student is actively enrolled — removed and blocked students
         // keep their submitted history but cannot add to it.
         const enrollment = await db.get(

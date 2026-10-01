@@ -10,19 +10,24 @@
 // The visible symptom was new markup rendering against old stylesheets.
 // Bump CACHE_VERSION on any release that changes shell assets.
 
-const CACHE_VERSION = 'v17-teaching-studio';
+const CACHE_VERSION = 'v21-connected-studio';
 const CACHE_NAME = `studyhub-shell-${CACHE_VERSION}`;
 const APP_SHELL = [
     '/',
     '/index.html',
     '/styles.css',
     '/premium.css',
+    '/studyStudio.css',
+    '/studyStudio.js',
+    '/learningLabs.js',
+    '/cloudRoadmaps.js',
     '/api.js',
     '/data.js',
     '/landing.js',
     '/refinements.js',
     '/refinements.css',
     '/app.js',
+    '/vendor/purify.min.js',
     '/teachingStudio.js',
     '/teachingStudio.css',
     '/ncert.js',
@@ -33,6 +38,8 @@ const APP_SHELL = [
     '/auto-study/index.html',
     '/auto-study/style.css',
     '/auto-study/app.js',
+    '/learning.js',
+    '/learning.css',
     '/manifest.json',
     '/icon-192.png',
     '/icon-512.png'

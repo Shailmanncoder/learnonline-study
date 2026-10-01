@@ -1,0 +1,47 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');
+const express=require('express'),jwt=require('jsonwebtoken'),db=require('../config/db');
+test('teacher admission requires owner approval and student actions respect publication',async t=>{
+ await db.ready();const app=express();app.use(express.json());
+ for(const name of ['teacher','classroom','user'])app.use('/api/'+name,require('../controllers/'+name+'Controller'));
+ app.use('/api/teaching-studio',require('../controllers/teachingStudioController'));
+ app.use('/api/studio',require('../controllers/studioController'));
+ const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+ t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
+ const users={};for(const role of ['student','owner','candidate','outsider']){
+  const actual=role==='student'?'student':'teacher';
+  const row=await db.run('INSERT INTO users(username,password,role) VALUES(?,?,?)',[role,'unused',actual]);
+  users[role]={id:row.lastID,token:jwt.sign({user:{id:row.lastID,role:actual}},process.env.JWT_SECRET)};
+ }
+ const call=async(path,role,body,method)=>{const r=await fetch(`http://127.0.0.1:${server.address().port}/api/`+path,{method:method||(body?'POST':'GET'),headers:{Authorization:'Bearer '+users[role].token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()};};
+ const classroom={name:'Audit class',section:'A',grade:'9',subject:'Math'};
+ assert.equal((await call('teacher/classes','student',classroom)).status,403);
+ const created=await call('teacher/classes','owner',classroom);assert.equal(created.status,200);
+ const c=created.data.classroom;
+ const joined=await call('teacher/classes/join','candidate',{classCode:c.class_code,subject:'Math',role:'owner'});
+ assert.equal(joined.status,200);assert.equal(joined.data.pending,true);
+ assert.equal((await db.get('SELECT status FROM teacher_classes WHERE class_id=? AND teacher_id=?',[c.id,users.candidate.id])).status,'pending');
+ assert.equal((await call(`teacher/classes/${c.id}`,'candidate')).status,403);
+ assert.equal((await call(`teaching-studio/classes/${c.id}`,'candidate')).status,403);
+ assert.equal((await call(`studio/classes/${c.id}/sources`,'candidate')).status,403);
+ assert.equal((await call(`teacher/classes/${c.id}/teacher-requests/${users.candidate.id}`,'outsider',{approve:true})).status,403);
+ assert.equal((await call(`teacher/classes/${c.id}/teacher-requests`,'owner')).data.requests.length,1);
+ assert.equal((await call(`teacher/classes/${c.id}/teacher-requests/${users.candidate.id}`,'owner',{approve:false})).status,200);
+ assert.equal((await call('teacher/classes/join','candidate',{classCode:c.class_code,subject:'Math'})).status,200);
+ assert.equal((await call(`teacher/classes/${c.id}/teacher-requests`,'owner')).data.requests.length,1);
+ assert.equal((await call(`teacher/classes/${c.id}/teacher-requests/${users.candidate.id}`,'owner',{approve:true})).status,200);
+ assert.equal((await db.get('SELECT role FROM teacher_classes WHERE class_id=? AND teacher_id=?',[c.id,users.candidate.id])).role,'subject_teacher');
+ assert.equal((await call(`teacher/classes/${c.id}/teacher-requests/${users.candidate.id}`,'owner',{approve:true})).status,409);
+ await db.run("UPDATE users SET role='student' WHERE id=?",[users.candidate.id]);
+ assert.equal((await call(`teacher/classes/${c.id}`,'candidate')).status,403);
+ await db.run("INSERT INTO class_enrollments(class_id,student_id,status) VALUES(?,?,'active')",[c.id,users.student.id]);
+ const hw=await db.run("INSERT INTO class_homework(class_id,teacher_id,title,subject,status) VALUES(?,?,'Draft task','Math','draft')",[c.id,users.owner.id]);
+ assert.equal((await call(`classroom/homework/${hw.lastID}/submit`,'student',{content:'Work'})).status,403);
+ await db.run("UPDATE class_homework SET status='assigned' WHERE id=?",[hw.lastID]);
+ await db.run("UPDATE classrooms SET status='archived' WHERE id=?",[c.id]);
+ assert.equal((await call(`classroom/homework/${hw.lastID}/submit`,'student',{content:'Work'})).status,409);
+ await db.run("UPDATE classrooms SET status='active' WHERE id=?",[c.id]);
+ const uploaded=await call(`teaching-studio/classes/${c.id}/resources`,'owner',{name:'test.txt',data:Buffer.from('Private test file').toString('base64')});assert.equal(uploaded.status,201);
+ assert.equal((await call('user/account','owner',undefined,'DELETE')).status,200);
+ assert.equal((await db.get('SELECT COUNT(*) n FROM teaching_resources')).n,0);
+ assert.equal((await call('teacher/classes','owner')).status,401);
+});

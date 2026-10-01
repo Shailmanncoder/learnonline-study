@@ -35,7 +35,7 @@ async function teacher(req) {
     const user = await db.get('SELECT role FROM users WHERE id = ?', [req.user.id]);
     if (!user || !['teacher', 'admin'].includes(user.role)) fail(403, 'A teacher account is required.');
     const classroom = await db.get(`SELECT c.* FROM classrooms c JOIN teacher_classes tc ON tc.class_id = c.id
-        WHERE c.id = ? AND tc.teacher_id = ? AND c.status = 'active'`, [req.params.classId, req.user.id]);
+        WHERE c.id = ? AND tc.teacher_id = ? AND c.status = 'active' AND (tc.status IS NULL OR tc.status='active')`, [req.params.classId, req.user.id]);
     if (!classroom) fail(403, 'An active classroom you teach is required.');
     return classroom;
 }
@@ -95,7 +95,7 @@ router.get('/classes/:classId/resources/:id/download', wrap(async (req, res) => 
     const classroom = await db.get("SELECT id FROM classrooms WHERE id = ? AND status = 'active'", [file.class_id]);
     if (!classroom) fail(403, 'Classroom is not active.');
     const member = await db.get(`SELECT u.id FROM users u JOIN teacher_classes t ON t.teacher_id = u.id
-        WHERE u.id = ? AND t.class_id = ? AND u.role IN ('teacher','admin')`, [req.user.id, file.class_id]);
+        WHERE u.id = ? AND t.class_id = ? AND u.role IN ('teacher','admin') AND (t.status IS NULL OR t.status='active')`, [req.user.id, file.class_id]);
     const enrolled = file.shared && await db.get("SELECT student_id FROM class_enrollments WHERE class_id = ? AND student_id = ? AND status = 'active'", [file.class_id, req.user.id]);
     if (!member && !enrolled) fail(403, 'You do not have access to this resource.');
     res.set({ 'Content-Type': 'application/octet-stream', 'X-Content-Type-Options': 'nosniff',
@@ -180,4 +180,5 @@ router.post('/classes/:classId/drafts/:id', wrap(async (req, res) => {
     });
     res.json({ success: true });
 }));
+router.ready = ready;
 module.exports = router;

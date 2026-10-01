@@ -29,12 +29,12 @@ test('a class named in a question is read in digits or Roman numerals', () => {
 // --- live progress ----------------------------------------------------
 test('progress steps are readable only by the user who started the request', () => {
     const rid = 'test-rid-' + Date.now();
-    progress.start(rid, 7);
-    progress.step(rid, 'Checked your memory');
-    progress.step(rid, 'Writing the answer');
+    const handle=progress.start(rid, 7);
+    progress.step(handle, 'Checked your memory');
+    progress.step(handle, 'Writing the answer');
     assert.deepEqual(progress.read(rid, 7).steps, ['Checked your memory', 'Writing the answer']);
     assert.equal(progress.read(rid, 8), null);            // someone else's id reads as unknown
-    progress.finish(rid);
+    progress.finish(handle);
     assert.equal(progress.read(rid, 7).done, true);
 });
 test('malformed request ids are refused rather than stored', () => {

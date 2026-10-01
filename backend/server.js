@@ -28,6 +28,10 @@ app.use('/api/teaching-studio', require('./controllers/teachingStudioController'
 app.use('/api/teacher',      teacherRoutes);
 app.use('/api/classroom',    classroomRoutes);
 app.use('/api/study',        studyRoutes);
+app.use('/api/learning', require('./controllers/learningController'));
+app.use('/api/studio', require('./controllers/studioController'));
+app.use('/api/roadmaps', require('./controllers/studioRoadmapController'));
+app.use('/api/review', require('./controllers/reviewController'));
 app.use('/api/gamification', gamificationRoutes);
 
 // Verified Source Library admin screen. The page itself holds no data; every
@@ -63,6 +67,10 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 async function start() {
 await require('./config/db').ready();
+await require('./services/studioStore').ready();
+await require('./controllers/teachingStudioController').ready();
+require('./services/studioSources').start().catch(e => console.warn('[SOURCE]',e.message));
+require('./services/studioRoadmaps').start();
 // Finish any upload that was mid-OCR when the server last stopped.
 require('./services/memoryDocs').resumePending();
 // Seed the trusted source registry and resume any interrupted ingestion job.

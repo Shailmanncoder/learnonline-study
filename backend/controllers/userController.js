@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const { getJwtSecret } = require('../config/security');
 const db = require('../config/db');
 
 // Helper: calculate day streak from activity records
@@ -152,37 +151,25 @@ router.post('/notes', auth, async (req, res) => {
 
 // @route   GET api/user/leaderboard
 // @desc    Get leaderboard (top 50) — always includes current user if token provided
-router.get('/leaderboard', async (req, res) => {
+router.get('/leaderboard', auth, async (req, res) => {
     try {
-        const leaders = await db.all(
-            'SELECT id, username, xp, level, profile_picture, bio FROM users ORDER BY xp DESC LIMIT 50'
-        );
-
-        // Optionally attach current user's rank if authenticated
+        // Student rankings must not disclose login emails or mix teacher scores.
+        const publicEntry = user => ({
+            id: user.id, username: user.id === req.user.id || !user.username.includes('@') ? user.username : `Learner ${user.id}`,
+            xp: user.xp, level: user.level,
+            profile_picture: user.id === req.user.id ? user.profile_picture : null,
+            bio: user.id === req.user.id ? user.bio : ''
+        });
+        const rows = await db.all("SELECT id,username,xp,level,profile_picture,bio FROM users WHERE role = 'student' ORDER BY xp DESC,id ASC LIMIT 50");
         let currentUserRank = null;
-        const authHeader = req.headers['authorization'];
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            try {
-                const jwt = require('jsonwebtoken');
-                const token = authHeader.split(' ')[1];
-                const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] });
-                const uid = decoded.user.id;
-                const inList = leaders.some(l => l.id === uid);
-                if (!inList) {
-                    const rankRow = await db.get(
-                        'SELECT COUNT(*) as rank FROM users WHERE xp > (SELECT xp FROM users WHERE id = ?)',
-                        [uid]
-                    );
-                    const me = await db.get(
-                        'SELECT id, username, xp, level, profile_picture, bio FROM users WHERE id = ?',
-                        [uid]
-                    );
-                    if (me) currentUserRank = { ...me, rank: (rankRow.rank || 0) + 1 };
-                }
-            } catch (_) {}
+        if (!rows.some(user => user.id === req.user.id)) {
+            const me = await db.get("SELECT id,username,xp,level,profile_picture,bio FROM users WHERE id = ? AND role = 'student'", [req.user.id]);
+            if (me) {
+                const rank = await db.get("SELECT COUNT(*) n FROM users WHERE role = 'student' AND (xp > ? OR (xp = ? AND id < ?))", [me.xp, me.xp, me.id]);
+                currentUserRank = { ...publicEntry(me), rank: rank.n + 1 };
+            }
         }
-
-        res.json({ leaders, currentUserRank });
+        res.json({ leaders: rows.map(publicEntry), currentUserRank });
     } catch (err) {
         console.error(err.message);
         res.status(500).json({ msg: 'Server Error' });
@@ -193,9 +180,30 @@ router.get('/leaderboard', async (req, res) => {
 // @desc    Delete user account and all data
 router.delete('/account', auth, async (req, res) => {
     try {
-        await db.run('DELETE FROM notes WHERE user_id = ?', [req.user.id]);
-        await db.run('DELETE FROM activity WHERE user_id = ?', [req.user.id]);
-        await db.run('DELETE FROM users WHERE id = ?', [req.user.id]);
+        const learning = require('../services/learning');
+        await learning.ready();
+        await require('./teachingStudioController').ready();
+        await require('../services/teacherRequests').ready();
+        await require('../services/studioStore').ready();
+        await db.transaction(async () => {
+            for (const table of ['studio_attempts','studio_coaching']) await db.run(`DELETE FROM ${table} WHERE user_id=? OR pack_id IN (SELECT id FROM studio_packs WHERE user_id=? OR class_id IN (SELECT id FROM classrooms WHERE created_by=?))`,[req.user.id,req.user.id,req.user.id]);
+            await db.run('DELETE FROM studio_assignments WHERE student_id=? OR pack_id IN (SELECT id FROM studio_packs WHERE user_id=? OR class_id IN (SELECT id FROM classrooms WHERE created_by=?))',[req.user.id,req.user.id,req.user.id]);
+            await db.run('DELETE FROM studio_packs WHERE user_id=? OR class_id IN (SELECT id FROM classrooms WHERE created_by=?)',[req.user.id,req.user.id]);
+            await db.run('DELETE FROM studio_sources WHERE resource_id IN (SELECT id FROM teaching_resources WHERE teacher_id=? OR class_id IN (SELECT id FROM classrooms WHERE created_by=?))',[req.user.id,req.user.id]);
+            await db.run('DELETE FROM studio_roadmaps WHERE user_id=?',[req.user.id]);
+            await db.run('DELETE FROM studio_usage WHERE user_id=?',[req.user.id]);
+            for (const table of ['learning_quizzes', 'learning_mistakes', 'learning_goals', 'learning_checkins', 'learning_rewards']) {
+                await db.run(`DELETE FROM ${table} WHERE user_id = ?`, [req.user.id]);
+            }
+            for (const table of ['teaching_resources','teaching_drafts','teaching_attendance','teacher_join_requests']) {
+                await db.run(`DELETE FROM ${table} WHERE teacher_id=? OR class_id IN (SELECT id FROM classrooms WHERE created_by=?)`,[req.user.id,req.user.id]);
+            }
+            await db.run('DELETE FROM teaching_attendance WHERE student_id=?',[req.user.id]);
+            await db.run('DELETE FROM teaching_ai_usage WHERE teacher_id=?',[req.user.id]);
+            await db.run('DELETE FROM notes WHERE user_id = ?', [req.user.id]);
+            await db.run('DELETE FROM activity WHERE user_id = ?', [req.user.id]);
+            await db.run('DELETE FROM users WHERE id = ?', [req.user.id]);
+        });
         res.json({ msg: 'Account deleted successfully' });
     } catch (err) {
         console.error(err.message);

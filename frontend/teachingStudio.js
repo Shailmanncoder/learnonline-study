@@ -55,6 +55,23 @@
         const data = await request(endpoint(''));
         if (generation !== loading || selected !== classId) return;
         current = data;
+        const requestArea = $('studio-teacher-requests') || Object.assign(document.createElement('section'), {id:'studio-teacher-requests'});
+        $('studio-body').prepend(requestArea);
+        requestArea.replaceChildren();
+        // The server decides ownership; a forbidden response simply hides this owner-only area.
+        try {
+            const pending = await request(`/api/teacher/classes/${selected}/teacher-requests`);
+            if(generation!==loading || selected!==classId)return;
+            if(pending.requests.length) {
+                requestArea.innerHTML='<h3>Teacher access requests</h3>'+pending.requests.map(r=>`<p>${esc(r.username)} · ${esc(r.subject)} <button data-review-teacher="${r.teacher_id}" data-approve="true">Approve</button> <button data-review-teacher="${r.teacher_id}" data-approve="false">Reject</button></p>`).join('');
+                requestArea.querySelectorAll('button').forEach(button=>button.addEventListener('click',()=>action(button,async()=>{
+                    await request(`/api/teacher/classes/${selected}/teacher-requests/${button.dataset.reviewTeacher}`,{approve:button.dataset.approve==='true'});
+                    await refresh();
+                })));
+            }
+        } catch(e) { if(!/owner/.test(e.message))status(e.message,true); }
+
+        if(generation!==loading || selected!==classId)return;
         $('studio-body').hidden = false;
         const impact = current.impact;
         $('studio-metrics').innerHTML = [ ['Enrolled learners', impact.enrolled], ['Awaiting homework review', current.homework.reduce((n,h) => n + Number(h.pending),0)], ['Completed worksheet attempts', impact.completedAttempts], ['Average worksheet score', impact.averageScore == null ? 'Not recorded' : impact.averageScore + '%'] ].map(([label,value]) => `<article><strong>${value}</strong><span>${label}</span></article>`).join('');

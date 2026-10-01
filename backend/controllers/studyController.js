@@ -4,6 +4,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const db = require('../config/db');
 const { grantOnce } = require('../services/rewards');
+const learning = require('../services/learning');
 const { providerOrder, geminiKey, geminiModel } = require('../services/ai');
 
 // --- Multi-Provider AI Helper (same pattern used for worksheet generation) ---
@@ -237,7 +238,8 @@ router.get('/flashcards/due', auth, async (req, res) => {
 router.post('/flashcards/review', auth, async (req, res) => {
     try {
         const { cardId, quality } = req.body; // quality: 1 (Again), 3 (Hard), 4 (Good), 5 (Easy)
-        const q = Math.min(5, Math.max(0, parseInt(quality, 10)));
+        const q = Number(quality);
+        if (![1, 3, 4, 5].includes(q)) return res.status(400).json({ msg: 'Choose Again, Hard, Good, or Easy.' });
 
         const card = await db.get(
             `SELECT f.* FROM flashcards f JOIN flashcard_decks d ON d.id = f.deck_id WHERE f.id = ? AND d.user_id = ?`,
@@ -300,22 +302,7 @@ Respond ONLY with JSON in this exact shape:
             return res.status(502).json({ msg: "Couldn't generate a quiz right now — please try again in a moment." });
         }
 
-        // The answer key stays here. The browser is given the questions and
-        // options only, and submits a quiz id — it used to be handed
-        // correctIndex for every question and then asked to report its own
-        // score, which it could simply assert.
-        const quizId = crypto.randomUUID();
-        await db.run(
-            'INSERT INTO study_quizzes (id, user_id, topic, questions, total) VALUES (?, ?, ?, ?, ?)',
-            [quizId, req.user.id, subject, JSON.stringify(questions), questions.length]
-        );
-
-        res.json({
-            success: true,
-            quizId,
-            topic: subject,
-            questions: questions.map((q, i) => ({ id: i, question: q.question, options: q.options }))
-        });
+        res.json({ success: true, ...await learning.createQuiz(req.user.id, subject, questions) });
     } catch (err) {
         console.error('Quiz generation error:', err.message);
         res.status(500).json({ msg: 'Server error while generating the quiz' });
@@ -335,6 +322,9 @@ router.post('/quiz/submit', auth, async (req, res) => {
             return res.status(400).json({ msg: 'A quiz id and an answers array are required.' });
         }
 
+        await learning.ready();
+        const savedLearningQuiz = await db.get('SELECT id FROM learning_quizzes WHERE id = ? AND user_id = ?', [String(quizId), req.user.id]);
+        if (savedLearningQuiz) return res.json(await learning.submitQuiz(req.user.id, String(quizId), answers));
         const quiz = await db.get(
             'SELECT * FROM study_quizzes WHERE id = ? AND user_id = ?',
             [String(quizId), req.user.id]
@@ -379,8 +369,7 @@ router.post('/quiz/submit', auth, async (req, res) => {
 
         res.json({ success: true, score, total: questions.length, results, xpEarned });
     } catch (err) {
-        console.error('Quiz submit error:', err.message);
-        res.status(500).json({ msg: 'Server error while grading the quiz' });
+        res.status(err.status || 500).json({ msg: err.status ? err.message : 'Could not save quiz. Please retry.' });
     }
 });
 
@@ -447,48 +436,8 @@ router.get('/analytics/weakness', auth, async (req, res) => {
 
 // @route  POST /api/study/roadmap/generate
 router.post('/roadmap/generate', auth, async (req, res) => {
-    try {
-        const { examName, examDate, topics, hoursPerDay = 1.5 } = req.body;
-        if (!examName || !examDate || !topics) {
-            return res.status(400).json({ msg: 'Please provide the exam name, date, and topics to cover.' });
-        }
-
-        const today = new Date();
-        const exam = new Date(examDate);
-        const daysUntil = Math.ceil((exam - today) / (1000 * 60 * 60 * 24));
-
-        if (isNaN(daysUntil) || daysUntil < 1) {
-            return res.status(400).json({ msg: 'The exam date needs to be in the future.' });
-        }
-        if (daysUntil > 120) {
-            return res.status(400).json({ msg: "That's a long runway — try generating a roadmap for the final 90-120 days closer to the exam for a more focused plan." });
-        }
-
-        const prompt = `Create a day-by-day study roadmap for a student preparing for: "${examName}" on ${examDate} (${daysUntil} days from today).
-
-Topics/syllabus to cover: ${topics}
-Available study time: about ${hoursPerDay} hours per day.
-
-Distribute topics logically across the available days (don't cram everything into day 1). Include periodic flashcard review days, at least 2-3 mock-quiz/practice-test milestone days spread through the plan, and a final light-review day right before the exam (never schedule new topics on the last day).
-
-Respond ONLY with JSON in this exact shape:
-{"plan": [{"day": 1, "date": "YYYY-MM-DD", "focus": "short topic/task description", "type": "study|flashcard_review|mock_quiz|milestone|rest"}]}
-
-Generate exactly ${daysUntil} entries, one per day, with "date" starting from today (${today.toISOString().split('T')[0]}) through the day before the exam.`;
-
-        const raw = await generateAIJSON(prompt, 'You are an expert academic planner who builds realistic, well-paced exam study schedules. Respond ONLY with valid JSON.');
-        const parsed = safeParseJSON(raw, null);
-
-        let plan = Array.isArray(parsed?.plan) ? parsed.plan.filter(p => p && p.date && p.focus) : [];
-        if (plan.length === 0) {
-            return res.status(502).json({ msg: "Couldn't build the roadmap right now — please try again in a moment." });
-        }
-
-        res.json({ success: true, examName, examDate, daysUntil, plan });
-    } catch (err) {
-        console.error('Roadmap generation error:', err.message);
-        res.status(500).json({ msg: 'Server error while generating the roadmap' });
-    }
+    try { res.json(await require('../services/roadmap').batch(req.body)); }
+    catch (err) { res.status(err.status || 502).json({ msg: err.message }); }
 });
 
 module.exports = router;
