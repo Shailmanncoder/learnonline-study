@@ -8,6 +8,7 @@ const learning = require('../services/learning');
 test('learning journeys preserve ownership, grading integrity, retries and teacher review', async t => {
     await db.ready(); await learning.ready();
     for (const [id, name] of [[1,'student'],[2,'outsider'],[3,'teacher']]) await db.run('INSERT INTO users (id, username, password) VALUES (?, ?, ?)', [id,name,'unused']);
+    await db.run("UPDATE users SET role='teacher' WHERE id=3");
     const app = express(); app.use(express.json());
     app.use('/api/study',require('../controllers/studyController'));
     app.use('/api/learning',require('../controllers/learningController'));
@@ -85,9 +86,9 @@ test('learning journeys preserve ownership, grading integrity, retries and teach
         const submission=await call('classroom/worksheets/1/submit',1,{answers:[{id:1,answer:'Combining numbers'}]});
         assert.equal(submission.data.pendingReview,true);assert.equal(submission.data.xpEarned,0);
         const queue=(await call('review/queue',3)).data.attempts;assert.equal(queue.length,1);
-        assert.equal((await call('review/queue',2)).data.attempts.length,0);
+        assert.equal((await call('review/queue',2)).status,403);
         const payload={grades:[{id:1,awarded:2,feedback:'Correct explanation.'}]};
-        assert.equal((await call('review/'+queue[0].id,2,payload)).status,404);
+        assert.equal((await call('review/'+queue[0].id,2,payload)).status,403);
         assert.equal((await call('review/'+queue[0].id,3,{grades:[{id:1,awarded:9,feedback:'No'}]})).status,400);
         assert.equal((await call('review/'+queue[0].id,3,payload)).data.score,2);
         assert.equal((await call('review/'+queue[0].id,3,payload)).status,409);

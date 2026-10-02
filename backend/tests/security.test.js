@@ -24,7 +24,7 @@ test('database selection is explicit and a MySQL failure never opens SQLite', as
     await initializeDatabase('sqlite', { sqlite: async () => { sqliteCalls++; } });
     assert.equal(sqliteCalls, 1);
 });
-test('authentication rejects forged, expired and malformed identities', () => {
+test('authentication rejects forged, expired and malformed identities', async () => {
     const secret = getJwtSecret();
     const tokens = [
         jwt.sign({ user: { id: 1 } }, 'attacker-key'),
@@ -34,15 +34,20 @@ test('authentication rejects forged, expired and malformed identities', () => {
     ];
     for (const token of tokens) {
         let status, nextCalled = false;
-        auth({ header: () => `Bearer ${token}` }, {
+        await auth({ header: () => `Bearer ${token}` }, {
             status(code) { status = code; return this; }, json() {},
         }, () => { nextCalled = true; });
         assert.equal(status, 401);
         assert.equal(nextCalled, false);
     }
+    const db=require('../config/db');await db.ready();
+    await db.run("INSERT INTO users (id,username,password,role) VALUES (7,'auth-test','unused','student')");
     const req = { header: () => `Bearer ${jwt.sign({ user: { id: 7, role: 'student' } }, secret)}` };
     let passed = false;
-    auth(req, {}, () => { passed = true; });
+    await auth(req, {}, () => { passed = true; });
     assert.ok(passed);
     assert.equal(req.user.id, 7);
+    await db.run('DELETE FROM users WHERE id=7');
+    let deletedStatus;await auth(req,{status(s){deletedStatus=s;return this;},json(){}},()=>assert.fail('Deleted account was authenticated'));
+    assert.equal(deletedStatus,401);
 });
