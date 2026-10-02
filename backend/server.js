@@ -7,6 +7,18 @@ require('./config/security').getJwtSecret();
 
 const app = express();
 
+// nginx terminates TLS on this host and proxies to the container over plain
+// HTTP, so without this Express sees req.secure === false on every request —
+// and the payments router answers "Payments require HTTPS" with 426 to real
+// browsers that did arrive over HTTPS. Trusting exactly one hop makes Express
+// read X-Forwarded-Proto from nginx, and no further, so a client cannot spoof
+// X-Forwarded-For by adding its own header.
+//
+// It also fixes req.ip, which was the proxy's address for everyone: the
+// payment rate limiter and the risk ip_hash were treating every visitor as the
+// same person.
+app.set('trust proxy', 1);
+
 app.use(cors());
 
 // ── Payments ──────────────────────────────────────────────────────
