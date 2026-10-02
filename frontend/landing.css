@@ -1,0 +1,495 @@
+/* ============================================================
+   Landing page
+   ------------------------------------------------------------
+   Its own file on purpose: styles.css and premium.css are both
+   being edited for other work, and the landing page is a closed
+   surface — nothing in here applies inside the signed-in app.
+   Loaded after styles.css, so these win where they overlap.
+   ============================================================ */
+
+#landing-page {
+    --ink: #0b1b36;
+    --ink-soft: #46556f;
+    --ink-faint: #8795ad;
+    --blue: #1f5cff;
+    --blue-deep: #1443cc;
+    --wash: #f3f6fd;
+    --line: #e3e9f5;
+    --paper: #ffffff;
+    background: var(--paper);
+    color: var(--ink);
+}
+
+/* The old page had a dark particle canvas behind everything. */
+#landing-page #particle-canvas { display: none; }
+
+/* ── Nav ─────────────────────────────────────────────────── */
+#landing-page .land-nav {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1180px, calc(100% - 32px));
+    background: rgba(255, 255, 255, 0.86);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    box-shadow: 0 10px 30px rgba(16, 38, 85, 0.07);
+    z-index: 60;
+}
+#landing-page .land-nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding: 10px 12px 10px 22px;
+}
+#landing-page .land-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    text-decoration: none;
+    color: var(--ink);
+    font-weight: 800;
+    font-size: 19px;
+    letter-spacing: -0.4px;
+}
+/* Three bars, as in the mark. */
+#landing-page .land-logo-mark {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 20px;
+}
+#landing-page .land-logo-mark i {
+    display: block;
+    width: 4px;
+    border-radius: 2px;
+    background: var(--blue);
+}
+#landing-page .land-logo-mark i:nth-child(1) { height: 11px; opacity: .55; }
+#landing-page .land-logo-mark i:nth-child(2) { height: 20px; }
+#landing-page .land-logo-mark i:nth-child(3) { height: 14px; opacity: .75; }
+#landing-page .land-logo-mark.small { height: 14px; }
+#landing-page .land-logo-mark.small i:nth-child(1) { height: 8px; }
+#landing-page .land-logo-mark.small i:nth-child(2) { height: 14px; }
+#landing-page .land-logo-mark.small i:nth-child(3) { height: 10px; }
+#landing-page .land-logo-tag {
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: .4px;
+    color: var(--blue);
+    background: #e8f0ff;
+    border: 1px solid #d3e2ff;
+    border-radius: 6px;
+    padding: 2px 6px;
+}
+#landing-page .land-nav-links {
+    display: flex;
+    gap: 26px;
+    list-style: none;
+    margin: 0 auto;
+    padding: 0;
+}
+#landing-page .land-nav-links a {
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: 14.5px;
+    font-weight: 600;
+    transition: color .15s ease;
+}
+#landing-page .land-nav-links a:hover { color: var(--ink); }
+#landing-page .land-nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+#landing-page .land-role-links {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+}
+#landing-page .land-role-link {
+    border: 0;
+    background: transparent;
+    color: var(--ink-faint);
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+}
+#landing-page .land-role-link:hover { color: var(--blue); text-decoration: underline; }
+
+/* ── Buttons ─────────────────────────────────────────────── */
+#landing-page .btn-land-primary,
+#landing-page .btn-land-outline,
+#landing-page .btn-land-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    border-radius: 12px;
+    font-size: 14.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
+    white-space: nowrap;
+}
+#landing-page .btn-land-primary {
+    background: var(--blue);
+    border: 1px solid var(--blue);
+    color: #fff;
+    padding: 11px 20px;
+    box-shadow: 0 8px 18px rgba(31, 92, 255, .22);
+}
+#landing-page .btn-land-primary:hover { background: var(--blue-deep); transform: translateY(-1px); }
+#landing-page .btn-land-outline {
+    background: #fff;
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 11px 20px;
+}
+#landing-page .btn-land-outline:hover { border-color: #c6d5f3; transform: translateY(-1px); }
+#landing-page .btn-land-ghost {
+    background: transparent;
+    border: 0;
+    color: var(--ink-soft);
+    padding: 11px 10px;
+}
+#landing-page .btn-land-ghost:hover { color: var(--ink); }
+#landing-page .btn-land-large { padding: 15px 28px; font-size: 15.5px; border-radius: 14px; }
+#landing-page .btn-arrow { font-size: 15px; line-height: 1; }
+
+/* ── Hero ────────────────────────────────────────────────── */
+#landing-page .land-hero {
+    /* styles.css lays the hero out as a side-by-side flex row with the visual
+       beside the copy. This design stacks: centred column, frame underneath. */
+    display: block;
+    min-height: 0;
+    max-width: none;
+    position: relative;
+    padding: 188px 24px 0;
+    text-align: center;
+    overflow: hidden;
+    background:
+        radial-gradient(900px 420px at 12% 14%, #eaf1ff 0%, rgba(234,241,255,0) 70%),
+        radial-gradient(760px 420px at 88% 8%, #eef3ff 0%, rgba(238,243,255,0) 72%),
+        var(--paper);
+}
+#landing-page .land-hero-content {
+    position: relative;
+    flex: none;
+    max-width: 920px;
+    margin: 0 auto;
+}
+#landing-page .land-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #eef3ff;
+    border: 1px solid #dce7ff;
+    color: #2b4a86;
+    border-radius: 999px;
+    padding: 7px 15px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 26px;
+}
+#landing-page .land-badge-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--blue);
+}
+#landing-page .land-hero-title {
+    text-wrap: balance;
+    overflow-wrap: normal;
+    font-size: clamp(38px, 6.2vw, 76px);
+    line-height: 1.04;
+    letter-spacing: -2.4px;
+    font-weight: 800;
+    margin: 0 0 22px;
+    color: var(--ink);
+}
+#landing-page .land-hero-accent { color: var(--blue); }
+#landing-page .land-hero-sub {
+    font-size: clamp(16px, 2vw, 19px);
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin: 0 auto 32px;
+    max-width: 640px;
+}
+#landing-page .land-hero-actions {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 36px;
+}
+
+/* Handwritten notes either side. Hidden on narrow screens, where
+   there is no room beside the headline. */
+#landing-page .land-scribble {
+    position: absolute;
+    top: 196px;
+    font-family: 'Caveat', 'Bradley Hand', 'Segoe Print', cursive;
+    font-size: 19px;
+    line-height: 1.3;
+    color: #7e8ca6;
+    pointer-events: none;
+}
+#landing-page .land-scribble svg {
+    display: block;
+    width: 86px;
+    height: 44px;
+    margin-top: 2px;
+    fill: none;
+    stroke: #b9c6de;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+#landing-page .land-scribble-left { left: -140px; text-align: left; }
+#landing-page .land-scribble-right { right: -140px; text-align: right; }
+#landing-page .land-scribble-right svg { margin-left: auto; }
+
+/* ── Hero tabs ───────────────────────────────────────────── */
+#landing-page .land-hero-tabs {
+    display: inline-flex;
+    gap: 4px;
+    padding: 5px;
+    background: #eef2fb;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    margin-bottom: 44px;
+}
+#landing-page .land-hero-tab {
+    border: 0;
+    background: transparent;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 650;
+    padding: 9px 20px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+#landing-page .land-hero-tab.is-active {
+    background: #fff;
+    color: var(--ink);
+    box-shadow: 0 2px 8px rgba(16, 38, 85, .08);
+}
+
+/* ── Product frame ───────────────────────────────────────── */
+#landing-page .land-frame {
+    max-width: 1120px;
+    margin: 0 auto;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -2px 60px rgba(16, 38, 85, .10);
+    overflow: hidden;
+    text-align: left;
+}
+#landing-page .land-frame-bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--line);
+    background: #fbfcff;
+}
+#landing-page .land-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #dde4f1;
+}
+#landing-page .land-frame-title {
+    margin: 0 auto;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+}
+#landing-page .land-frame-pill {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 3px 9px;
+}
+#landing-page .land-frame-body { display: grid; grid-template-columns: 210px 1fr; min-height: 260px; }
+#landing-page .land-frame-side {
+    border-right: 1px solid var(--line);
+    padding: 20px 16px;
+    background: #fbfcff;
+}
+#landing-page .land-frame-brand {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 800; font-size: 15px; letter-spacing: -.3px;
+    margin-bottom: 20px;
+}
+#landing-page .land-frame-nav {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink-faint);
+    padding: 9px 11px;
+    border-radius: 9px;
+    margin-bottom: 3px;
+}
+#landing-page .land-frame-nav.is-active { background: #e9f0ff; color: var(--blue); }
+#landing-page .land-frame-main { padding: 28px 30px; }
+#landing-page .land-frame-eyebrow {
+    font-size: 11px; letter-spacing: 1.6px; font-weight: 800;
+    color: var(--ink-faint); margin: 0 0 10px;
+}
+#landing-page .land-frame-heading {
+    font-size: clamp(20px, 2.4vw, 27px);
+    letter-spacing: -.8px;
+    margin: 0 0 8px;
+}
+#landing-page .land-frame-copy { color: var(--ink-soft); font-size: 14.5px; margin: 0 0 22px; }
+#landing-page .land-frame-card {
+    display: flex; gap: 14px; align-items: flex-start;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 18px;
+    background: #f7f9ff;
+    max-width: 560px;
+}
+#landing-page .land-frame-card-icon {
+    width: 36px; height: 36px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 10px;
+    background: #e3ecff; color: var(--blue);
+    font-size: 16px; font-weight: 700;
+}
+#landing-page .land-frame-card-label {
+    font-size: 10.5px; letter-spacing: 1.3px; font-weight: 800;
+    color: var(--ink-faint); margin: 2px 0 4px;
+}
+#landing-page .land-frame-card-title { font-size: 16px; font-weight: 700; margin: 0 0 3px; }
+#landing-page .land-frame-card-sub { font-size: 13.5px; color: var(--ink-soft); margin: 0; }
+
+/* ── The rest of the page, lightened to match ────────────── */
+#landing-page .land-section { background: var(--paper); color: var(--ink); }
+#landing-page .land-section:nth-of-type(even) { background: var(--wash); }
+/* The previous landing page was dark, so headings were set near-white
+   further up the cascade. On a white page that reads as invisible. */
+#landing-page h1,
+#landing-page h2,
+#landing-page h3,
+#landing-page h4,
+#landing-page h5 { color: var(--ink); }
+#landing-page h2 { letter-spacing: -1.2px; }
+#landing-page p { color: var(--ink-soft); }
+#landing-page .land-frame-heading,
+#landing-page .land-frame-card-title { color: var(--ink); }
+#landing-page .land-frame-eyebrow,
+#landing-page .land-frame-card-label { color: var(--ink-faint); }
+
+@media (max-width: 1180px) {
+    #landing-page .land-scribble { display: none; }
+}
+@media (max-width: 900px) {
+    #landing-page .land-nav-links { display: none; }
+    #landing-page .land-role-links { display: none; }
+    #landing-page .land-nav-inner { padding: 10px 12px 10px 18px; }
+    #landing-page .land-frame-body { grid-template-columns: 1fr; }
+    #landing-page .land-frame-side { display: none; }
+}
+@media (max-width: 640px) {
+    #landing-page .land-hero { padding-top: 140px; }
+    #landing-page .land-hero-actions { flex-direction: column; align-items: stretch; }
+    #landing-page .land-hero-tabs { width: 100%; justify-content: center; flex-wrap: wrap; }
+    #landing-page .land-nav-actions .btn-land-ghost { display: none; }
+}
+
+/* ── Sections below the hero ─────────────────────────────────
+   These were built for a dark page: .glass-land cards are navy
+   with white text. On the light page they have to be inverted,
+   or the dark ink set above renders invisible on them. */
+#landing-page .land-section,
+#landing-page .land-section-dark { background: var(--paper); }
+#landing-page .land-section-dark,
+#landing-page #tools-preview { background: var(--wash); }
+
+#landing-page .land-section-label {
+    display: inline-block;
+    background: #eef3ff;
+    border: 1px solid #dce7ff;
+    color: #2b4a86;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+}
+#landing-page .land-section-title { color: var(--ink); letter-spacing: -1.6px; }
+#landing-page .land-section-sub { color: var(--ink-soft); }
+#landing-page .land-gradient-text { color: var(--blue); -webkit-text-fill-color: var(--blue); background: none; }
+
+#landing-page .glass-land,
+#landing-page .feature-card,
+#landing-page .step-card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgba(16, 38, 85, .05);
+    color: var(--ink);
+}
+#landing-page .feature-card:hover,
+#landing-page .step-card:hover {
+    border-color: #c9d8f6;
+    transform: translateY(-2px);
+    box-shadow: 0 14px 32px rgba(16, 38, 85, .09);
+}
+#landing-page .feature-card *,
+#landing-page .step-card * { color: inherit; }
+#landing-page .feature-card p,
+#landing-page .step-card p { color: var(--ink-soft); }
+#landing-page .feature-icon,
+#landing-page .step-icon,
+#landing-page .step-num {
+    background: #e9f0ff;
+    color: var(--blue);
+    border-color: #d7e4ff;
+}
+#landing-page .step-line { background: var(--line); }
+
+/* Tool marquee chips */
+#landing-page .marquee-track > * {
+    background: #fff;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+}
+
+/* Closing call to action */
+#landing-page .land-cta { background: var(--wash); }
+#landing-page .land-cta-inner {
+    background: var(--blue);
+    border-radius: 24px;
+    color: #fff;
+    border: 0;
+}
+#landing-page .land-cta-inner h2,
+#landing-page .land-cta-inner p,
+#landing-page .land-cta-inner * { color: #fff; }
+#landing-page .land-cta-inner .btn-land-primary {
+    background: #fff;
+    border-color: #fff;
+    color: var(--blue);
+    box-shadow: none;
+}
+#landing-page .land-cta-blob { opacity: .18; }
+
+/* Footer */
+#landing-page .land-footer {
+    background: var(--paper);
+    border-top: 1px solid var(--line);
+}
+#landing-page .land-footer,
+#landing-page .land-footer-copy,
+#landing-page .land-footer-tagline { color: var(--ink-faint); }
+#landing-page .land-footer-links a { color: var(--ink-soft); }
+#landing-page .land-footer-links a:hover { color: var(--blue); }
+#landing-page .land-logo-accent { color: var(--blue); }

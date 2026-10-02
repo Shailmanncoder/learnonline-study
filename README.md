@@ -79,3 +79,7 @@ The learning tables are created additively on first use for the configured SQLit
 
 Validation: `npm test` includes isolated HTTP journeys for quiz ownership, duplicate submissions, mistake scheduling, goals and export isolation, answer-key hiding, enrollment, homework regrading, teacher reviews, and rollback. Browser checks covered the student workspace, saved goals, check-ins, retest feedback and direct reload. Live model generation, MySQL deployment behavior, and production capacity require deployment-specific verification. The new features do not change AI provider routing or configure model credentials.
 
+
+## Connected Study Studio (October 2026)
+
+Study Studio connects chapter sources, lessons, recall cards, guided working, teacher-reviewed assignments and four staged checks. Learning labs add five interactive explorations. New roadmaps persist to the account and continue generating server-side; My Learning includes Studio work and due retention checks. Shared student, teacher and developer surfaces use quieter cards, typography and controls. See [the implementation and validation notes](docs/connected-study-studio.md) for workflows, limits and deployment requirements.

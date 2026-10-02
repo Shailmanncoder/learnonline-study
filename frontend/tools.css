@@ -1,0 +1,581 @@
+/* ============================================================
+   AI tool workspace
+   ------------------------------------------------------------
+   One stylesheet for all 50 tools. The markup in #active-tool is
+   shared, so every tool picks this up at once — there is no
+   per-tool styling and nothing to keep in sync.
+
+   The field markup used to be generated with inline styles in
+   openTool(), which beat any stylesheet; those are classes now
+   (.tool-field / .tool-field-control), which is what lets this
+   file govern the fields at all.
+
+   Written against the theme variables in styles.css so the dark
+   toggle keeps working. Loaded after ui-system.css; it wins
+   where the two overlap.
+   ============================================================ */
+
+#active-tool {
+    --tool-radius: 20px;
+    --tool-radius-sm: 12px;
+    --tool-accent: var(--accent-primary);
+}
+
+/* ── Header bar ───────────────────────────────────────────── */
+#active-tool .tool-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+    padding: 20px 24px;
+    border-radius: var(--tool-radius);
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    box-shadow: var(--glass-shadow);
+    margin-bottom: 20px;
+}
+#active-tool .tool-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+#active-tool #back-to-tools {
+    width: 40px;
+    height: 40px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 11px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color .14s ease, transform .14s ease, color .14s ease;
+}
+#active-tool #back-to-tools:hover {
+    border-color: var(--tool-accent);
+    color: var(--tool-accent);
+    transform: translateX(-2px);
+}
+/* The coloured icon tile, the motif carried across the app. */
+#active-tool .tool-icon-wrap {
+    width: 52px;
+    height: 52px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 15px;
+    font-size: 21px;
+    color: var(--tool-accent);
+    background: color-mix(in srgb, var(--tool-accent) 13%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tool-accent) 20%, transparent);
+}
+#active-tool #active-tool-name {
+    letter-spacing: -.7px;
+    line-height: 1.2;
+    margin: 0;
+}
+#active-tool .tool-model-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 999px;
+    color: var(--tool-accent);
+    background: color-mix(in srgb, var(--tool-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tool-accent) 22%, transparent);
+}
+#active-tool .tool-fav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: var(--tool-radius-sm);
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color .14s ease, color .14s ease, background .14s ease;
+}
+#active-tool .tool-fav-btn:hover { border-color: #F59E0B; color: #B45309; }
+#active-tool .tool-fav-btn.is-favorite {
+    border-color: rgba(245, 158, 11, .35);
+    background: rgba(245, 158, 11, .1);
+    color: #B45309;
+}
+[data-theme="dark"] #active-tool .tool-fav-btn.is-favorite,
+[data-theme="dark"] #active-tool .tool-fav-btn:hover { color: #FBBF24; }
+
+/* ── Workspace layout ─────────────────────────────────────── */
+#active-tool .active-tool-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+}
+#active-tool .tool-input-area,
+#active-tool .tool-output-wrapper {
+    border-radius: var(--tool-radius);
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    box-shadow: var(--glass-shadow);
+    padding: 24px;
+}
+
+/* ── Quick Prompts ────────────────────────────────────────── */
+/* styles.css lays this row out as a nowrap horizontal scroller, with
+   !important overrides at mobile widths. The design stacks instead, so
+   those are unwound here rather than edited out of styles.css, which
+   other screens still rely on. */
+#active-tool .tool-presets-row {
+    display: block !important;
+    overflow-x: visible !important;
+    /* paired with the [hidden] rule below — see the note there */
+    padding-bottom: 22px;
+    margin-bottom: 22px;
+    border-bottom: 1px solid var(--border-color);
+}
+/* The !important above beats an inline display:none, so a tool with no
+   quick prompts was left showing an empty header. Hiding goes through the
+   hidden attribute instead, at matching weight. */
+#active-tool .tool-presets-row[hidden] { display: none !important; }
+
+#active-tool .tool-presets-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+#active-tool .tool-presets-head-icon {
+    width: 38px;
+    height: 38px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 11px;
+    font-size: 15px;
+    color: #7C3AED;
+    background: rgba(124, 58, 237, .12);
+    border: 1px solid rgba(124, 58, 237, .2);
+}
+#active-tool .tool-presets-label {
+    font-size: 15.5px;
+    font-weight: 800;
+    letter-spacing: -.3px;
+    color: var(--text-primary);
+    margin: 0;
+}
+#active-tool .tool-presets-sub {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    margin: 2px 0 0;
+}
+#active-tool .tool-presets-pills {
+    display: grid !important;
+    overflow-x: visible !important;
+    width: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    gap: 10px;
+}
+/* Chips carry the whole prompt over two lines rather than a
+   truncated stub, so you can tell them apart before clicking. */
+#active-tool .tool-preset-chip {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: 13px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.45;
+    white-space: normal;
+    cursor: pointer;
+    transition: border-color .14s ease, background .14s ease, transform .14s ease;
+}
+#active-tool .tool-preset-chip:hover,
+#active-tool .tool-preset-chip:active {
+    border-color: var(--tool-accent) !important;
+    background: var(--card-bg) !important;
+    color: var(--text-primary) !important;
+    transform: translateY(-1px);
+}
+#active-tool .tool-preset-chip.is-active {
+    border-color: var(--tool-accent) !important;
+    background: color-mix(in srgb, var(--tool-accent) 9%, var(--card-bg)) !important;
+    color: var(--text-primary) !important;
+}
+#active-tool .tool-preset-chip-icon {
+    flex: none;
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+#active-tool .tool-preset-chip:hover .tool-preset-chip-icon,
+#active-tool .tool-preset-chip.is-active .tool-preset-chip-icon { color: var(--tool-accent); }
+
+/* ── Fields ───────────────────────────────────────────────── */
+#active-tool #tool-inputs-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    gap: 18px;
+}
+/* Fields holding a textarea or a file picker take the full width — a
+   one-line text box next to a 200px-tall box reads badly, and a file
+   control stranded in one column of three looks like a stray button. */
+#active-tool .tool-field:has(.tool-field-textarea),
+#active-tool .tool-field:has(.tool-field-file) { grid-column: 1 / -1; }
+
+#active-tool .tool-field-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -.1px;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+#active-tool .tool-field-control {
+    width: 100%;
+    display: block;
+    padding: 12px 15px;
+    border-radius: var(--tool-radius-sm);
+    border: 1.5px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14.5px;
+    line-height: 1.6;
+    transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+#active-tool .tool-field-control::placeholder { color: var(--text-secondary); opacity: .8; }
+#active-tool .tool-field-control:focus {
+    outline: none;
+    background: var(--card-bg);
+    border-color: var(--tool-accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--tool-accent) 13%, transparent);
+}
+#active-tool .tool-field-textarea {
+    min-height: 150px;
+    resize: vertical;
+}
+#active-tool .tool-field-textarea.is-roomy { min-height: 200px; }
+#active-tool select.tool-field-control {
+    appearance: none;
+    cursor: pointer;
+    padding-right: 40px;
+    /* Caret drawn in, since the native one goes with appearance:none. */
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 21px) calc(50% + 1px), calc(100% - 16px) calc(50% + 1px);
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+}
+#active-tool .tool-field-file {
+    padding: 10px 14px;
+    cursor: pointer;
+}
+#active-tool .tool-field-file::file-selector-button {
+    margin-right: 12px;
+    padding: 8px 14px;
+    border-radius: 9px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+#active-tool .tool-field-file::file-selector-button:hover { border-color: var(--tool-accent); color: var(--tool-accent); }
+#active-tool .tool-field-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 7px 0 0;
+    line-height: 1.5;
+}
+
+/* ── Tip ──────────────────────────────────────────────────── */
+#active-tool .tool-tip-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(245, 158, 11, .25);
+    background: rgba(245, 158, 11, .08);
+}
+#active-tool .tool-tip-icon {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    font-size: 13px;
+    color: #B45309;
+    background: rgba(245, 158, 11, .16);
+}
+[data-theme="dark"] #active-tool .tool-tip-icon { color: #FBBF24; }
+#active-tool .tool-tip-body strong {
+    display: block;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    color: #B45309;
+    margin-bottom: 3px;
+}
+[data-theme="dark"] #active-tool .tool-tip-body strong { color: #FBBF24; }
+#active-tool .tool-tip-body p {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* ── Footer ───────────────────────────────────────────────── */
+#active-tool .tool-input-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 22px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
+}
+#active-tool .tool-word-count {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+/* styles.css styles #run-tool-btn with an !important blue gradient, which
+   kept the button the same colour on all 50 tools no matter the accent.
+   Matched here so the button follows the tool's own hue. */
+#active-tool .tool-generate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 28px;
+    border-radius: 13px !important;
+    border: 1px solid var(--tool-accent) !important;
+    background: var(--tool-accent) !important;
+    color: #fff !important;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -.2px;
+    cursor: pointer;
+    box-shadow: 0 8px 20px color-mix(in srgb, var(--tool-accent) 26%, transparent) !important;
+    transition: transform .14s ease, box-shadow .14s ease, opacity .14s ease;
+}
+#active-tool .tool-generate-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, #000 10%, var(--tool-accent)) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 12px 26px color-mix(in srgb, var(--tool-accent) 32%, transparent) !important;
+}
+#active-tool .tool-generate-btn:disabled { opacity: .6; cursor: not-allowed; box-shadow: none; }
+@media (max-width: 560px) {
+    #active-tool .tool-input-footer { flex-direction: column; align-items: stretch; }
+    #active-tool .tool-generate-btn { justify-content: center; width: 100%; }
+}
+
+/* ── Output ───────────────────────────────────────────────── */
+#active-tool .tool-output-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding-bottom: 16px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border-color);
+}
+#active-tool .tool-output-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15.5px;
+    font-weight: 800;
+    letter-spacing: -.3px;
+    color: var(--text-primary);
+}
+#active-tool .tool-output-label i { color: var(--tool-accent); }
+#active-tool .tool-time-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    color: var(--success-color);
+    background: color-mix(in srgb, var(--success-color) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--success-color) 22%, transparent);
+}
+#active-tool .tool-output-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+#active-tool .tool-act-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 13px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color .14s ease, color .14s ease, background .14s ease;
+}
+#active-tool .tool-act-btn:hover {
+    border-color: var(--tool-accent);
+    color: var(--tool-accent);
+    background: var(--card-bg);
+}
+/* Clear throws the result away, so it reads as the destructive one. */
+#active-tool #clear-output-btn:hover {
+    border-color: var(--danger-color, #DC2626);
+    color: var(--danger-color, #DC2626);
+}
+@media (max-width: 760px) {
+    #active-tool .tool-act-btn span { display: none; }
+    #active-tool .tool-act-btn { padding: 9px 11px; }
+}
+
+#active-tool .tool-output-area {
+    min-height: 220px;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text-primary);
+}
+#active-tool .output-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 220px;
+    padding: 36px 24px;
+    border-radius: 16px;
+    border: 1px dashed var(--border-color);
+    background: var(--bg-color);
+    text-align: center;
+}
+#active-tool .output-placeholder i {
+    font-size: 26px;
+    color: var(--tool-accent);
+    opacity: .55;
+    margin-bottom: 4px;
+}
+#active-tool .output-placeholder p {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+#active-tool .output-placeholder span {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+    #active-tool .tool-input-area,
+    #active-tool .tool-output-wrapper { padding: 18px; }
+    #active-tool .tool-top-bar { padding: 16px 18px; }
+}
+
+/* On a phone the header's three blocks — back, icon, title — were being
+   laid out side by side, which wrapped the title into a narrow column
+   and pushed Favorite onto its own row. Stack it deliberately instead. */
+@media (max-width: 560px) {
+    #active-tool .tool-top-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+    }
+    #active-tool .tool-header-left { align-items: flex-start; gap: 12px; }
+    #active-tool .tool-icon-wrap { width: 44px; height: 44px; font-size: 18px; border-radius: 13px; }
+    #active-tool #back-to-tools { width: 36px; height: 36px; }
+    #active-tool #active-tool-name { font-size: 19px !important; }
+    #active-tool .tool-header-actions { display: flex; }
+    #active-tool .tool-fav-btn { flex: 1; justify-content: center; }
+}
+
+/* ============================================================
+   Per-category identity
+   ------------------------------------------------------------
+   Every tool page was the same indigo, so Math Solver looked
+   exactly like Essay Writer. Each tool already declares a
+   category in data.js; openTool() puts it on the shell as
+   data-tool-category and it drives the accent from there, so a
+   new tool picks up its colour from its own data with no extra
+   styling. Dark mode lifts each hue so it still reads as text
+   on a dark card.
+   ============================================================ */
+#active-tool[data-tool-category="Writing & Composition"]      { --tool-accent: #4F46E5; }
+#active-tool[data-tool-category="Academic Writing & Research"]{ --tool-accent: #7C3AED; }
+#active-tool[data-tool-category="Science & Math"]             { --tool-accent: #059669; }
+#active-tool[data-tool-category="Coding & Tech"]              { --tool-accent: #0891B2; }
+#active-tool[data-tool-category="Reading & Comprehension"]    { --tool-accent: #2563EB; }
+#active-tool[data-tool-category="Languages & Translation"]    { --tool-accent: #0D9488; }
+#active-tool[data-tool-category="Career & Professional"]      { --tool-accent: #D97706; }
+#active-tool[data-tool-category="History & Humanities"]       { --tool-accent: #C2410C; }
+#active-tool[data-tool-category="Productivity & Planning"]    { --tool-accent: #DB2777; }
+#active-tool[data-tool-category="Brainstorming"]              { --tool-accent: #9333EA; }
+#active-tool[data-tool-category="Lifestyle & Fun"]            { --tool-accent: #E11D48; }
+
+[data-theme="dark"] #active-tool[data-tool-category="Writing & Composition"]      { --tool-accent: #818CF8; }
+[data-theme="dark"] #active-tool[data-tool-category="Academic Writing & Research"]{ --tool-accent: #A78BFA; }
+[data-theme="dark"] #active-tool[data-tool-category="Science & Math"]             { --tool-accent: #34D399; }
+[data-theme="dark"] #active-tool[data-tool-category="Coding & Tech"]              { --tool-accent: #22D3EE; }
+[data-theme="dark"] #active-tool[data-tool-category="Reading & Comprehension"]    { --tool-accent: #60A5FA; }
+[data-theme="dark"] #active-tool[data-tool-category="Languages & Translation"]    { --tool-accent: #2DD4BF; }
+[data-theme="dark"] #active-tool[data-tool-category="Career & Professional"]      { --tool-accent: #FBBF24; }
+[data-theme="dark"] #active-tool[data-tool-category="History & Humanities"]       { --tool-accent: #FB923C; }
+[data-theme="dark"] #active-tool[data-tool-category="Productivity & Planning"]    { --tool-accent: #F472B6; }
+[data-theme="dark"] #active-tool[data-tool-category="Brainstorming"]              { --tool-accent: #C084FC; }
+[data-theme="dark"] #active-tool[data-tool-category="Lifestyle & Fun"]            { --tool-accent: #FB7185; }
+
+/* The Quick Prompts tile follows the tool's own colour too, rather
+   than staying a fixed purple on every page. */
+#active-tool .tool-presets-head-icon {
+    color: var(--tool-accent);
+    background: color-mix(in srgb, var(--tool-accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--tool-accent) 20%, transparent);
+}
+
+/* Category chip, beside the title. */
+#active-tool .tool-cat-pill {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .2px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+}
+
+/* Code goes in a monospace box with its own tab stops — proportional
+   text makes indentation unreadable. */
+#active-tool[data-tool-category="Coding & Tech"] .tool-field-textarea {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13.5px;
+    line-height: 1.65;
+    tab-size: 2;
+}

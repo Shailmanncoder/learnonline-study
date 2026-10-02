@@ -2,7 +2,7 @@ const router = require('express').Router();
 const auth = require('../middleware/auth');
 const db = require('../config/db');
 const learning = require('../services/learning');
-router.use(auth);
+router.use(auth, require('../middleware/teacher'));
 router.get('/queue', async (req, res) => {
     try {
         const rows = await db.all(`SELECT a.*, w.title, w.worksheet_data, u.username AS student_name, c.name AS class_name

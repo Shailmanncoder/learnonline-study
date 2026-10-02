@@ -4103,3 +4103,23 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
     background: var(--bg-color, #fff); border: 2px solid var(--accent, var(--brand-500));
 }
 .grok-live-steps .grok-live-step:last-child::before { background: var(--accent, var(--brand-500)); }
+/* The answer is real provider text, revealed as chunks arrive. */
+.grok-stream-draft:not(:empty)::after { content: '▍'; color: var(--primary, #7c3aed); animation: companionCursor 1s steps(2) infinite; }
+@keyframes companionCursor { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .grok-stream-draft::after { animation: none !important; } }
+
+#rm-more-btn[hidden] { display: none !important; }
+#rm-setup-box input, #rm-setup-box textarea { max-width: 100%; }
+#rm-setup-box label { display: block; margin-top: 10px; }
+#rm-timeline ol { padding-left: 22px; line-height: 1.65; }
+#rm-timeline p { overflow-wrap: anywhere; }
+#grok-video-suggest-btn { border: 0; border-radius: 12px; padding: 10px; background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; }
+#grok-video-suggest-btn:hover { color: #dc2626; }
+
+/* A fixed mobile drawer must fit below its header, including logout. */
+@media (max-width: 1024px) {
+    .teacher-sidebar { height: auto; max-height: calc(100dvh - 60px); }
+}
+@media (max-width: 640px) {
+    .teacher-sidebar { max-height: calc(100dvh - 56px); }
+}

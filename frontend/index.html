@@ -13,6 +13,14 @@
     <meta name="apple-mobile-web-app-title" content="StudyHub">
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/premium.css">
+    <link rel="stylesheet" href="/landing.css">
+    <link rel="stylesheet" href="/dashboard.css">
+    <link rel="stylesheet" href="/ui-system.css">
+    <link rel="stylesheet" href="/tools.css">
+    <link rel="stylesheet" href="/contrast.css">
+    <link rel="stylesheet" href="/plus.css">
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/studyStudio.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -23,6 +31,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <!-- Marked and Mermaid -->
     <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script defer src="/vendor/purify.min.js"></script>
     <!-- Pinned: the unversioned URL tracks "latest", which silently moved to
          mermaid 12 — a new major. app.js uses the v11 API (parse / run). -->
     <script defer src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script>
@@ -31,6 +40,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
     <link rel="stylesheet" href="/learning.css">
+    <link rel="stylesheet" href="/teachingStudio.css">
 </head>
 <body>
     <!-- Particle Canvas (Landing) -->
@@ -44,7 +54,7 @@
 
             <h2 id="auth-title">Student Sign In</h2>
             <p id="auth-subtitle">Log in to continue to your AI Study Hub</p>
-            
+
             <form id="auth-form">
                 <div class="form-group">
                     <label for="username" id="auth-user-label">Username</label>
@@ -63,7 +73,7 @@
                     <i class="fa-solid fa-arrow-right"></i>
                 </button>
             </form>
-            
+
             <div class="auth-toggle">
                 <span id="auth-switch-text">Don't have a student account?</span>
                 <a href="#" id="auth-switch-btn">Sign Up</a>
@@ -81,7 +91,7 @@
 
             <h2 id="dev-auth-title">Developer Sign In</h2>
             <p id="dev-auth-subtitle">Enter Developer Hub for mock tests, AI code review &amp; skills</p>
-            
+
             <form id="dev-auth-form">
                 <div class="form-group" id="dev-modal-skill-group" style="text-align: left; margin-bottom: 14px;">
                     <label for="dev-auth-skill-select" style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: block;">
@@ -115,7 +125,7 @@
                     <i class="fa-solid fa-arrow-right"></i>
                 </button>
             </form>
-            
+
             <div class="auth-toggle">
                 <span id="dev-auth-switch-text">Don't have a developer account?</span>
                 <a href="#" id="dev-auth-switch-btn" style="color: #2563EB; font-weight: 700;">Sign Up</a>
@@ -133,7 +143,7 @@
 
             <h2 id="teacher-auth-title">Teacher Sign In</h2>
             <p id="teacher-auth-subtitle">Access your Google Classroom-style Teacher Hub &amp; Worksheets</p>
-            
+
             <form id="teacher-auth-form">
                 <div class="form-group" id="teacher-modal-subject-group" style="text-align: left; margin-bottom: 14px; display: none;">
                     <label for="teacher-auth-subject-select" style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; display: block;">
@@ -166,7 +176,7 @@
                     <i class="fa-solid fa-arrow-right"></i>
                 </button>
             </form>
-            
+
             <div class="auth-toggle">
                 <span id="teacher-auth-switch-text">Don't have a teacher account?</span>
                 <a href="#" id="teacher-auth-switch-btn" style="color: #059669; font-weight: 700;">Sign Up as Teacher</a>
@@ -205,7 +215,7 @@
                     <span class="splash-stat-lbl">Total XP</span>
                 </div>
                 <div class="splash-stat">
-                    <span class="splash-stat-val">50+</span>
+                    <span class="splash-stat-val">50</span>
                     <span class="splash-stat-lbl">AI Tools</span>
                 </div>
                 <div class="splash-stat">
@@ -230,39 +240,37 @@
         <nav class="land-nav" id="land-nav">
             <div class="land-nav-inner">
                 <a href="#" class="land-logo">
-                    <div class="land-logo-icon"><i class="fa-solid fa-graduation-cap"></i></div>
-                    <span>Study<span class="land-logo-accent">Hub</span></span>
+                    <span class="land-logo-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+                    <span class="land-logo-word">StudyHub</span>
+                    <span class="land-logo-tag">AI</span>
                 </a>
                 <ul class="land-nav-links">
-                    <li><a href="#features">Features</a></li>
-                    <li><a href="#dev-tracks"><i class="fa-solid fa-code"></i> Developer Tests</a></li>
-                    <li><a href="#tools-preview"><i class="fa-solid fa-wand-magic-sparkles"></i> 50+ AI Tools</a></li>
-                    <li><a href="#how-it-works">How It Works</a></li>
+                    <li><a href="#features">The experience</a></li>
+                    <li><a href="#tools-preview">AI companion</a></li>
+                    <li><a href="#how-it-works">How it works</a></li>
                 </ul>
                 <div class="land-nav-actions">
-                    <!-- One primary action. Teacher/developer sign-in sits behind a
-                         quiet text link so a first-time visitor isn't asked to
-                         choose an identity before they know what this is. -->
+                    <!-- Teachers and developers sign in through their own portals;
+                         kept quiet so a first-time visitor isn't asked to pick an
+                         identity before they know what this is. -->
                     <div class="land-role-links">
                         <button type="button" class="land-role-link" id="nav-teacher-login-btn">For educators</button>
                         <span class="land-role-sep">·</span>
                         <button type="button" class="land-role-link" id="nav-dev-login-btn">For developers</button>
                     </div>
-                    <button class="btn-land-outline" id="nav-login-btn">Log In</button>
+                    <button class="btn-land-ghost" id="nav-login-btn">Log in</button>
                     <button class="btn-land-primary" id="nav-signup-btn">
-                        Start Learning Free <i class="fa-solid fa-arrow-right"></i>
+                        Start learning <span class="btn-arrow" aria-hidden="true">↗</span>
                     </button>
                 </div>
-                <button class="land-hamburger" id="land-hamburger"><i class="fa-solid fa-bars"></i></button>
+                <button class="land-hamburger" id="land-hamburger" aria-label="Open menu"><i class="fa-solid fa-bars"></i></button>
             </div>
-            <!-- Mobile menu -->
             <div class="land-mobile-menu" id="land-mobile-menu">
-                <a href="#features" class="land-mobile-link"><i class="fa-solid fa-star"></i> Features</a>
-                <a href="#dev-tracks" class="land-mobile-link"><i class="fa-solid fa-code"></i> Developer Tests</a>
-                <a href="#tools-preview" class="land-mobile-link"><i class="fa-solid fa-wand-magic-sparkles"></i> 50+ AI Tools</a>
-                <a href="#how-it-works" class="land-mobile-link"><i class="fa-solid fa-circle-question"></i> How It Works</a>
-                <button class="btn-land-primary" id="mobile-signup-btn">Start Learning Free</button>
-                <button class="btn-land-outline" id="mobile-login-btn">Log In</button>
+                <a href="#features" class="land-mobile-link">The experience</a>
+                <a href="#tools-preview" class="land-mobile-link">AI companion</a>
+                <a href="#how-it-works" class="land-mobile-link">How it works</a>
+                <button class="btn-land-primary" id="mobile-signup-btn">Start learning</button>
+                <button class="btn-land-ghost" id="mobile-login-btn">Log in</button>
                 <div class="land-role-links land-role-links-mobile">
                     <button type="button" class="land-role-link" id="mobile-teacher-login-btn">For educators</button>
                     <span class="land-role-sep">·</span>
@@ -274,90 +282,70 @@
         <!-- Hero Section -->
         <section class="land-hero" id="hero">
             <div class="land-hero-content">
-                <div class="land-badge">
-                    <span class="land-badge-dot"></span>
-                    AI-assisted learning
-                </div>
+                <div class="land-badge"><span class="land-badge-dot"></span> A clearer space to learn</div>
+
                 <h1 class="land-hero-title">
-                    Master Any Subject &<br>
-                    <span class="land-gradient-text">Crack Technical Exams</span><br>
-                    with Next-Gen AI
+                    Less noise.<br>
+                    <span class="land-hero-accent">More understanding.</span>
                 </h1>
+
                 <p class="land-hero-sub">
-                    Practice with AI-powered mock assessments in <strong>Python, Java, AWS, React, Docker, SQL & DSA</strong>. 
-                    Interactive academic worksheets, multi-format summarizers, smart notes & 50+ intelligent tools.
+                    Your material, a thoughtful AI companion, and a plan.<br>
+                    Everything you need for your next &ldquo;I get it&rdquo;.
                 </p>
-                <div class="land-hero-btns">
+
+                <div class="land-hero-actions">
                     <button class="btn-land-primary btn-land-large" id="hero-signup-btn">
-                        Start Learning Free <i class="fa-solid fa-rocket"></i>
+                        Find your focus <span class="btn-arrow" aria-hidden="true">↗</span>
                     </button>
-                    <button class="btn-land-ghost" id="hero-login-btn">
-                        <i class="fa-solid fa-right-to-bracket"></i> Log In
+                    <button class="btn-land-outline btn-land-large" id="hero-login-btn">
+                        Explore the workspace <span class="btn-arrow" aria-hidden="true">↓</span>
                     </button>
                 </div>
-                <p class="land-hero-note">
-                    Free to start. No card needed.
-                    <button type="button" class="land-role-link" id="hero-dev-btn">Developer track</button>
-                </p>
-                <div class="land-hero-stats">
-                    <div class="land-hero-stat">
-                        <span class="stat-num" data-target="50">50</span><span>+</span>
-                        <span class="stat-label">AI Tools</span>
-                    </div>
-                    <div class="land-stat-divider"></div>
-                    <div class="land-hero-stat">
-                        <span class="stat-num" data-target="7">7</span><span></span>
-                        <span class="stat-label">Developer Tracks</span>
-                    </div>
+
+                <!-- Handwritten-style notes, as in the design. Decorative only. -->
+                <span class="land-scribble land-scribble-left" aria-hidden="true">
+                    Better learning<br>a brighter you
+                    <svg viewBox="0 0 90 46"><path d="M4 2C22 6 48 14 66 32" /><path d="M58 34l10 2-2-10" /></svg>
+                </span>
+                <span class="land-scribble land-scribble-right" aria-hidden="true">
+                    Small steps.<br>Big progress.
+                    <svg viewBox="0 0 90 46"><path d="M86 2C68 6 42 14 24 32" /><path d="M32 34l-10 2 2-10" /></svg>
+                </span>
+
+                <div class="land-hero-tabs" role="tablist" aria-label="What you get">
+                    <button class="land-hero-tab is-active" role="tab" aria-selected="true" data-hero-tab="day">Your day</button>
+                    <button class="land-hero-tab" role="tab" aria-selected="false" data-hero-tab="companion">Your companion</button>
+                    <button class="land-hero-tab" role="tab" aria-selected="false" data-hero-tab="exam">Your next exam</button>
                 </div>
             </div>
-            <div class="land-hero-visual">
-                <div class="hero-card-stack">
-                    <div class="hero-float-card card-a glass-land">
-                        <div class="hfc-icon" style="background: linear-gradient(135deg,#2563eb,#3b82f6)"><i class="fa-brands fa-python"></i></div>
-                        <div>
-                            <div class="hfc-title">Python &amp; AI Mock Test</div>
-                            <div class="hfc-sub">Adaptive Code Challenges</div>
-                        </div>
-                    </div>
-                    <div class="hero-float-card card-b glass-land">
-                        <div class="hfc-icon" style="background: linear-gradient(135deg,#10b981,#059669)"><i class="fa-brands fa-aws"></i></div>
-                        <div>
-                            <div class="hfc-title">AWS &amp; Cloud Architect</div>
-                            <div class="hfc-sub">System Design &amp; DevOps</div>
-                        </div>
-                    </div>
-                    <div class="hero-float-card card-c glass-land">
-                        <div class="hfc-icon" style="background: linear-gradient(135deg,#f59e0b,#d97706)"><i class="fa-solid fa-file-signature"></i></div>
-                        <div>
-                            <div class="hfc-title">Interactive Worksheets</div>
-                            <div class="hfc-sub">Practice Certificates</div>
-                        </div>
-                    </div>
-                    <div class="hero-float-card card-d glass-land">
-                        <div class="hfc-icon" style="background: linear-gradient(135deg,#6366f1,#8b5cf6)"><i class="fa-solid fa-compress"></i></div>
-                        <div>
-                            <div class="hfc-title">4-in-1 Summarizer</div>
-                            <div class="hfc-sub">PDFs, Videos &amp; Notes</div>
-                        </div>
-                    </div>
-                    <!-- Central device mockup -->
-                    <div class="hero-device glass-land">
-                        <div class="device-bar"></div>
-                        <div class="device-screen">
-                            <div class="device-msg device-msg-ai">
-                                <i class="fa-solid fa-code"></i>
-                                <span>Q: Predict output of <code>[x**2 for x in range(5) if x%2!=0]</code></span>
-                            </div>
-                            <div class="device-msg device-msg-resp">
-                                Answer: <code>[1, 9]</code> <br><small>Score: 100% • 50 XP Earned</small>
-                            </div>
-                            <div class="device-msg device-msg-ai">
-                                <i class="fa-solid fa-award"></i>
-                                <span>Skill Badge earned 🎯</span>
-                            </div>
-                            <div class="device-typing">
-                                <span></span><span></span><span></span>
+
+            <!-- Product frame. Real app chrome, drawn in CSS — no screenshot to
+                 go stale when the interface changes. -->
+            <div class="land-frame" aria-hidden="true">
+                <div class="land-frame-bar">
+                    <span class="land-dot"></span><span class="land-dot"></span><span class="land-dot"></span>
+                    <span class="land-frame-title">StudyHub · Your learning space</span>
+                    <span class="land-frame-pill">Preview</span>
+                </div>
+                <div class="land-frame-body">
+                    <aside class="land-frame-side">
+                        <div class="land-frame-brand"><span class="land-logo-mark small"><i></i><i></i><i></i></span> StudyHub</div>
+                        <span class="land-frame-nav is-active">My workspace</span>
+                        <span class="land-frame-nav">AI companion</span>
+                        <span class="land-frame-nav">Exam prep</span>
+                        <span class="land-frame-nav">My learning</span>
+                    </aside>
+                    <div class="land-frame-main">
+                        <p class="land-frame-eyebrow">YOUR NEXT CHAPTER</p>
+                        <h3 class="land-frame-heading" data-hero-pane="day">Make room for a good idea.</h3>
+                        <p class="land-frame-copy" data-hero-pane-sub="day">A small step is a good place to start.</p>
+                        <div class="land-frame-card">
+                            <span class="land-frame-card-icon">↗</span>
+                            <div>
+                                <p class="land-frame-card-label">CONTINUE LEARNING</p>
+                                <p class="land-frame-card-title">Motion, made simple.</p>
+                                <p class="land-frame-card-sub">Understand the idea. Try it for yourself.</p>
                             </div>
                         </div>
                     </div>
@@ -377,7 +365,7 @@
                         <div class="feature-icon" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)">
                             <i class="fa-solid fa-brain"></i>
                         </div>
-                        <h3>50+ AI Study Tools</h3>
+                        <h3>50 AI Study Tools</h3>
                         <p>Essay writer, math solver, grammar checker, code debugger, language translator, and many more.</p>
                     </div>
                     <div class="feature-card glass-land" data-aos="1">
@@ -422,7 +410,7 @@
         <!-- Tools Preview Section -->
         <section class="land-section land-section-dark" id="tools-preview">
             <div class="land-section-inner">
-                <div class="land-section-label">50+ Tools</div>
+                <div class="land-section-label">50 Tools</div>
                 <h2 class="land-section-title">Explore our <span class="land-gradient-text">AI Tool Library</span></h2>
                 <div class="tools-marquee-wrap">
                     <div class="tools-marquee">
@@ -506,7 +494,7 @@
                         <div class="step-num">02</div>
                         <div class="step-icon"><i class="fa-solid fa-toolbox"></i></div>
                         <h3>Choose a Tool</h3>
-                        <p>Browse 50+ AI study tools across writing, math, languages, coding, and more.</p>
+                        <p>Browse 50 AI study tools across writing, math, languages, coding, and more.</p>
                         <div class="step-line"></div>
                     </div>
                     <div class="step-card">
@@ -531,7 +519,7 @@
             <div class="land-cta-inner">
                 <div class="land-cta-blob"></div>
                 <h2>Ready to transform<br>how you study?</h2>
-                <p>Join thousands of students using AI Study Hub to achieve better results.</p>
+                <p>Build a study routine with AI tools, practice and feedback.</p>
                 <button class="btn-land-primary btn-land-large" id="cta-signup-btn">
                     Start for Free — No Credit Card <i class="fa-solid fa-arrow-right"></i>
                 </button>
@@ -572,12 +560,12 @@
         <nav class="sidebar glass" id="studyhub-sidebar">
             <div class="logo">
                 <div class="logo-icon-wrap"><i class="fa-solid fa-graduation-cap"></i></div>
-                <span>StudyHub</span>
+                <span>StudyHub<small class="logo-tagline">Learn. Practice. Grow.</small></span>
                 <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Collapse Sidebar">
                     <i class="fa-solid fa-chevron-left" id="sidebar-collapse-icon"></i>
                 </button>
             </div>
-            
+
             <ul class="nav-links">
                 <li class="nav-item active" data-target="dashboard" title="Dashboard">
                     <i class="fa-solid fa-border-all"></i> <span>Dashboard</span>
@@ -586,18 +574,20 @@
                     <i class="fa-solid fa-wand-magic-sparkles"></i> <span>AI Companion</span>
                     <span class="nav-badge-pill" style="background:#2563EB;color:#fff;font-size:10px;font-weight:700;">BEST</span>
                 </li>
+                <li class="nav-item" data-target="study-studio" title="Study Studio"><i class="fa-solid fa-book-open-reader"></i><span>Study Studio</span></li>
+                <li class="nav-item" data-target="learning-labs" title="Learning labs"><i class="fa-solid fa-shapes"></i><span>Learning labs</span></li>
                 <li class="nav-item" data-target="classroom" title="My Classes">
                     <i class="fa-solid fa-graduation-cap"></i> <span>My Classes</span>
                 </li>
                 <li class="nav-item" data-target="tools" title="AI Tools">
                     <i class="fa-solid fa-toolbox"></i> <span>AI Tools</span>
-                    <span class="nav-badge-pill">50+</span>
+                    <span class="nav-badge-pill">50</span>
                 </li>
                 <li class="nav-item" data-target="notes" title="Note Taker">
-                    <i class="fa-solid fa-book"></i> <span>Note Taker</span> 
+                    <i class="fa-solid fa-book"></i> <span>Note Taker</span>
                 </li>
                 <li class="nav-item" data-target="worksheets" title="Worksheets">
-                    <i class="fa-solid fa-file-pen"></i> <span>Worksheets</span> 
+                    <i class="fa-solid fa-file-pen"></i> <span>Worksheets</span>
                 </li>
                 <li class="nav-item" data-target="creative" title="AI Creative">
                     <i class="fa-solid fa-paintbrush"></i> <span>AI Creative</span>
@@ -643,7 +633,18 @@
             </ul>
 
             <div class="nav-bottom">
-                
+
+                <!-- Opens the in-app plan screen. Prices are never written here;
+                     they come from /api/payments/catalog, which is the server's
+                     authoritative source. -->
+                <div class="nav-upgrade-card" id="nav-upgrade-card" role="button" tabindex="0">
+                    <div class="nav-upgrade-icon"><i class="fa-solid fa-circle-up"></i></div>
+                    <div class="nav-upgrade-text">
+                        <strong id="nav-upgrade-title">Support StudyHub</strong>
+                        <span id="nav-upgrade-sub">See the Plus plans</span>
+                    </div>
+                </div>
+
                 <li class="nav-item" id="profile-nav-btn">
                     <i class="fa-solid fa-gear"></i> <span>Profile Settings</span>
                 </li>
@@ -663,12 +664,13 @@
                     </button>
                     <div class="search-bar">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" placeholder="Search tools, notes...">
+                        <input type="text" id="global-search" placeholder="Search tools, notes, questions, topics, ...">
+                        <kbd class="search-kbd" aria-hidden="true">⌘ K</kbd>
                     </div>
                 </div>
-                
+
                 <div class="topbar-actions">
-                    
+
                     <button class="icon-btn theme-toggle-btn" id="theme-toggle" title="Toggle Theme">
                         <i class="fa-solid fa-sun" id="theme-icon"></i>
                     </button>
@@ -683,8 +685,8 @@
                         <div class="user-mini" id="profile-btn">
                             <div class="user-avatar-circle" id="mini-avatar-letter">S</div>
                             <div class="user-mini-info">
-                                <h4 id="mini-username">student@example.com</h4>
-                                <p>Level <span id="mini-level">2</span></p>
+                                <h4 id="mini-username">Your account</h4>
+                                <p>Level <span id="mini-level">1</span></p>
                             </div>
                             <i class="fa-solid fa-chevron-down mini-chevron" id="mini-chevron"></i>
                         </div>
@@ -692,7 +694,7 @@
                             <div class="mini-drop-item" id="drop-profile">
                                 <i class="fa-solid fa-user-gear"></i> Profile Settings
                             </div>
-                            
+
 
                             <div class="mini-drop-divider"></div>
                             <div class="mini-drop-item mini-drop-logout" id="drop-logout">
@@ -790,14 +792,14 @@
                                     <h2 class="grok-title">AI Study Companion</h2>
                                     <span class="grok-model-pill"><i class="fa-solid fa-bolt"></i> GPT-OSS 120B · Qwen 3.8</span>
                                 </div>
-                                <p class="grok-subtitle">Connected to 50+ study tools, live academic research &amp; Socratic tutor</p>
+                                <p class="grok-subtitle">Connected to 50 study tools, source lookup &amp; study support</p>
                             </div>
                         </div>
                         <div class="grok-header-actions">
                             <div class="grok-mode-select-wrap">
                                 <select id="grok-tutor-mode" class="grok-mode-select">
                                     <option value="socratic">🤖 Socratic AI Tutor (Adaptive)</option>
-                                    <option value="tools" selected>⚡ 50+ Tools Auto-Execution</option>
+                                    <option value="tools" selected>⚡ Study tool suggestions</option>
                                     <option value="research">🔍 Deep Academic Research</option>
                                     <option value="stem">🧮 STEM &amp; Step-by-Step Solver</option>
                                     <option value="exam">🎯 Exam &amp; Practice Coach</option>
@@ -988,7 +990,8 @@
                                     <button type="button" class="grok-icon-btn" id="grok-attach-btn" title="Attach Document / Image">
                                         <i class="fa-solid fa-paperclip"></i>
                                     </button>
-                                    <button type="button" class="grok-send-btn" id="grok-send-btn" title="Send message">
+                                    <button type="button" id="grok-video-suggest-btn" title="Find a learning video in this chat" aria-label="Suggest a YouTube learning video"><i class="fa-brands fa-youtube"></i></button>
+                            <button type="button" class="grok-send-btn" id="grok-send-btn" title="Send message">
                                         <i class="fa-solid fa-arrow-up"></i>
                                     </button>
                                 </div>
@@ -1000,13 +1003,22 @@
 
             <!-- Dashboard Section -->
             <section id="dashboard" class="section-container active">
+                <!-- Rounded quick-destination tabs. Each one opens a screen that
+                     already exists; nothing here is decorative. -->
+                <nav class="dash-tabs" id="dash-tabs" aria-label="Quick destinations">
+                    <button class="dash-tab" data-dash-tab="ai-chat"><i class="fa-solid fa-robot"></i> AI Tutor</button>
+                    <button class="dash-tab" data-dash-tab="learning-hub"><i class="fa-solid fa-graduation-cap"></i> Exam Prep</button>
+                    <button class="dash-tab" data-dash-tab="learning-labs"><i class="fa-solid fa-flask"></i> Labs</button>
+                    <button class="dash-tab" data-dash-tab="study-roadmap"><i class="fa-solid fa-route"></i> My Learning</button>
+                </nav>
+
                 <!-- Exact Hero Banner from Reference UI -->
                 <div class="dash-hero-banner">
                     <div class="dash-hero-left">
                         <div class="dash-greeting-pill">
                             <span id="hero-sun-icon">☀️</span> <span id="hero-time-greeting">GOOD AFTERNOON</span>
                         </div>
-                        <h1 class="dash-hero-heading">Welcome back, <span id="hero-username">Shailmann</span>! 👋</h1>
+                        <h1 class="dash-hero-heading">Welcome back, <span id="hero-username">Learner</span>! 👋</h1>
                         <p class="dash-hero-subtext" id="hero-quote">Success is the sum of small efforts repeated daily.</p>
                         <div class="dash-hero-btn-group">
                             <button class="dash-btn-primary" data-jump-target="tools">
@@ -1078,7 +1090,7 @@
                                 <i class="fa-solid fa-star"></i>
                             </div>
                         </div>
-                        <div class="stat-card-val" id="dash-xp">160</div>
+                        <div class="stat-card-val" id="dash-xp">0</div>
                         <div class="stat-card-label">Total XP Earned</div>
                         <div class="stat-card-pill pill-blue">
                             <i class="fa-solid fa-arrow-trend-up"></i> Keep going!
@@ -1090,7 +1102,7 @@
                                 <i class="fa-regular fa-clock"></i>
                             </div>
                         </div>
-                        <div class="stat-card-val" id="dash-time">16 min</div>
+                        <div class="stat-card-val" id="dash-time">0 min</div>
                         <div class="stat-card-label">Studied Today</div>
                         <div class="stat-card-pill pill-green">
                             <i class="fa-regular fa-calendar"></i> Today
@@ -1102,7 +1114,7 @@
                                 <i class="fa-solid fa-fire"></i>
                             </div>
                         </div>
-                        <div class="stat-card-val" id="dash-streak">1</div>
+                        <div class="stat-card-val" id="dash-streak">0</div>
                         <div class="stat-card-label">Day Streak</div>
                         <div class="stat-card-pill pill-orange" id="dash-streak-pill">
                             <i class="fa-solid fa-fire"></i> On Fire!
@@ -1117,7 +1129,7 @@
                                 <i class="fa-solid fa-trophy"></i>
                             </div>
                         </div>
-                        <div class="stat-card-val" id="dash-level">2</div>
+                        <div class="stat-card-val" id="dash-level">1</div>
                         <div class="stat-card-label">Current Level</div>
                         <div class="stat-card-pill pill-purple">
                             <i class="fa-solid fa-medal"></i> Rank Up!
@@ -1148,6 +1160,51 @@
                         </button>
                     </div>
                     <div class="wr-body" id="wr-radar-container"></div>
+                </div>
+
+                <div class="dash-columns dash-two-up">
+                    <!-- Exam preparation: links into the existing Exam Prep workflow -->
+                    <div class="dash-panel dash-exam-card">
+                        <div class="dash-panel-head">
+                            <div class="dash-panel-icon icon-blue"><i class="fa-solid fa-graduation-cap"></i></div>
+                            <div>
+                                <h3>Exam preparation</h3>
+                                <p id="dash-exam-sub">Build a plan, practise, and track what still needs work.</p>
+                            </div>
+                        </div>
+                        <div class="dash-exam-body" id="dash-exam-body">
+                            <p class="dash-empty-line">Loading your preparation…</p>
+                        </div>
+                        <button class="dash-btn-primary dash-wide" data-dash-tab="learning-hub">
+                            <i class="fa-solid fa-arrow-right"></i> Open Exam Prep
+                        </button>
+                    </div>
+
+                    <!-- Daily goals: stored per account and per date -->
+                    <div class="dash-panel dash-goals-card">
+                        <div class="dash-panel-head">
+                            <div class="dash-panel-icon icon-green"><i class="fa-regular fa-circle-check"></i></div>
+                            <div>
+                                <h3>Today&rsquo;s goals</h3>
+                                <p id="dash-goals-sub">Saved to your account for today.</p>
+                            </div>
+                        </div>
+                        <ul class="dash-goal-list" id="dash-goal-list"></ul>
+                        <form class="dash-goal-form" id="dash-goal-form">
+                            <input id="dash-goal-input" type="text" maxlength="200" placeholder="Add a goal for today…" aria-label="Add a goal for today">
+                            <button class="dash-goal-add" type="submit" aria-label="Add goal"><i class="fa-solid fa-plus"></i></button>
+                        </form>
+                        <p class="dash-goal-status" id="dash-goal-status" role="status"></p>
+                    </div>
+                </div>
+
+                <!-- Continue learning: real saved work, newest first -->
+                <div class="jump-back-section" id="dash-continue-section">
+                    <div class="jump-back-header">
+                        <h3><i class="fa-solid fa-clock-rotate-left"></i> Continue learning</h3>
+                        <p>Pick up where you left off</p>
+                    </div>
+                    <div class="jump-back-grid" id="dash-continue-grid"></div>
                 </div>
 
                 <!-- Jump back in Shortcuts -->
@@ -1228,6 +1285,7 @@
 
             <!-- Student Hub: Classroom Section -->
             <section id="classroom" class="section-container">
+                <div id="student-teaching-resources" role="region" aria-label="Teacher resources"></div>
                 <!-- 1. Enrolled Classes List View -->
                 <div id="student-classes-list-view">
                     <div class="classroom-hero-banner">
@@ -1390,19 +1448,19 @@
             <section id="tools" class="section-container">
                 <div class="section-header-row">
                     <div class="section-header">
-                        <h2>50+ AI Study & Productivity Tools</h2>
+                        <h2>50 AI Study & Productivity Tools</h2>
                         <p>Supercharge your learning workflow with state-of-the-art AI assistants powered by GPT-OSS 120B.</p>
                     </div>
                     <div class="tools-search-wrap">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" id="tools-search-input" placeholder="Filter 50+ tools by name or keyword...">
+                        <input type="text" id="tools-search-input" placeholder="Filter 50 tools by name or keyword...">
                     </div>
                 </div>
 
                 <!-- Category Filter Pills -->
                 <div class="tools-filter-bar" id="tools-filter-bar">
                     <button class="filter-pill active" data-category="all">
-                        <i class="fa-solid fa-grid-2"></i> All Tools <span class="filter-count" id="count-all">50+</span>
+                        <i class="fa-solid fa-grid-2"></i> All Tools <span class="filter-count" id="count-all">50</span>
                     </button>
                     <button class="filter-pill" data-category="writing">
                         <i class="fa-solid fa-pen-nib"></i> Writing & Essays <span class="filter-count" id="count-writing">12</span>
@@ -1423,10 +1481,26 @@
                         <i class="fa-solid fa-star"></i> Saved Favorites <span class="filter-count" id="count-favs">0</span>
                     </button>
                 </div>
-                
+
                 <div id="tools-container">
                     <!-- Categories populated via JS -->
                 </div>
+            </section>
+
+            <!-- Plus plans -->
+            <section id="plus" class="section-container">
+                <div class="section-header">
+                    <h2>StudyHub Plus</h2>
+                    <p>Two monthly plans. Prices come from the server, and renewal is manual — nothing is charged automatically.</p>
+                </div>
+
+                <div class="plus-banner" id="plus-banner"></div>
+
+                <div class="plus-grid" id="plus-grid">
+                    <p class="plus-loading">Loading plans…</p>
+                </div>
+
+                <div class="plus-note" id="plus-note"></div>
             </section>
 
             <!-- Active Tool Section -->
@@ -1442,6 +1516,7 @@
                         <div>
                             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                                 <h2 id="active-tool-name" style="font-size: 20px; font-weight: 800; color: var(--text-primary);">Tool Name</h2>
+                                <span class="tool-cat-pill" id="active-tool-category"></span>
                                 <span class="tool-model-pill"><i class="fa-solid fa-bolt"></i> AI-assisted</span>
                             </div>
                             <p id="active-tool-desc" style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">AI Assistant</p>
@@ -1453,12 +1528,18 @@
                         </button>
                     </div>
                 </div>
-                
+
                 <div class="active-tool-workspace">
                     <div class="tool-input-area glass">
                         <!-- Quick Preset Suggestions -->
                         <div class="tool-presets-row" id="tool-presets-wrap">
-                            <span class="tool-presets-label"><i class="fa-solid fa-wand-magic"></i> Quick Prompts:</span>
+                            <div class="tool-presets-head">
+                                <div class="tool-presets-head-icon"><i class="fa-solid fa-wand-magic"></i></div>
+                                <div class="tool-presets-head-text">
+                                    <h3 class="tool-presets-label">Quick Prompts</h3>
+                                    <p class="tool-presets-sub" id="tool-presets-count"></p>
+                                </div>
+                            </div>
                             <div class="tool-presets-pills" id="tool-presets-pills">
                                 <!-- Populated dynamically -->
                             </div>
@@ -1467,14 +1548,25 @@
                         <div id="tool-inputs-container">
                             <textarea id="tool-input" placeholder="Enter your prompt here..."></textarea>
                         </div>
+
+                        <!-- What the tool actually sends, listed from its own field
+                             definitions so it stays true for all 50 tools. -->
+                        <div class="tool-tip-card" id="tool-tip-card" style="display:none;">
+                            <div class="tool-tip-icon"><i class="fa-regular fa-lightbulb"></i></div>
+                            <div class="tool-tip-body">
+                                <strong>Tip</strong>
+                                <p id="tool-tip-text"></p>
+                            </div>
+                        </div>
+
                         <div class="tool-input-footer">
                             <span class="tool-word-count" id="tool-word-count">0 words • 0 characters</span>
-                            <button class="btn btn-primary" id="run-tool-btn">
+                            <button class="btn btn-primary tool-generate-btn" id="run-tool-btn">
                                 <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Response
                             </button>
                         </div>
                     </div>
-                    
+
                     <div class="tool-output-wrapper glass">
                         <div class="tool-output-header">
                             <div style="display: flex; align-items: center; gap: 8px;">
@@ -1554,7 +1646,7 @@
                     <h2>AI Multi-Format Summarizer Studio</h2>
                     <p>Condense documents, video lectures, articles, and textbooks into bite-sized actionable insights.</p>
                 </div>
-                
+
                 <div class="summarizer-tabs-card glass">
                     <div class="sum-tabs-header">
                         <button class="sum-tab active" data-sum-mode="text"><i class="fa-solid fa-align-left"></i> Text & Notes</button>
@@ -1636,7 +1728,7 @@
                     <button class="insp-chip" data-topic="Chemical Reactions & Stoichiometry" data-class="Chemistry Grade 11">⚗️ Chemistry</button>
                     <button class="insp-chip" data-topic="HTML5, CSS3, & Modern JavaScript" data-class="Web Development">💻 Web Dev</button>
                 </div>
-                
+
                 <div class="worksheet-builder-card glass">
                     <div class="ws-builder-grid">
                         <div class="form-group">
@@ -1767,7 +1859,7 @@
                     <button class="insp-chip" data-creative-sample="Database Schema for E-commerce Platform" data-type="classDiagram">🗄 DB Architecture</button>
                     <button class="insp-chip" data-creative-sample="Plant Cell Photosynthesis Process" data-type="sequence">🌱 Biology Process</button>
                 </div>
-                
+
                 <div class="glass" style="padding: 30px; margin-bottom: 24px;">
                     <div class="form-group" style="margin-bottom: 18px;">
                         <label style="font-weight: 700; color: var(--text-primary); margin-bottom: 8px; display: block;">Describe your Diagram / Architecture</label>
@@ -2022,40 +2114,40 @@
                 </div>
             </section>
 
+            <section id="study-studio" class="section-container"><div id="ss-student" class="ss-root"></div></section>
+            <section id="learning-labs" class="section-container"><div id="ss-labs" class="ss-root"></div></section>
             <!-- AI Personalized Exam Study Roadmap -->
             <section id="study-roadmap" class="section-container">
                 <div class="section-header">
-                    <h2>Exam Study Roadmap</h2>
-                    <p>Tell me your exam date and syllabus — I'll build a realistic day-by-day plan with review days and mock-test milestones built in.</p>
+                    <h2>Your Learning Roadmap</h2>
+                    <p>Plan an exam, skill, career move, project or personal goal. Every day includes timed actions, a deliverable and a progress check. Long plans build in batches you can pause and resume.</p>
                 </div>
 
                 <div class="glass" style="padding: 28px; margin-bottom: 24px;" id="rm-setup-box">
                     <div class="form-group" style="margin-bottom: 14px;">
-                        <label>Exam name</label>
+                        <button class="btn" id="rm-resume-btn" type="button">Resume saved plan</button><br><label for="rm-exam-name">What do you want to achieve?</label>
                         <input type="text" id="rm-exam-name" placeholder="e.g. CBSE Class 12 Physics, AP Calculus AB">
                     </div>
                     <div class="form-group" style="margin-bottom: 14px;">
-                        <label>Exam date</label>
+                        <label for="rm-exam-date">Target date (used when days is empty)</label>
                         <input type="date" id="rm-exam-date">
+                        <label for="rm-days">Exact number of days (takes priority over target date)</label>
+                        <input type="number" id="rm-days" min="1" step="1" placeholder="e.g. 62">
+                        <label for="rm-start-date">Start date</label><input type="date" id="rm-start-date">
                     </div>
                     <div class="form-group" style="margin-bottom: 16px;">
-                        <label>Topics / syllabus to cover</label>
+                        <label for="rm-curriculum">Textbook contents or syllabus (optional)</label><textarea id="rm-curriculum" rows="4" maxlength="16000" placeholder="Paste the chapter list from your actual book, including its title and edition. Without it, the plan uses topic names and does not claim current syllabus alignment."></textarea>
+                        <label for="rm-topics">Topics, current level, constraints and desired outcome</label>
                         <textarea id="rm-topics" rows="3" placeholder="e.g. Kinematics, Newton's Laws, Work & Energy, Rotational Motion, Thermodynamics..."></textarea>
                     </div>
                     <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
                         <label style="font-size:13px; font-weight:700; color: var(--text-secondary);">Study hours/day</label>
-                        <select id="rm-hours" style="width:90px;">
-                            <option value="1">1 hr</option>
-                            <option value="1.5" selected>1.5 hrs</option>
-                            <option value="2">2 hrs</option>
-                            <option value="3">3 hrs</option>
-                            <option value="4">4+ hrs</option>
-                        </select>
+                        <input id="rm-hours" type="number" min="0.25" max="24" step="0.25" value="1.5" aria-label="Hours per day" style="width:100px;">
                         <button class="btn btn-primary" id="rm-generate-btn" style="margin-left:auto;">
                             <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Roadmap
                         </button>
                     </div>
-                    <p id="rm-generate-status" style="margin-top: 12px; color: var(--accent-primary); font-weight: 600; text-align: center; display: none;">
+                    <p id="rm-generate-status" role="status" aria-live="polite" style="margin-top: 12px; color: var(--accent-primary); font-weight: 600; text-align: center; display: none;">
                         <i class="fa-solid fa-spinner fa-spin"></i> Planning your days — this can take a moment for longer roadmaps...
                     </p>
                 </div>
@@ -2070,7 +2162,12 @@
                             <i class="fa-solid fa-calendar-plus"></i> Export to Calendar (.ics)
                         </button>
                     </div>
+                    <p id="rm-save-status" role="status"></p><p id="rm-source-status" class="rm-source-status"></p>
+
+                    <button class="btn" id="rm-pause-btn" type="button">Pause after this batch</button>
+                    <button class="btn" id="rm-json-btn" type="button">Download full plan</button>
                     <div class="rm-timeline" id="rm-timeline"></div>
+                    <button class="btn" id="rm-more-btn" type="button">Show more days</button>
                 </div>
             </section>
 
@@ -2084,20 +2181,20 @@
                 <!-- User Rank Pin Banner -->
                 <div class="user-rank-banner glass">
                     <div class="user-rank-left">
-                        <div class="user-rank-avatar" id="rank-banner-avatar">S</div>
+                        <div class="user-rank-avatar" id="rank-banner-avatar">?</div>
                         <div>
-                            <h4 id="rank-banner-name">Shailmann (You)</h4>
-                            <p id="rank-banner-tier"><i class="fa-solid fa-medal"></i> Tier: Silver Scholar • Level 2</p>
+                            <h4 id="rank-banner-name">Your ranking</h4>
+                            <p id="rank-banner-tier">Your earned progress</p>
                         </div>
                     </div>
                     <div class="user-rank-stats">
                         <div class="rank-stat-box">
                             <span>RANK</span>
-                            <strong id="user-global-rank">#4</strong>
+                            <strong id="user-global-rank">—</strong>
                         </div>
                         <div class="rank-stat-box">
                             <span>TOTAL XP</span>
-                            <strong id="user-banner-xp">160 XP</strong>
+                            <strong id="user-banner-xp">—</strong>
                         </div>
                     </div>
                 </div>
@@ -2106,7 +2203,7 @@
                     <!-- Populated via JS -->
                 </div>
             </section>
-            
+
             <!-- Profile Settings Section -->
             <section id="profile" class="section-container">
                 <div class="section-header">
@@ -2135,21 +2232,21 @@
                             <input type="hidden" id="settings-avatar-url">
                         </div>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Display Name</label>
                         <input type="text" id="settings-username" placeholder="Your Name" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-primary);">
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Bio</label>
                         <textarea id="settings-bio" placeholder="e.g. High school senior studying for SATs..." rows="3" style="width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-primary); outline: none; resize: vertical;"></textarea>
                     </div>
-                    
+
                     <button class="btn" id="save-profile-btn" style="width: 100%;"><i class="fa-solid fa-save"></i> Save Changes</button>
                     <p id="profile-status-msg" style="text-align:center; font-size:14px;"></p>
 
-                    
+
             </section>
         </main>
     </div>
@@ -2166,7 +2263,7 @@
                 </button>
                 <button class="modal-x-btn" id="close-cert-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            
+
             <div class="certificate-frame-wrapper">
                 <div class="certificate-frame" id="certificate-frame">
                     <div class="cert-border-outer">
@@ -2176,7 +2273,7 @@
                             <div class="cert-corner corner-tr"></div>
                             <div class="cert-corner corner-bl"></div>
                             <div class="cert-corner corner-br"></div>
-                            
+
                             <div class="cert-watermark">
                                 <i class="fa-solid fa-graduation-cap"></i>
                             </div>
@@ -2203,7 +2300,7 @@
                                     <div class="cert-sig-line"></div>
                                     <div class="cert-sig-label">Academic Director</div>
                                 </div>
-                                
+
                                 <div class="cert-seal">
                                     <div class="cert-seal-badge">
                                         <i class="fa-solid fa-award"></i>
@@ -2245,12 +2342,12 @@
                     <span>Developer Hub</span>
                 </div>
             </div>
-            
+
             <div class="devhub-search-bar">
-                <input type="text" id="devhub-search-input" placeholder="Search for tests, notes, projects, skills...">
+                <input type="text" id="devhub-search-input" placeholder="Find tools: tests, notes, code review…" aria-label="Find a developer tool, then press Enter">
                 <i class="fa-solid fa-magnifying-glass"></i>
             </div>
-            
+
             <div class="devhub-header-right">
                 <button class="devhub-icon-btn theme-toggle-btn" data-theme-toggle title="Toggle Theme">
                     <i class="fa-solid fa-sun theme-icon"></i>
@@ -2266,8 +2363,8 @@
                     <div class="devhub-user-pill" id="devhub-profile-pill">
                         <div class="devhub-avatar-initial" id="devhub-avatar-initial">A</div>
                         <div class="devhub-user-meta">
-                            <span class="devhub-user-name" id="devhub-user-name">Arjun Dev</span>
-                            <span class="devhub-user-lvl" id="devhub-user-lvl">Level 4</span>
+                            <span class="devhub-user-name" id="devhub-user-name">Developer</span>
+                            <span class="devhub-user-lvl" id="devhub-user-lvl">Level 1</span>
                         </div>
                         <i class="fa-solid fa-chevron-down mini-chevron"></i>
                     </div>
@@ -2312,30 +2409,12 @@
                     <li class="devhub-nav-item" data-dev-tab="review">
                         <i class="fa-solid fa-code-compare"></i> <span>AI Code Review</span>
                     </li>
-                    <li class="devhub-nav-item" data-dev-tab="achievements">
-                        <i class="fa-solid fa-trophy"></i> <span>Achievements</span>
-                    </li>
-                    <li class="devhub-nav-item" data-dev-tab="bookmarks">
-                        <i class="fa-regular fa-bookmark"></i> <span>Bookmarks</span>
-                    </li>
-                    <li class="devhub-nav-item" data-dev-tab="community">
-                        <i class="fa-solid fa-user-group"></i> <span>Community</span>
-                    </li>
                     <li class="devhub-nav-item" data-dev-tab="settings">
                         <i class="fa-solid fa-gear"></i> <span>Settings</span>
                     </li>
                 </ul>
 
                 <div class="devhub-sidebar-bottom">
-                    <!-- Daily Goal Card -->
-                    <div class="devhub-goal-card">
-                        <div class="devhub-goal-title"><i class="fa-solid fa-fire"></i> Daily Goal</div>
-                        <div class="devhub-goal-sub"><span id="devhub-goal-text">2/5</span> tests completed</div>
-                        <div class="devhub-goal-track">
-                            <div class="devhub-goal-fill" id="devhub-goal-fill" style="width: 40%;"></div>
-                        </div>
-                    </div>
-
                     <!-- Developer Logout Link -->
                     <div class="devhub-switch-link" id="devhub-logout-btn">
                         <i class="fa-solid fa-right-from-bracket"></i> <span>Log Out Developer</span>
@@ -2350,7 +2429,7 @@
                     <!-- Welcome Hero Banner (Pure SVG Tech Badge, No Human Face) -->
                     <section class="devhub-hero-banner-jsx">
                         <div>
-                            <h1 class="devhub-hero-title">Welcome back, <span id="devhub-greeting-name">Arjun</span>!</h1>
+                            <h1 class="devhub-hero-title">Welcome back, <span id="devhub-greeting-name">Developer</span>!</h1>
                             <p class="devhub-hero-sub">Keep learning, building and leveling up.</p>
                         </div>
                         <div class="devhub-hero-svg-wrap" id="devhub-hero-svg-badge">
@@ -2369,8 +2448,8 @@
                                 <i class="fa-solid fa-rocket"></i>
                             </div>
                             <p class="devhub-stat-label-jsx">Skills Added</p>
-                            <p class="devhub-stat-val-jsx" id="devhub-stat-skills">12</p>
-                            <p class="devhub-stat-delta-jsx"><i class="fa-solid fa-arrow-up"></i> 2 this week</p>
+                            <p class="devhub-stat-val-jsx" id="devhub-stat-skills">0</p>
+                            <p class="devhub-stat-delta-jsx">Saved in this browser</p>
                         </div>
                         <!-- Card 2 -->
                         <div class="devhub-stat-card-jsx">
@@ -2378,26 +2457,26 @@
                                 <i class="fa-solid fa-clipboard-check"></i>
                             </div>
                             <p class="devhub-stat-label-jsx">Tests Taken</p>
-                            <p class="devhub-stat-val-jsx" id="devhub-stat-tests">24</p>
-                            <p class="devhub-stat-delta-jsx"><i class="fa-solid fa-arrow-up"></i> 5 this week</p>
+                            <p class="devhub-stat-val-jsx" id="devhub-stat-tests">0</p>
+                            <p class="devhub-stat-delta-jsx">Saved in this browser</p>
                         </div>
                         <!-- Card 3 -->
                         <div class="devhub-stat-card-jsx">
                             <div class="devhub-stat-icon-jsx" style="background: color-mix(in srgb, #0891B2 12%, transparent); color: #0891B2;">
                                 <i class="fa-solid fa-folder-open"></i>
                             </div>
-                            <p class="devhub-stat-label-jsx">Projects Uploaded</p>
-                            <p class="devhub-stat-val-jsx" id="devhub-stat-projects">8</p>
-                            <p class="devhub-stat-delta-jsx"><i class="fa-solid fa-arrow-up"></i> 1 this week</p>
+                            <p class="devhub-stat-label-jsx">Code Reviews</p>
+                            <p class="devhub-stat-val-jsx" id="devhub-stat-projects">0</p>
+                            <p class="devhub-stat-delta-jsx">Saved in this browser</p>
                         </div>
                         <!-- Card 4 -->
                         <div class="devhub-stat-card-jsx">
                             <div class="devhub-stat-icon-jsx" style="background: color-mix(in srgb, #F59E0B 12%, transparent); color: #F59E0B;">
                                 <i class="fa-solid fa-star"></i>
                             </div>
-                            <p class="devhub-stat-label-jsx">AI Code Score</p>
-                            <p class="devhub-stat-val-jsx" id="devhub-stat-score">87<span class="devhub-stat-denom-jsx"> /100</span></p>
-                            <p class="devhub-stat-note-jsx">Great work!</p>
+                            <p class="devhub-stat-label-jsx">Latest AI Review</p>
+                            <p class="devhub-stat-val-jsx" id="devhub-stat-score">—</p>
+                            <p class="devhub-stat-note-jsx">Saved in this browser</p>
                         </div>
                     </section>
 
@@ -2433,9 +2512,9 @@
                                     <div class="devhub-learn-icon-jsx" style="background: color-mix(in srgb, #0284C7 12%, transparent); color: #0284C7;">
                                         <i class="fa-solid fa-cloud-arrow-up"></i>
                                     </div>
-                                    <p class="devhub-learn-title-jsx">Upload Project</p>
-                                    <p class="devhub-learn-desc-jsx">Upload your project and get AI feedback</p>
-                                    <button class="devhub-cta-light-jsx" id="devhub-btn-upload-project">Upload Now</button>
+                                    <p class="devhub-learn-title-jsx">Open code review</p>
+                                    <p class="devhub-learn-desc-jsx">Paste a code sample and get AI feedback</p>
+                                    <button class="devhub-cta-light-jsx" id="devhub-btn-upload-project">Review Code</button>
                                 </div>
                                 <!-- Card 4 -->
                                 <div class="devhub-learn-tile-jsx">
@@ -2483,170 +2562,31 @@
                         <div class="devhub-card-box-jsx">
                             <div class="devhub-box-head-jsx">
                                 <h2>Recent Activity</h2>
-                                <button class="devhub-link-btn-jsx">View All</button>
+
                             </div>
-                            <div class="devhub-activity-space-jsx">
-                                <div class="devhub-act-row-jsx">
-                                    <div class="devhub-act-icon-wrap-jsx" style="background: color-mix(in srgb, #16A34A 12%, transparent); color: #059669;">
-                                        <i class="fa-solid fa-circle-check"></i>
-                                    </div>
-                                    <div class="devhub-act-content-jsx">
-                                        <p class="devhub-act-main-jsx">Completed Mock Test: JavaScript Basics</p>
-                                        <p class="devhub-act-sub-jsx">Score: 85% &nbsp;•&nbsp; 20 min ago</p>
-                                    </div>
-                                    <button class="devhub-act-action-jsx" id="devhub-feed-btn-1">View Result</button>
-                                </div>
-                                <div class="devhub-act-row-jsx">
-                                    <div class="devhub-act-icon-wrap-jsx" style="background: color-mix(in srgb, #2563EB 12%, transparent); color: #2563EB;">
-                                        <i class="fa-solid fa-note-sticky"></i>
-                                    </div>
-                                    <div class="devhub-act-content-jsx">
-                                        <p class="devhub-act-main-jsx">AI Notes generated for React Hooks</p>
-                                        <p class="devhub-act-sub-jsx">10 pages &nbsp;•&nbsp; 2 hours ago</p>
-                                    </div>
-                                    <button class="devhub-act-action-jsx" id="devhub-feed-btn-2">View Notes</button>
-                                </div>
-                                <div class="devhub-act-row-jsx">
-                                    <div class="devhub-act-icon-wrap-jsx" style="background: color-mix(in srgb, #0284C7 12%, transparent); color: #0284C7;">
-                                        <i class="fa-solid fa-cloud-arrow-up"></i>
-                                    </div>
-                                    <div class="devhub-act-content-jsx">
-                                        <p class="devhub-act-main-jsx">Uploaded project: DevConnect</p>
-                                        <p class="devhub-act-sub-jsx">AI Score: 88/100 &nbsp;•&nbsp; Yesterday</p>
-                                    </div>
-                                    <button class="devhub-act-action-jsx" id="devhub-feed-btn-3">View Review</button>
-                                </div>
-                                <div class="devhub-act-row-jsx">
-                                    <div class="devhub-act-icon-wrap-jsx" style="background: color-mix(in srgb, #F59E0B 12%, transparent); color: #F59E0B;">
-                                        <i class="fa-solid fa-star"></i>
-                                    </div>
-                                    <div class="devhub-act-content-jsx">
-                                        <p class="devhub-act-main-jsx">Earned badge: Consistent Learner</p>
-                                        <p class="devhub-act-sub-jsx">Keep it up! &nbsp;•&nbsp; 2 days ago</p>
-                                    </div>
-                                    <div class="devhub-badge-square-jsx">
-                                        <i class="fa-solid fa-trophy"></i>
-                                    </div>
-                                </div>
-                            </div>
+                            <div class="devhub-activity-space-jsx" id="devhub-real-activity"><p>Your completed practice and code reviews will appear here.</p></div>
                         </div>
                     </section>
 
                     <!-- Your Projects -->
                     <section class="devhub-card-box-jsx">
                         <div class="devhub-box-head-jsx">
-                            <h2>Your Projects</h2>
+                            <h2>Review your code</h2>
                             <button class="devhub-link-btn-jsx" id="devhub-link-all-projects" style="display: flex; align-items: center; gap: 4px;">
-                                View All Projects <i class="fa-solid fa-chevron-right" style="font-size: 10px;"></i>
+                                Open code review <i class="fa-solid fa-chevron-right" style="font-size: 10px;"></i>
                             </button>
                         </div>
                         <div class="devhub-proj-grid-jsx">
-                            <!-- Project 1: DevConnect (Dark) -->
-                            <div class="devhub-proj-card-jsx devhub-proj-dark">
-                                <div class="devhub-proj-top-banner devhub-banner-dark">
-                                    <span class="devhub-proj-banner-title" style="color: #FFFFFF;">DevConnect</span>
-                                </div>
-                                <div class="devhub-proj-body-jsx">
-                                    <div class="devhub-proj-title-row">
-                                        <p class="devhub-proj-title-jsx" style="color: #FFFFFF;">DevConnect</p>
-                                        <i class="fa-solid fa-ellipsis-vertical" style="color: var(--text-secondary);"></i>
-                                    </div>
-                                    <p class="devhub-proj-desc-jsx" style="color: var(--text-secondary);">A developer social platform</p>
-                                    <div class="devhub-proj-score-row">
-                                        <div>
-                                            <p class="devhub-proj-score-label" style="color: var(--text-secondary);">AI Score</p>
-                                            <p class="devhub-proj-score-val" style="color: #FFFFFF;">88<span class="devhub-proj-score-denom">/100</span></p>
-                                        </div>
-                                        <div class="devhub-score-ring-svg">
-                                            <svg width="44" height="44" class="devhub-ring-rot">
-                                                <circle cx="22" cy="22" r="19" stroke="#334155" stroke-width="4" fill="none"></circle>
-                                                <circle cx="22" cy="22" r="19" stroke="#10B981" stroke-width="4" fill="none" stroke-dasharray="119.38" stroke-dashoffset="14.32" stroke-linecap="round"></circle>
-                                            </svg>
-                                            <span class="devhub-ring-text" style="color: #FFFFFF;">88</span>
-                                        </div>
-                                    </div>
-                                    <div class="devhub-proj-tags-row">
-                                        <span class="devhub-tag-pill-dark">React</span>
-                                        <span class="devhub-tag-pill-dark">Node.js</span>
-                                        <span class="devhub-tag-pill-dark">MongoDB</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Project 2: TaskFlow (Light) -->
-                            <div class="devhub-proj-card-jsx devhub-proj-light">
-                                <div class="devhub-proj-top-banner devhub-banner-light">
-                                    <span class="devhub-proj-banner-title" style="color: var(--text-primary);">TaskFlow</span>
-                                </div>
-                                <div class="devhub-proj-body-jsx">
-                                    <div class="devhub-proj-title-row">
-                                        <p class="devhub-proj-title-jsx" style="color: var(--text-primary);">TaskFlow</p>
-                                        <i class="fa-solid fa-ellipsis-vertical" style="color: var(--text-secondary);"></i>
-                                    </div>
-                                    <p class="devhub-proj-desc-jsx" style="color: var(--text-secondary);">Task management app</p>
-                                    <div class="devhub-proj-score-row">
-                                        <div>
-                                            <p class="devhub-proj-score-label" style="color: var(--text-secondary);">AI Score</p>
-                                            <p class="devhub-proj-score-val" style="color: var(--text-primary);">76<span class="devhub-proj-score-denom">/100</span></p>
-                                        </div>
-                                        <div class="devhub-score-ring-svg">
-                                            <svg width="44" height="44" class="devhub-ring-rot">
-                                                <circle cx="22" cy="22" r="19" stroke="#E2E8F0" stroke-width="4" fill="none"></circle>
-                                                <circle cx="22" cy="22" r="19" stroke="#3B82F6" stroke-width="4" fill="none" stroke-dasharray="119.38" stroke-dashoffset="28.65" stroke-linecap="round"></circle>
-                                            </svg>
-                                            <span class="devhub-ring-text" style="color: var(--text-primary);">76</span>
-                                        </div>
-                                    </div>
-                                    <div class="devhub-proj-tags-row">
-                                        <span class="devhub-tag-pill-light">React</span>
-                                        <span class="devhub-tag-pill-light">Firebase</span>
-                                        <span class="devhub-tag-pill-light">Tailwind</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Project 3: CodeSnippet (Dark) -->
-                            <div class="devhub-proj-card-jsx devhub-proj-dark">
-                                <div class="devhub-proj-top-banner devhub-banner-dark">
-                                    <span class="devhub-proj-banner-title" style="color: #FFFFFF;">CodeSnippet</span>
-                                </div>
-                                <div class="devhub-proj-body-jsx">
-                                    <div class="devhub-proj-title-row">
-                                        <p class="devhub-proj-title-jsx" style="color: #FFFFFF;">CodeSnippet</p>
-                                        <i class="fa-solid fa-ellipsis-vertical" style="color: var(--text-secondary);"></i>
-                                    </div>
-                                    <p class="devhub-proj-desc-jsx" style="color: var(--text-secondary);">Save and share code snippets</p>
-                                    <div class="devhub-proj-score-row">
-                                        <div>
-                                            <p class="devhub-proj-score-label" style="color: var(--text-secondary);">AI Score</p>
-                                            <p class="devhub-proj-score-val" style="color: #FFFFFF;">91<span class="devhub-proj-score-denom">/100</span></p>
-                                        </div>
-                                        <div class="devhub-score-ring-svg">
-                                            <svg width="44" height="44" class="devhub-ring-rot">
-                                                <circle cx="22" cy="22" r="19" stroke="#334155" stroke-width="4" fill="none"></circle>
-                                                <circle cx="22" cy="22" r="19" stroke="#10B981" stroke-width="4" fill="none" stroke-dasharray="119.38" stroke-dashoffset="10.74" stroke-linecap="round"></circle>
-                                            </svg>
-                                            <span class="devhub-ring-text" style="color: #FFFFFF;">91</span>
-                                        </div>
-                                    </div>
-                                    <div class="devhub-proj-tags-row">
-                                        <span class="devhub-tag-pill-dark">Next.js</span>
-                                        <span class="devhub-tag-pill-dark">PostgreSQL</span>
-                                        <span class="devhub-tag-pill-dark">Tailwind</span>
-                                    </div>
-                                </div>
-                            </div>
-
                             <!-- Upload New Project Card -->
                             <button class="devhub-proj-upload-box-jsx" id="devhub-card-upload-project">
                                 <div class="devhub-upload-circle-jsx">
                                     <i class="fa-solid fa-file-circle-plus"></i>
                                 </div>
                                 <div style="text-align: center;">
-                                    <p class="devhub-upload-main-text">Upload New Project</p>
-                                    <p class="devhub-upload-sub-text">Get AI review and rating</p>
+                                    <p class="devhub-upload-main-text">Review a code sample</p>
+                                    <p class="devhub-upload-sub-text">Paste code for feedback and improvements</p>
                                 </div>
-                                <span class="devhub-upload-btn-pill">Upload Project</span>
+                                <span class="devhub-upload-btn-pill">Open code review</span>
                             </button>
                         </div>
                     </section>
@@ -2656,7 +2596,7 @@
                 <div id="devhub-tab-tests" class="devhub-tab-pane" style="display: none;">
                     <div class="devhub-pane-header">
                         <h2><i class="fa-solid fa-square-check"></i> Technical Mock Test Arena</h2>
-                        <p>Take timed, real-world coding tests &amp; architecture challenges with instant AI evaluation.</p>
+                        <p>Take timed, real-world coding tests &amp; architecture challenges with AI practice feedback. Scores are provisional and are not a verified certification.</p>
                     </div>
 
                     <div class="devhub-test-config-card">
@@ -2741,7 +2681,7 @@
                                     </button>
                                     <div class="devhub-score-badge-large">
                                         <span>Final Score</span>
-                                        <h2 id="devhub-final-score-text">85%</h2>
+                                        <h2 id="devhub-final-score-text">—</h2>
                                     </div>
                                 </div>
                             </div>
@@ -2835,8 +2775,8 @@
                                     <p style="color: var(--text-secondary); font-size: 14px;">Automated security, performance, and style evaluation.</p>
                                 </div>
                                 <div class="devhub-score-badge-large">
-                                    <span>AI Code Score</span>
-                                    <h2 id="devhub-reviewed-score-val">88/100</h2>
+                                    <span>Latest AI Review</span>
+                                    <h2 id="devhub-reviewed-score-val">—</h2>
                                 </div>
                             </div>
                             <div id="devhub-reviewed-feedback-body" class="dev-guide-body" style="margin-top: 18px;"></div>
@@ -2973,6 +2913,8 @@
                     <li class="teacher-nav-item active" data-teacher-tab="dashboard">
                         <i class="fa-solid fa-chart-pie"></i> <span>Dashboard</span>
                     </li>
+                    <li class="teacher-nav-item" data-teacher-tab="learning"><i class="fa-solid fa-book-open-reader"></i><span>Learning Studio</span></li>
+                    <li class="teacher-nav-item" data-teacher-tab="studio"><i class="fa-solid fa-chalkboard-user"></i><span>Teaching Studio</span></li>
                     <li class="teacher-nav-item" data-teacher-tab="classes">
                         <i class="fa-solid fa-school"></i> <span>My Classes</span>
                     </li>
@@ -3011,6 +2953,18 @@
 
             <!-- Main Workspace Area -->
             <main class="teacher-main-content">
+                <div id="teacher-tab-learning" class="teacher-tab-pane" style="display:none"><div id="ss-teacher" class="ss-root"></div></div>
+                <div id="teacher-tab-studio" class="teacher-tab-pane" style="display:none"><div class="studio-shell">
+<header><span>PREPARE · TEACH · FOLLOW UP</span><h2>Your Teaching Studio</h2><p>Keep resources, classroom activity, and teacher-reviewed AI drafts together. Turn a lesson into a plan your learners can follow.</p></header>
+<label for="studio-class">Your classroom</label><select id="studio-class"></select><p id="studio-status" role="status" aria-live="polite"></p>
+<div id="studio-body" hidden><div id="studio-metrics"></div>
+<div class="studio-grid"><section class="studio-card"><h3>Classwork and review</h3><ul id="studio-today"></ul><p>Use Homework Manager for grading and Review queue for answers needing teacher judgement.</p><div class="studio-actions"><button type="button" onclick="switchTeacherTab('homework')">Open homework</button><button type="button" onclick="switchTeacherTab('reviews')">Review answers</button><button type="button" onclick="switchTeacherTab('ai-worksheets')">Worksheet analysis &amp; reteach</button></div></section>
+<section class="studio-card"><h3>Measured class impact</h3><p>Export aggregate enrolment, recorded attendance and completed worksheet results. Student names and individual records are excluded. Learning improvement and teacher time saved are not yet measured.</p><button type="button" id="studio-impact">Download class impact</button></section></div>
+<div class="studio-grid"><section class="studio-card"><h3>Your resource library</h3><p>Upload any file type: PDF, JPG/JPEG, PNG, Word, PowerPoint, spreadsheets, audio, video or ZIP. Up to 6 MB per file and 60 MB per teacher. Files start private and download as attachments; they are not virus-scanned. Share only files you trust.</p><form id="studio-upload"><label for="studio-files">Choose teaching files</label><input id="studio-files" type="file" multiple required><button class="studio-primary" id="studio-upload-submit">Upload privately</button></form><ul id="studio-resources"></ul></section>
+<section class="studio-card"><h3>Draft your next lesson</h3><p>AI can use text from TXT, Markdown, CSV and JSON files. For other formats, paste relevant text below. Selected text is sent to the configured AI provider. Check accuracy before publishing.</p><form id="studio-generate"><label for="studio-kind">Create a draft</label><select id="studio-kind"><option value="lesson">Lesson plan, activity &amp; exit quiz</option><option value="catchup">Catch-up and follow-up practice</option><option value="parent">Private parent update</option></select><label for="studio-title">Topic or title</label><input id="studio-title" required maxlength="200" placeholder="e.g. Class 7 — Fractions"><label for="studio-source">Optional source file</label><select id="studio-source"></select><label for="studio-instructions">Instructions, source text or verified progress facts</label><textarea id="studio-instructions" rows="6" maxlength="8000" placeholder="Describe the learning goal and any support learners need. Use only necessary information; avoid personal identifiers."></textarea><button class="studio-primary" id="studio-generate-submit">Create private AI draft</button></form></section></div>
+<section class="studio-card"><h3>Attendance</h3><label for="studio-day">Class date</label><input type="date" id="studio-day" style="max-width:220px"><div id="studio-roster"></div><button type="button" class="studio-primary" id="studio-attendance-save">Save attendance</button></section>
+<section class="studio-card"><h3>Review your drafts</h3><p>Publication shares the edited text, including any answer keys, with your class. Remove teacher-only answers before publishing. Parent updates always remain private.</p><div id="studio-drafts"></div></section>
+</div></div></div>
                 <div id="teacher-tab-reviews" class="teacher-tab-pane" style="display:none"><p id="teacher-review-status" role="status"></p><div id="teacher-review-content"></div></div>
                 <!-- 1. Dashboard Tab -->
                 <div id="teacher-tab-dashboard" class="teacher-tab-pane active">
@@ -3443,7 +3397,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                 <div>
                     <h3 style="margin: 0; color: var(--text-primary); font-size: 18px; font-weight: 800;"><i class="fa-solid fa-key" style="color: #2563EB;"></i> Join as Co-Teacher</h3>
-                    <p style="margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary);">Enter class code to teach your subject in this class</p>
+                    <p style="margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary);">Request access with the class code. The classroom owner approves requests in Teaching Studio.</p>
                 </div>
                 <button class="auth-close-btn" id="close-teacher-join-modal-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
@@ -3456,7 +3410,7 @@
                 <input type="text" id="teacher-join-subject-input" placeholder="e.g. Science, English, Computer Science" style="width: 100%; padding: 12px; border-radius: 10px; border: 1.5px solid var(--border-color); font-size: 13.5px;">
             </div>
             <button class="btn btn-primary" id="submit-teacher-join-btn" style="width: 100%; padding: 13px; font-size: 14px; font-weight: 700; border-radius: 12px; justify-content: center;">
-                <i class="fa-solid fa-chalkboard-user"></i> Join Classroom as Teacher
+                <i class="fa-solid fa-chalkboard-user"></i> Request Teacher Access
             </button>
         </div>
     </div>
@@ -3593,10 +3547,14 @@
     <script defer src="/landing.js"></script>
     <script defer src="/ncert.js"></script>
     <script defer src="/app.js"></script>
+    <script defer src="/teachingStudio.js"></script>
     <script defer src="/chatSidebar.js"></script>
     <script defer src="/sourceLibrary.js"></script>
     <script defer src="/chatTools.js"></script>
     <script defer src="/premium.js"></script>
     <script defer src="/learning.js"></script>
+    <script defer src="/studyStudio.js"></script>
+    <script defer src="/learningLabs.js"></script>
+    <script defer src="/cloudRoadmaps.js"></script>
 </body>
 </html>

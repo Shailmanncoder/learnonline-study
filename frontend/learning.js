@@ -36,7 +36,7 @@
     }
     function renderToday(el, data) {
         el.innerHTML = `<div class="lh-heading"><div><h2>Your next steps</h2><p>Built from due reviews, class homework, and your exam goals. Check-ins record activity, not mastery.</p></div><span class="lh-pill">${data.tasks.filter(t => t.completed).length}/${data.tasks.length} checked off</span></div><div class="lh-grid">${data.tasks.map((t,i) => `<article class="lh-card ${t.completed ? 'lh-done' : ''}"><span class="lh-kicker">${t.minutes} MIN · ${esc(t.action.replaceAll('-',' '))}</span><h3>${esc(t.title)}</h3><p>${esc(t.reason)}</p><div class="lh-actions"><button class="btn btn-primary" data-task="${i}">Start</button><label><input type="checkbox" data-check="${i}" ${t.completed ? 'checked' : ''}> Done today</label></div></article>`).join('')}</div>`;
-        el.querySelectorAll('[data-task]').forEach(b => b.onclick = () => { const t = data.tasks[Number(b.dataset.task)]; if(t.action === 'mistakes') { activeTab = 'mistakes'; load(); } else navigate(t.action, t.topic); });
+        el.querySelectorAll('[data-task]').forEach(b => b.onclick = () => { const t = data.tasks[Number(b.dataset.task)]; if(t.action === 'mistakes') { activeTab = 'mistakes'; load(); } else if(t.packId)window.StudyStudio.openPack(t.packId); else navigate(t.action, t.topic); });
         el.querySelectorAll('[data-check]').forEach(b => b.onchange = async () => { b.disabled = true; try { await request('learning/checkins', { day: data.day, taskKey: data.tasks[Number(b.dataset.check)].key, completed: b.checked }); await load(); } catch(e) { b.checked = !b.checked; b.disabled = false; message(e.message); } });
     }
     function renderGoals(el, data) {

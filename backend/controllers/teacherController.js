@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const db = require('../config/db');
+router.use(auth, require('../middleware/teacher'));
+const teacherRequests = require('../services/teacherRequests');
 const { providerOrder, geminiKey, geminiModel } = require('../services/ai');
 
 // --- Multi-Provider AI Helper for Worksheet Generation ---
@@ -186,17 +188,15 @@ router.post('/classes/join', auth, async (req, res) => {
             return res.status(400).json({ success: false, error: { code: 'DUPLICATE_TEACHER', message: 'You are already registered as a teacher in this classroom.' } });
         }
 
-        await db.run(
-            'INSERT INTO teacher_classes (class_id, teacher_id, subject, role) VALUES (?, ?, ?, ?)',
-            [classroom.id, req.user.id, subject ? subject.trim() : 'Subject Teacher', role || 'subject_teacher']
-        );
-
-        await logAudit(req.user.id, 'TEACHER_JOINED', 'classrooms', classroom.id, { subject, role });
-
-        res.json({
-            success: true,
-            classroom: { ...classroom, my_role: role || 'subject_teacher' }
+        if (subject != null && (typeof subject !== 'string' || subject.length > 150)) return res.status(400).json({msg:'Enter a subject up to 150 characters.'});
+        await teacherRequests.ready();
+        await db.transaction(async () => {
+            await db.get('SELECT id FROM users WHERE id = ?' + (db.dialect() === 'mysql' ? ' FOR UPDATE' : ''), [req.user.id]);
+            const pending = await db.get('SELECT status FROM teacher_join_requests WHERE class_id = ? AND teacher_id = ?', [classroom.id, req.user.id]);
+            if (!pending) await db.run('INSERT INTO teacher_join_requests (class_id,teacher_id,subject) VALUES (?,?,?)', [classroom.id,req.user.id,subject?.trim() || 'Subject Teacher']);
+            else if (pending.status !== 'pending') await db.run("UPDATE teacher_join_requests SET status = 'pending', subject = ? WHERE class_id = ? AND teacher_id = ?", [subject?.trim() || 'Subject Teacher',classroom.id,req.user.id]);
         });
+        res.status(202).json({success:true,pending:true,classroom:{name:classroom.name,section:classroom.section},message:'Request sent. The classroom owner must approve your access in Teaching Studio.'});
     } catch (err) {
         console.error('[TEACHER JOIN ERROR]', err);
         res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
@@ -228,6 +228,37 @@ router.get('/classes', auth, async (req, res) => {
 // ============================================================================
 // 4. GET CLASSROOM DETAILS (STREAM, STATS)
 // ============================================================================
+router.get('/classes/:id/teacher-requests', auth, requireTeacherOfClass, async (req,res) => {
+    try {
+        if(Number(req.teacherClass.created_by)!==req.user.id)return res.status(403).json({msg:'Only the classroom owner can review requests.'});
+        await teacherRequests.ready();
+        const requests=await db.all("SELECT r.teacher_id,r.subject,u.username FROM teacher_join_requests r JOIN users u ON u.id=r.teacher_id WHERE r.class_id=? AND r.status='pending'",[req.params.id]);
+        res.json({requests});
+    }catch {res.status(500).json({msg:'Could not load requests.'});}
+});
+router.post('/classes/:id/teacher-requests/:teacherId', auth, requireTeacherOfClass, async (req,res) => {
+    try {
+        if(Number(req.teacherClass.created_by)!==req.user.id)return res.status(403).json({msg:'Only the classroom owner can review requests.'});
+        if(typeof req.body.approve!=='boolean')return res.status(400).json({msg:'Choose approve or reject.'});
+        await teacherRequests.ready();
+        const result=await db.transaction(async()=>{
+            const classroom=await db.get('SELECT status FROM classrooms WHERE id=?'+(db.dialect()==='mysql'?' FOR UPDATE':''),[req.params.id]);
+            if(classroom?.status!=='active')return false;
+            const request=await db.get("SELECT r.* FROM teacher_join_requests r JOIN users u ON u.id=r.teacher_id WHERE r.class_id=? AND r.teacher_id=? AND r.status='pending' AND u.role IN ('teacher','admin')",[req.params.id,req.params.teacherId]);
+            if(!request)return false;
+            if(req.body.approve){
+                const member=await db.get('SELECT teacher_id FROM teacher_classes WHERE class_id=? AND teacher_id=?',[req.params.id,req.params.teacherId]);
+                if(!member)await db.run("INSERT INTO teacher_classes (class_id,teacher_id,subject,role) VALUES (?,?,?,'subject_teacher')",[req.params.id,req.params.teacherId,request.subject]);
+            }
+            await db.run('UPDATE teacher_join_requests SET status=? WHERE class_id=? AND teacher_id=?',[req.body.approve?'approved':'rejected',req.params.id,req.params.teacherId]);
+            await logAudit(req.user.id,req.body.approve?'TEACHER_APPROVED':'TEACHER_REJECTED','classrooms',req.params.id,{teacherId:req.params.teacherId});
+            return true;
+        });
+        if(!result)return res.status(409).json({msg:'Request is no longer available or classroom is inactive.'});
+        res.json({success:true});
+    }catch {res.status(500).json({msg:'Could not review this request.'});}
+});
+
 router.get('/classes/:id', auth, requireTeacherOfClass, async (req, res) => {
     try {
         const classId = req.params.id;

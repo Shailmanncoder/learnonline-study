@@ -97,16 +97,15 @@ p {
     letter-spacing: -0.008em;
 }
 
-[data-theme="dark"] h1, 
-[data-theme="dark"] h2, 
-[data-theme="dark"] h3, 
-[data-theme="dark"] h4 {
-    color: #F8FAFC;
-}
-
-[data-theme="dark"] p {
-    color: #94A3B8;
-}
+/* The blanket [data-theme="dark"] h1-h4 / p colour rules that stood here
+   were exact duplicates of the values the theme variables already resolve
+   to in dark mode (#F8FAFC and #94A3B8), so they changed nothing visually.
+   What they did do is match the child element directly, which beats the
+   colour a component sets on its container and passes down by inheritance.
+   That is why the flashcard answer rendered as grey text on the light blue
+   accent card and could not be read. Removed; the base rules above already
+   theme correctly. Components that paint their own surface opt their text
+   in with .on-surface, below. */
 
 input, button, select, textarea {
     font-family: inherit;

@@ -38,7 +38,7 @@ const api = {
         const res = await fetch(`${API_BASE_URL}/user/profile`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!res.ok) throw new Error('Failed to fetch profile');
+        if (!res.ok) { const error = new Error('Failed to fetch profile'); error.status = res.status; throw error; }
         return res.json();
     },
 
@@ -133,6 +133,65 @@ const api = {
             body: JSON.stringify({ title, cards })
         });
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.msg || "Couldn't save the deck"); }
+        return res.json();
+    },
+
+    // Plans, prices and the caller's own subscription. The server is the
+    // authoritative source for every amount; nothing is priced on the client.
+    getPaymentCatalog: async (token) => {
+        const res = await fetch(`${API_BASE_URL}/payments/catalog`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Plans unavailable');
+        return res.json();
+    },
+
+    // --- Dashboard: daily goals (stored per account and per date) ---
+    getGoals: async (token, date) => {
+        const res = await fetch(`${API_BASE_URL}/user/goals?date=${encodeURIComponent(date || '')}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Could not load goals');
+        return res.json();
+    },
+    addGoal: async (token, title, date) => {
+        const res = await fetch(`${API_BASE_URL}/user/goals`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, date })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Could not save that goal');
+        return data;
+    },
+    updateGoal: async (token, id, patch) => {
+        const res = await fetch(`${API_BASE_URL}/user/goals/${id}`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(patch)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Could not update that goal');
+        return data;
+    },
+    removeGoal: async (token, id) => {
+        const res = await fetch(`${API_BASE_URL}/user/goals/${id}`, {
+            method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Could not remove that goal');
+        return data;
+    },
+    // Real saved work this account can resume.
+    getContinueLearning: async (token) => {
+        const res = await fetch(`${API_BASE_URL}/user/continue`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Could not load your saved work');
+        return res.json();
+    },
+
+    // What the NCERT corpus actually covers: the classes it holds and, for
+    // each one, the subjects that have ready chapters. The study bar builds
+    // its dropdowns from this so it can only ever offer a combination the
+    // library can answer on.
+    getNcertSyllabus: async (token) => {
+        const res = await fetch(`${API_BASE_URL}/ncert/syllabus`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('syllabus unavailable');
         return res.json();
     },
 
@@ -671,11 +730,11 @@ const api = {
         return res.json();
     },
 
-    generateStudyRoadmap: async (token, { examName, examDate, topics, hoursPerDay = 1.5 }) => {
+    generateStudyRoadmap: async (token, options) => {
         const res = await fetch(`${API_BASE_URL}/study/roadmap/generate`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ examName, examDate, topics, hoursPerDay })
+            body: JSON.stringify(options)
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.msg || 'Failed to generate roadmap');

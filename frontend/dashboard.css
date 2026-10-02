@@ -1,0 +1,492 @@
+/* ============================================================
+   Student dashboard
+   ------------------------------------------------------------
+   Its own file, like landing.css: styles.css and premium.css are
+   both being edited for other work. Everything here is written
+   against the theme variables in styles.css (--card-bg,
+   --text-primary, --border-color …) so the dark toggle keeps
+   working rather than being overridden to a light page.
+   ============================================================ */
+
+#dashboard {
+    --dash-accent: var(--accent-primary);
+    --dash-radius: 20px;
+    --dash-gap: 20px;
+}
+
+/* ── Hero band ───────────────────────────────────────────── */
+#dashboard .dash-hero-banner {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    padding: 36px 40px;
+    border-radius: var(--dash-radius);
+    border: 1px solid var(--border-color);
+    background:
+        radial-gradient(620px 300px at 88% 0%, rgba(37, 99, 235, .10) 0%, rgba(37, 99, 235, 0) 70%),
+        linear-gradient(135deg, rgba(37, 99, 235, .07) 0%, rgba(59, 130, 246, .03) 55%, transparent 100%),
+        var(--card-bg);
+    box-shadow: var(--glass-shadow);
+    overflow: hidden;
+    margin-bottom: var(--dash-gap);
+}
+#dashboard .dash-hero-left { flex: 1; min-width: 0; }
+
+#dashboard .dash-greeting-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(245, 158, 11, .12);
+    border: 1px solid rgba(245, 158, 11, .22);
+    color: #B45309;
+    border-radius: 999px;
+    padding: 6px 13px;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+}
+[data-theme="dark"] #dashboard .dash-greeting-pill { color: #FBBF24; }
+
+#dashboard .dash-hero-heading {
+    font-size: clamp(27px, 3.1vw, 40px);
+    line-height: 1.12;
+    letter-spacing: -1.4px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin: 0 0 10px;
+}
+/* The person's own name carries the accent — the one coloured word. */
+#dashboard .dash-hero-heading #hero-username { color: var(--dash-accent); }
+
+#dashboard .dash-hero-subtext {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin: 0 0 22px;
+    max-width: 560px;
+}
+#dashboard .dash-hero-btn-group { display: flex; gap: 12px; flex-wrap: wrap; }
+
+#dashboard .dash-btn-primary,
+#dashboard .dash-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    border-radius: 12px;
+    padding: 12px 22px;
+    font-size: 14.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
+}
+#dashboard .dash-btn-primary {
+    background: var(--dash-accent);
+    border: 1px solid var(--dash-accent);
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(37, 99, 235, .22);
+}
+#dashboard .dash-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(37, 99, 235, .28); }
+#dashboard .dash-btn-secondary {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+#dashboard .dash-btn-secondary:hover { border-color: var(--dash-accent); transform: translateY(-1px); }
+
+#dashboard .dash-hero-illustration { flex: none; width: min(380px, 34%); }
+@media (max-width: 980px) {
+    #dashboard .dash-hero-illustration { display: none; }
+    #dashboard .dash-hero-banner { padding: 28px 24px; }
+}
+
+/* ── Stat cards ──────────────────────────────────────────── */
+#dashboard .stat-grid-exact {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+    gap: var(--dash-gap);
+    margin-bottom: var(--dash-gap);
+}
+#dashboard .stat-card-exact {
+    position: relative;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    padding: 22px 22px 24px;
+    box-shadow: var(--glass-shadow);
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+#dashboard .stat-card-exact:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--dash-accent) 35%, var(--border-color));
+    box-shadow: 0 14px 30px rgba(20, 41, 91, .08);
+}
+#dashboard .stat-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+/* Coloured tile holding the icon, as in the design. Each card sets its own
+   hue through an inline style or a modifier; this is the shape and weight. */
+#dashboard .stat-icon-square {
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+    display: grid;
+    place-items: center;
+    font-size: 17px;
+    flex: none;
+}
+#dashboard .stat-card-val {
+    display: block;
+    font-size: clamp(28px, 3vw, 34px);
+    font-weight: 800;
+    letter-spacing: -1.2px;
+    line-height: 1;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+#dashboard .stat-card-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+}
+/* Trend / status chip at the foot of each card. */
+#dashboard .stat-card-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 5px 11px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--success-color) 12%, transparent);
+    color: var(--success-color);
+    border: 1px solid color-mix(in srgb, var(--success-color) 22%, transparent);
+}
+
+/* ── Section blocks (Jump back in, and friends) ──────────── */
+#dashboard .jump-back-section {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--dash-radius);
+    padding: 26px 28px;
+    box-shadow: var(--glass-shadow);
+    margin-bottom: var(--dash-gap);
+}
+#dashboard .jump-back-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+#dashboard .jump-back-header h3,
+#dashboard .jump-back-header h2 {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -.5px;
+    color: var(--text-primary);
+    margin: 0;
+}
+#dashboard .jump-back-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+    gap: 14px;
+}
+#dashboard .jump-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: var(--bg-color);
+    text-decoration: none;
+    transition: transform .14s ease, border-color .14s ease, background .14s ease;
+}
+#dashboard .jump-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--dash-accent);
+    background: var(--card-bg);
+}
+#dashboard .jump-card-icon {
+    width: 42px; height: 42px; flex: none;
+    border-radius: 12px;
+    display: grid; place-items: center;
+    background: color-mix(in srgb, var(--dash-accent) 12%, transparent);
+    color: var(--dash-accent);
+    font-size: 16px;
+}
+#dashboard .jump-card-info { min-width: 0; }
+#dashboard .jump-card-info strong,
+#dashboard .jump-card-info h4 {
+    display: block;
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#dashboard .jump-card-info span,
+#dashboard .jump-card-info p {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    margin: 0;
+}
+#dashboard .jump-card-arrow { margin-left: auto; color: var(--text-secondary); flex: none; }
+#dashboard .jump-card:hover .jump-card-arrow { color: var(--dash-accent); }
+
+/* Two-column band, where the layout uses one. */
+#dashboard .dash-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: var(--dash-gap);
+    align-items: start;
+}
+@media (max-width: 1040px) {
+    #dashboard .dash-columns { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+    #dashboard .dash-hero-banner { padding: 24px 20px; }
+    #dashboard .dash-hero-btn-group { flex-direction: column; align-items: stretch; }
+    #dashboard .stat-card-exact { padding: 18px; }
+}
+
+/* ============================================================
+   Dashboard additions — tabs, exam prep, goals, continue
+   ------------------------------------------------------------
+   Built from the written specification (blue-and-white, dark
+   navy type, soft blue gradients, rounded corners, fine
+   borders, subtle shadows, restrained animation). Everything
+   is written against the theme variables so dark mode stays
+   equally polished, and every animation is dropped under
+   prefers-reduced-motion.
+   ============================================================ */
+
+/* ── Rounded destination tabs ─────────────────────────────── */
+#dashboard .dash-tabs {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: var(--dash-gap);
+}
+#dashboard .dash-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 20px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: border-color .15s ease, color .15s ease, background .15s ease, transform .15s ease;
+}
+#dashboard .dash-tab i { color: var(--dash-accent); transition: color .15s ease; }
+#dashboard .dash-tab:hover {
+    border-color: var(--dash-accent);
+    transform: translateY(-1px);
+}
+#dashboard .dash-tab:focus-visible {
+    outline: none;
+    border-color: var(--dash-accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--dash-accent) 18%, transparent);
+}
+#dashboard .dash-tab.is-active {
+    background: var(--dash-accent);
+    border-color: var(--dash-accent);
+    color: #fff;
+}
+#dashboard .dash-tab.is-active i { color: #fff; }
+
+/* ── Panels (exam prep, goals) ────────────────────────────── */
+#dashboard .dash-two-up {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    margin-bottom: var(--dash-gap);
+}
+@media (max-width: 900px) {
+    #dashboard .dash-two-up { grid-template-columns: 1fr; }
+}
+#dashboard .dash-panel {
+    display: flex;
+    flex-direction: column;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--dash-radius);
+    padding: 24px;
+    box-shadow: var(--glass-shadow);
+}
+#dashboard .dash-panel-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 13px;
+    margin-bottom: 18px;
+}
+#dashboard .dash-panel-icon {
+    width: 42px; height: 42px; flex: none;
+    border-radius: 13px;
+    display: grid; place-items: center;
+    font-size: 16px;
+}
+#dashboard .dash-panel-head h3 {
+    font-size: 16.5px;
+    font-weight: 800;
+    letter-spacing: -.4px;
+    color: var(--text-primary);
+    margin: 0 0 3px;
+}
+#dashboard .dash-panel-head p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.5;
+}
+#dashboard .dash-wide { width: 100%; justify-content: center; margin-top: auto; }
+#dashboard .dash-empty-line {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    margin: 0;
+    padding: 14px 0;
+}
+
+/* ── Exam preparation body ────────────────────────────────── */
+#dashboard .dash-exam-body { margin-bottom: 18px; }
+#dashboard .dash-exam-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13.5px;
+}
+#dashboard .dash-exam-row:last-child { border-bottom: 0; }
+#dashboard .dash-exam-row span:first-child { color: var(--text-secondary); }
+#dashboard .dash-exam-row strong { color: var(--text-primary); font-weight: 700; }
+
+/* ── Daily goals ──────────────────────────────────────────── */
+#dashboard .dash-goal-list {
+    list-style: none;
+    margin: 0 0 14px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+#dashboard .dash-goal {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 13px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-color);
+    transition: border-color .15s ease, background .15s ease;
+}
+#dashboard .dash-goal:hover { border-color: color-mix(in srgb, var(--dash-accent) 35%, var(--border-color)); }
+#dashboard .dash-goal input[type="checkbox"] {
+    width: 18px; height: 18px; flex: none;
+    accent-color: var(--dash-accent);
+    cursor: pointer;
+}
+#dashboard .dash-goal-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.45;
+    word-break: break-word;
+}
+#dashboard .dash-goal.is-done .dash-goal-text {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+#dashboard .dash-goal-remove {
+    flex: none;
+    background: transparent;
+    border: 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 7px;
+    font-size: 13px;
+    transition: color .15s ease, background .15s ease;
+}
+#dashboard .dash-goal-remove:hover { color: var(--danger-color, #DC2626); background: color-mix(in srgb, var(--danger-color, #DC2626) 10%, transparent); }
+#dashboard .dash-goal-remove:focus-visible { outline: 2px solid var(--dash-accent); outline-offset: 1px; }
+
+#dashboard .dash-goal-form { display: flex; gap: 9px; }
+#dashboard .dash-goal-form input {
+    flex: 1;
+    min-width: 0;
+    padding: 11px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+}
+#dashboard .dash-goal-form input:focus {
+    outline: none;
+    border-color: var(--dash-accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--dash-accent) 14%, transparent);
+}
+#dashboard .dash-goal-add {
+    flex: none;
+    width: 44px;
+    border-radius: 12px;
+    border: 1px solid var(--dash-accent);
+    background: var(--dash-accent);
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    transition: transform .14s ease, filter .14s ease;
+}
+#dashboard .dash-goal-add:hover { transform: translateY(-1px); filter: brightness(1.05); }
+#dashboard .dash-goal-add:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+#dashboard .dash-goal-status {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    margin: 9px 0 0;
+    min-height: 16px;
+}
+
+/* ── Continue learning ────────────────────────────────────── */
+#dashboard #dash-continue-section .jump-card { cursor: pointer; }
+#dashboard .dash-continue-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 28px 20px;
+    border: 1px dashed var(--border-color);
+    border-radius: 14px;
+    color: var(--text-secondary);
+    font-size: 13.5px;
+    background: var(--bg-color);
+}
+
+/* Restrained motion, and none at all when the reader asks for none. */
+@media (prefers-reduced-motion: reduce) {
+    #dashboard *,
+    #dashboard *::before,
+    #dashboard *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+        scroll-behavior: auto !important;
+    }
+    #dashboard .dash-tab:hover,
+    #dashboard .dash-goal-add:hover,
+    #dashboard .jump-card:hover,
+    #dashboard .stat-card-exact:hover { transform: none; }
+}

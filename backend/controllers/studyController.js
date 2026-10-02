@@ -378,48 +378,8 @@ router.get('/analytics/weakness', auth, async (req, res) => {
 
 // @route  POST /api/study/roadmap/generate
 router.post('/roadmap/generate', auth, async (req, res) => {
-    try {
-        const { examName, examDate, topics, hoursPerDay = 1.5 } = req.body;
-        if (!examName || !examDate || !topics) {
-            return res.status(400).json({ msg: 'Please provide the exam name, date, and topics to cover.' });
-        }
-
-        const today = new Date();
-        const exam = new Date(examDate);
-        const daysUntil = Math.ceil((exam - today) / (1000 * 60 * 60 * 24));
-
-        if (isNaN(daysUntil) || daysUntil < 1) {
-            return res.status(400).json({ msg: 'The exam date needs to be in the future.' });
-        }
-        if (daysUntil > 120) {
-            return res.status(400).json({ msg: "That's a long runway — try generating a roadmap for the final 90-120 days closer to the exam for a more focused plan." });
-        }
-
-        const prompt = `Create a day-by-day study roadmap for a student preparing for: "${examName}" on ${examDate} (${daysUntil} days from today).
-
-Topics/syllabus to cover: ${topics}
-Available study time: about ${hoursPerDay} hours per day.
-
-Distribute topics logically across the available days (don't cram everything into day 1). Include periodic flashcard review days, at least 2-3 mock-quiz/practice-test milestone days spread through the plan, and a final light-review day right before the exam (never schedule new topics on the last day).
-
-Respond ONLY with JSON in this exact shape:
-{"plan": [{"day": 1, "date": "YYYY-MM-DD", "focus": "short topic/task description", "type": "study|flashcard_review|mock_quiz|milestone|rest"}]}
-
-Generate exactly ${daysUntil} entries, one per day, with "date" starting from today (${today.toISOString().split('T')[0]}) through the day before the exam.`;
-
-        const raw = await generateAIJSON(prompt, 'You are an expert academic planner who builds realistic, well-paced exam study schedules. Respond ONLY with valid JSON.');
-        const parsed = safeParseJSON(raw, null);
-
-        let plan = Array.isArray(parsed?.plan) ? parsed.plan.filter(p => p && p.date && p.focus) : [];
-        if (plan.length === 0) {
-            return res.status(502).json({ msg: "Couldn't build the roadmap right now — please try again in a moment." });
-        }
-
-        res.json({ success: true, examName, examDate, daysUntil, plan });
-    } catch (err) {
-        console.error('Roadmap generation error:', err.message);
-        res.status(500).json({ msg: 'Server error while generating the roadmap' });
-    }
+    try { res.json(await require('../services/roadmap').batch(req.body)); }
+    catch (err) { res.status(err.status || 502).json({ msg: err.message }); }
 });
 
 module.exports = router;

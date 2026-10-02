@@ -8,6 +8,7 @@ router.use(async (req, res, next) => { try { await learning.ready(); next(); } c
 const route = fn => async (req, res) => { try { await fn(req, res); } catch (e) { res.status(e.status || 500).json({ msg: e.status ? e.message : 'Could not save your learning progress. Please retry.' }); } };
 const dayValid = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(Date.parse(d)) && new Date(d).toISOString().slice(0, 10) === d;
 async function dashboard(userId, day) {
+    await require('../services/studioStore').ready();
     const [goals, mistakes, dueCards, homework, checked, attempts] = await Promise.all([
         db.all('SELECT * FROM learning_goals WHERE user_id = ? ORDER BY exam_date', [userId]),
         db.all('SELECT id, topic, due_at FROM learning_mistakes WHERE user_id = ? AND resolved = 0 ORDER BY due_at', [userId]),
@@ -23,6 +24,20 @@ async function dashboard(userId, day) {
     if (due.length) tasks.push({ key: 'mistakes', title: `Retest ${Math.min(due.length, 5)} ${due.length === 1 ? 'mistake' : 'mistakes'}`, reason: 'Retrieval practice for questions you missed.', minutes: 10, action: 'mistakes' });
     if (dueCards.n) tasks.push({ key: 'flashcards', title: `Review ${Math.min(dueCards.n, 10)} due flashcards`, reason: 'Your spaced-repetition cards are ready.', minutes: 5, action: 'flashcards' });
     homework.forEach(h => tasks.push({ key: 'homework:' + h.id, title: h.title, reason: h.due_date ? 'Homework due ' + String(h.due_date).slice(0, 10) : 'Unsubmitted class homework', minutes: 20, action: 'classroom' }));
+    const packs=await db.all(`SELECT p.id,p.title,a.due_date FROM studio_packs p
+        LEFT JOIN studio_assignments a ON a.pack_id=p.id AND a.student_id=?
+        LEFT JOIN class_enrollments e ON e.class_id=p.class_id AND e.student_id=?
+        LEFT JOIN classrooms c ON c.id=p.class_id
+        WHERE p.status='published' AND ((p.user_id=? AND p.class_id IS NULL) OR
+        (a.student_id=? AND e.status='active' AND c.status='active')) ORDER BY a.due_date,p.created_at LIMIT 20`,[userId,userId,userId,userId]);
+    const checks=await db.all('SELECT pack_id,stage,created_at FROM studio_attempts WHERE user_id=?',[userId]);
+    const stages=['baseline','practice','followup','retention'], names={baseline:'Starting check',practice:'Lesson and guided practice',followup:'Independent check',retention:'7-day retention check'};
+    for(const p of packs) {
+        const completed=checks.filter(a=>a.pack_id===p.id),next=stages.find(s=>!completed.some(a=>a.stage===s));
+        if(!next)continue;
+        if(next==='retention' && Date.parse(completed.find(a=>a.stage==='followup').created_at)+7*86400000>Date.now())continue;
+        tasks.push({key:`studio:${p.id}:${next}`,title:p.title,reason:names[next]+(p.due_date?' · Assigned due '+p.due_date:''),minutes:next==='practice'?20:5,action:'study-studio',packId:p.id});
+    }
     const evidence = new Map();
     attempts.forEach(a => { const key = a.topic.trim().toLowerCase(); const v = evidence.get(key) || { topic: a.topic, score: 0, total: 0, attempts: 0 }; v.score += a.score; v.total += a.total; v.attempts++; evidence.set(key, v); });
     const topics = [...evidence.values()].map(t => ({ ...t, accuracy: Math.round(100 * t.score / t.total) })).sort((a,b) => a.accuracy - b.accuracy);

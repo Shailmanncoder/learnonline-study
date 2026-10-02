@@ -1,0 +1,286 @@
+/* ============================================================
+   Shared UI system
+   ------------------------------------------------------------
+   The two designs only covered the landing page and the
+   dashboard. Rather than guess a layout for each of the other
+   sections, this takes the visual language those two establish —
+   surface, radius, border, icon tile, pill, type scale, accent —
+   and applies it to the primitives every screen already uses, so
+   the rest of the app matches without inventing screens for it.
+
+   Written against the theme variables in styles.css, so the dark
+   toggle keeps working. Loaded last; it wins where it overlaps.
+   ============================================================ */
+
+:root {
+    --ui-radius-lg: 20px;
+    --ui-radius: 16px;
+    --ui-radius-sm: 12px;
+    --ui-ring: 0 0 0 4px color-mix(in srgb, var(--accent-primary) 14%, transparent);
+    --ui-lift: 0 14px 30px rgba(20, 41, 91, .08);
+}
+[data-theme="dark"] {
+    --ui-lift: 0 14px 30px rgba(0, 0, 0, .35);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.sidebar .logo span { display: flex; flex-direction: column; line-height: 1.15; }
+.sidebar .logo-tagline {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    color: var(--text-secondary);
+    margin-top: 3px;
+}
+.sidebar.collapsed .logo-tagline { display: none; }
+
+.sidebar .nav-item {
+    border-radius: var(--ui-radius-sm);
+    font-weight: 600;
+    transition: background .15s ease, color .15s ease;
+}
+.sidebar .nav-item.active {
+    background: var(--accent-primary);
+    color: #fff;
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-primary) 30%, transparent);
+}
+.sidebar .nav-item.active i { color: #fff; }
+.sidebar .nav-section-label {
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 1.3px;
+    color: var(--text-secondary);
+    opacity: .75;
+}
+
+/* ── Top bar ─────────────────────────────────────────────── */
+.topbar .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 9px 14px;
+    min-width: min(460px, 42vw);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.topbar .search-bar:focus-within {
+    border-color: var(--accent-primary);
+    box-shadow: var(--ui-ring);
+}
+.topbar .search-bar input {
+    border: 0;
+    background: transparent;
+    outline: none;
+    flex: 1;
+    min-width: 0;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+}
+.topbar .search-kbd {
+    flex: none;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    padding: 3px 7px;
+}
+@media (max-width: 760px) { .topbar .search-kbd { display: none; } }
+
+/* ── Section headers ─────────────────────────────────────── */
+.section-header h2 {
+    font-size: clamp(22px, 2.6vw, 30px);
+    font-weight: 800;
+    letter-spacing: -1.1px;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+.section-header p {
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 1.6;
+    max-width: 760px;
+}
+
+/* ── Surfaces ────────────────────────────────────────────── */
+/* `glass` is the app's generic card. In the designs a card is a
+   plain light surface with a hairline border and a soft lift —
+   no heavy blur, no gradient edge. */
+.section-container .glass,
+.section-container .card,
+.ws-card,
+.lh-card,
+.jump-card,
+.tool-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--ui-radius);
+    box-shadow: var(--glass-shadow);
+}
+.section-container .glass:hover,
+.ws-card:hover,
+.lh-card:hover,
+.tool-card:hover {
+    border-color: color-mix(in srgb, var(--accent-primary) 32%, var(--border-color));
+    box-shadow: var(--ui-lift);
+}
+
+/* Coloured icon tile — the repeating motif across both designs. */
+.tool-card-icon,
+.feature-icon,
+.lh-icon,
+.stat-icon-square,
+.jump-card-icon {
+    border-radius: 13px;
+    display: grid;
+    place-items: center;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn,
+.btn-primary,
+.btn-secondary {
+    border-radius: var(--ui-radius-sm);
+    font-weight: 700;
+    letter-spacing: -.1px;
+    transition: transform .14s ease, box-shadow .14s ease, background .14s ease, border-color .14s ease;
+}
+.btn-primary {
+    background: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+    color: #fff;
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--accent-primary) 24%, transparent);
+}
+.btn-primary:hover { transform: translateY(-1px); }
+.btn-secondary {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+.btn-secondary:hover { border-color: var(--accent-primary); transform: translateY(-1px); }
+
+/* ── Form controls ───────────────────────────────────────── */
+.section-container input[type="text"],
+.section-container input[type="number"],
+.section-container input[type="date"],
+.section-container input[type="search"],
+.section-container select,
+.section-container textarea {
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--ui-radius-sm);
+    color: var(--text-primary);
+    padding: 12px 14px;
+    font: inherit;
+    font-size: 14.5px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+/* Inputs that sit inside an icon wrapper already reserve room for the icon.
+   A flat padding override slides the text under it, so those keep their own. */
+.section-container .tools-search-wrap input,
+.section-container [class*="search-wrap"] input,
+.section-container [class*="search-box"] input,
+.section-container .search-bar input {
+    padding-left: 40px;
+}
+.section-container [class*="search-wrap"],
+.section-container [class*="search-box"] { position: relative; }
+.section-container [class*="search-wrap"] > i,
+.section-container [class*="search-box"] > i {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    pointer-events: none;
+}
+
+.section-container input:focus,
+.section-container select:focus,
+.section-container textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: var(--ui-ring);
+}
+
+/* ── Status pills ────────────────────────────────────────── */
+.status-pill-graded,
+.status-pill-assigned,
+.status-pill-pending,
+.stat-card-pill,
+.lh-pill {
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 5px 11px;
+    border: 1px solid transparent;
+}
+
+/* ── Tabs ────────────────────────────────────────────────── */
+.lh-tabs button,
+.grok-chip-btn {
+    border-radius: 999px;
+    font-weight: 650;
+}
+.lh-tabs button.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: #fff;
+}
+
+/* ── Modals ──────────────────────────────────────────────── */
+.modal-content,
+.modal-box {
+    border-radius: var(--ui-radius-lg);
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    box-shadow: 0 24px 60px rgba(20, 41, 91, .16);
+}
+
+/* ── Empty states ────────────────────────────────────────── */
+.classroom-empty-state,
+.empty-state {
+    background: var(--bg-color);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--ui-radius);
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 36px 24px;
+}
+
+/* ============================================================
+   Painted surfaces — text that must follow its container
+   ------------------------------------------------------------
+   The global `h1-h6 { color: var(--text-primary) }` and
+   `p { color: var(--text-secondary) }` rules match a heading or
+   paragraph DIRECTLY. A directly matched rule always beats a
+   colour inherited from an ancestor, whatever the specificity.
+   So any component that paints its own surface — an accent
+   gradient, a solid brand panel — and sets `color` on the
+   container had that colour thrown away on every h/p inside it.
+
+   In dark mode the accent variables resolve light, so the
+   flashcard answer card became light blue with grey text on it:
+   effectively unreadable. Marking the surface makes the text
+   inherit again, which is what the component always intended.
+   ============================================================ */
+.on-surface :where(h1, h2, h3, h4, h5, h6, p, span, li, td, th, strong, em, small, label, div) {
+    color: inherit;
+}
+
+/* Flashcard review: the answer face is painted with the accent
+   gradient and declares white text. */
+.fc-flip-back,
+.fc-flip-back :where(h1, h2, h3, h4, h5, h6, p, span, li, strong, em, small) {
+    color: #fff;
+}
+/* The question face needs nothing here: premium.css already repaints it
+   for dark mode, so its --text-primary / --text-secondary text stays
+   correct in both themes. Only the hint sitting on the accent-painted
+   answer face has to be lifted off the theme's grey. */
+.fc-flip-back .fc-flip-hint { color: rgba(255, 255, 255, .75); }

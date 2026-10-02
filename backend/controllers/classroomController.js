@@ -206,7 +206,7 @@ async function requireEnrolledOrTeacher(req, res, next) {
 
         // Check if teacher
         const tc = await db.get(
-            'SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?',
+            "SELECT tc.* FROM teacher_classes tc JOIN users u ON u.id=tc.teacher_id WHERE tc.class_id = ? AND tc.teacher_id = ? AND u.role IN ('teacher','admin')",
             [classId, req.user.id]
         );
         if (tc) {
@@ -457,6 +457,10 @@ router.post('/homework/:id/submit', auth, async (req, res) => {
         const hw = await db.get('SELECT * FROM class_homework WHERE id = ?', [homeworkId]);
         if (!hw) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Homework not found' } });
 
+        const classroom=await db.get("SELECT id FROM classrooms WHERE id=? AND status='active'",[hw.class_id]);
+        if(!classroom || hw.status!=='assigned')return res.status(403).json({success:false,error:{message:'This homework is not open for submission.'}});
+        if(content!=null && (typeof content!=='string'||content.length>50000))return res.status(400).json({msg:'Submission text must be at most 50,000 characters.'});
+        if(attachments!=null && (!Array.isArray(attachments)||attachments.length>10||JSON.stringify(attachments).length>100000))return res.status(400).json({msg:'Invalid submission attachments.'});
         // Ensure student is enrolled in class
         const enrollment = await db.get(
             "SELECT * FROM class_enrollments WHERE class_id = ? AND student_id = ? AND status = 'active'",

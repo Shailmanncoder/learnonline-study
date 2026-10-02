@@ -81,9 +81,9 @@ router.post('/login', async (req, res) => {
         }
 
         // Enforce role barrier: Students cannot enter Teacher Portal
-        if (requiredRole === 'teacher' && user.role === 'student') {
+        if (requiredRole === 'teacher' && !['teacher','admin'].includes(user.role)) {
             return res.status(403).json({
-                msg: 'Access Denied: This account is registered as a Student. Students cannot log into the Teacher Portal. Please sign up with a Teacher account!',
+                msg: 'This account does not have teacher access. Please use its own portal.',
                 isStudent: true
             });
         }

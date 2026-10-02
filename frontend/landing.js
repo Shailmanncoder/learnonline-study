@@ -11,7 +11,38 @@ document.addEventListener('DOMContentLoaded', () => {
     initFeatureAnimations();
     initMarquee();
     initPasswordToggle();
+    initHeroTabs();
 });
+
+// ---- Hero tabs ----
+// Switches the copy inside the product frame. Three short takes on the same
+// workspace rather than three different products.
+function initHeroTabs() {
+    const tabs = document.querySelectorAll('[data-hero-tab]');
+    if (!tabs.length) return;
+    const COPY = {
+        day:       ['Make room for a good idea.', 'A small step is a good place to start.'],
+        companion: ['Ask until it makes sense.',  'Your companion follows the thread, not a script.'],
+        exam:      ['Know what to revise next.',  'Your material and your date, turned into a plan.']
+    };
+    const heading = document.querySelector('[data-hero-pane]');
+    const sub = document.querySelector('[data-hero-pane-sub]');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => {
+                const on = t === tab;
+                t.classList.toggle('is-active', on);
+                t.setAttribute('aria-selected', String(on));
+            });
+            const copy = COPY[tab.dataset.heroTab];
+            if (copy && heading && sub) {
+                heading.textContent = copy[0];
+                sub.textContent = copy[1];
+            }
+        });
+    });
+}
 
 // ---- Particle Canvas ----
 function initParticles() {

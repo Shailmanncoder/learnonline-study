@@ -1,0 +1,78 @@
+/* ============================================================
+   Readability repairs
+   ------------------------------------------------------------
+   Every rule here fixes a contrast failure that was measured in
+   the running app, not guessed from the stylesheets: each element
+   was checked against the real composited background behind it
+   (including translucent gradient stops) and fell below the WCAG
+   AA threshold — 4.5:1 for body text, 3:1 for large text.
+
+   Loaded last so it wins. Written against the theme variables, so
+   both themes keep working.
+   ============================================================ */
+
+:root {
+    /* A filled accent surface that carries WHITE text.
+       --accent-primary / --accent-secondary are the colours used for
+       accent TEXT on the page, so in dark mode they are deliberately
+       light — which is exactly why white text on a surface painted
+       with them was unreadable (2.06:1 on the gradient's light end).
+       These two stay dark enough for white in both themes. */
+    --accent-surface: #2563EB;   /* white on this = 5.17:1 */
+    --accent-surface-2: #1D4ED8; /* white on this = 7.00:1 */
+}
+
+/* The app's primary button, and everything else painted with the
+   same gradient. One change covers Save Changes, Resume saved plan,
+   and every other filled .btn across the app.
+   The variant classes are excluded: .btn-secondary and friends paint
+   their own quiet surface, and repainting them accent blue put red
+   "Delete" text on a blue button at 1.37:1. */
+.btn:not(.btn-secondary):not(.btn-ghost):not(.btn-outline):not(.btn-danger):not(.btn-text),
+.user-avatar-circle {
+    background: linear-gradient(135deg, var(--accent-surface), var(--accent-surface-2));
+}
+/* Filled primary buttons that are painted a flat accent elsewhere: in
+   dark mode that lands on a light periwinkle carrying near-black text
+   (2.69:1). Same surface, white text. */
+.btn.btn-primary:not(.btn-secondary) {
+    background: linear-gradient(135deg, var(--accent-surface), var(--accent-surface-2));
+    color: #fff;
+}
+
+/* Count bubble sitting on an already-accent pill: a white veil over a
+   light blue left white text at 3.31:1. A dark veil reads on both. */
+.filter-pill.active .filter-count { background: rgba(0, 0, 0, .28); color: #fff; }
+
+/* Classroom hero is painted solid accent blue, but its body text, badge
+   rows and pill took the page's grey/accent text colours — 2.03:1. */
+.classroom-hero,
+.classroom-hero :where(h1, h2, h3, h4, p, li, strong),
+.classroom-hero-badges-card :where(strong) { color: #fff; }
+.classroom-hero-desc,
+.classroom-badge-row span,
+.classroom-hero-badges-card span { color: rgba(255, 255, 255, .94); }
+.classroom-hero-pill {
+    color: #fff;
+    background: rgba(255, 255, 255, .18);
+    border-color: rgba(255, 255, 255, .3);
+}
+
+[data-theme="dark"] {
+    /* Sidebar section labels sat at 3.9:1 on the sidebar surface. */
+    --ui-muted-strong: #A9B6CC;
+}
+[data-theme="dark"] .nav-section-label { color: var(--ui-muted-strong); }
+
+/* Brand accents fixed at a light-theme value, too dark on a dark page. */
+[data-theme="dark"] .lh-kicker { color: #2DD4BF; }           /* was #168477, 3.49:1 */
+[data-theme="dark"] .lb-row .lb-you,
+[data-theme="dark"] .lb-row span[class*="you"] { color: #C4B5FD; }
+
+/* The leaderboard marks the signed-in student with an inline purple that
+   is too dark on a dark row (4.0:1); app.js writes it as a style
+   attribute, so it takes an !important to lift. */
+[data-theme="dark"] #leaderboard-list span[style*="a855f7"] { color: #C4B5FD !important; }
+
+/* Syllabus field labels in the Companion sat at 3.31:1 on their card. */
+[data-theme="dark"] .grok-syl-field > span { color: #93A3C0; }
