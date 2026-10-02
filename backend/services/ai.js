@@ -17,7 +17,26 @@
 // the preference cannot apply to some screens and not others.
 function providerOrder() {
     const preferred = String(process.env.AI_PROVIDER || '').trim().toLowerCase();
-    return preferred === 'gemini' ? ['gemini', 'groq'] : ['groq', 'gemini'];
+    // Whichever provider is preferred answers first; the others stay behind it
+    // as fallbacks, so losing one does not take the AI features down. OpenAI is
+    // only ever in the list when a key is actually configured, so adding the
+    // support now cannot change behaviour until that key exists.
+    // Unset keeps the order every deploy had before this setting existed —
+    // Groq first — so adding provider support never silently reroutes a
+    // deployment that has not asked for it. This app's .env sets gemini.
+    const base = ['groq', 'gemini'].concat(openaiKey() ? ['openai'] : []);
+    if (!base.includes(preferred)) return base;
+    return [preferred, ...base.filter(p => p !== preferred)];
+}
+
+// An OpenAI key that is absent, or still a placeholder, is not a key.
+function openaiKey() {
+    const key = process.env.OPENAI_API_KEY;
+    return key && !/^your_|_here$/i.test(key) && key.length > 20 ? key : null;
+}
+
+function openaiModel() {
+    return String(process.env.OPENAI_MODEL || '').trim() || 'gpt-4o-mini';
 }
 
 // A Gemini key that is absent, or still the placeholder from .env.example, is
@@ -31,6 +50,7 @@ function geminiKey() {
 // 404s as "no longer available to new users", so every call through this
 // service would have failed while the chat controller used a live model.
 const { MODEL_BY_ID, DEFAULT_MODEL } = require('./geminiModels');
+const brainSvc = require('./aiBrain');
 function geminiModel() {
     const requested = String(process.env.GEMINI_MODEL || '').trim();
     return MODEL_BY_ID.has(requested) ? requested : DEFAULT_MODEL;
@@ -71,7 +91,7 @@ function isRetryable(err) {
     const msg = String(err?.message || '');
     if ([404, 413, 429, 500, 502, 503, 504].includes(status)) return true;
     if (/rate.?limit|too large|does not exist|do not have access|overloaded|timed? ?out|ECONNRESET|ETIMEDOUT/i.test(msg)) return true;
-    return status === 400 && /response_format|reasoning_(format|effort)|not supported/i.test(msg);
+    return status === 400 && /response_format|reasoning_(format|effort)|not supported|json_validate_failed|failed to generate JSON/i.test(msg);
 }
 
 function groqClient() {
@@ -109,11 +129,30 @@ function reasoningParams(model, task) {
  * Falls back Groq → Gemini → '' so callers can always degrade gracefully.
  */
 async function generateText(prompt, systemInstruction = 'You are a helpful assistant.', opts = {}) {
-    const { task = 'general', json = false, maxTokens } = opts;
+    const {
+        task = 'general', json = false, maxTokens, schema,
+        // Shared-brain context. Any caller can pass these; nothing breaks when
+        // they do not, which is why the tools could be given context without
+        // touching 50 call sites.
+        profile = null, facts = [], weakTopics = [], topic = '',
+        depth,              // force 'brief' | 'normal' | 'deep'
+        brain: useBrain = true
+    } = opts;
     const model = TASK_MODELS[task] || TASK_MODELS.general;
-    // The on-demand tier caps total tokens/minute at 8000, and max_tokens
-    // counts toward it — stay well under.
-    const budget = maxTokens || (task === 'reasoning' ? 5000 : 4000);
+
+    // A JSON generator must not be told to answer conversationally, and its
+    // schema instruction is the whole point — so the brain stays out of those.
+    const wantsBrain = useBrain && !json && !schema;
+    const level = depth || (task === 'reasoning' ? 'deep' : brainSvc.depthOf(prompt));
+    const system = wantsBrain
+        ? brainSvc.withBrain(systemInstruction, { depth: level, profile, facts, weakTopics, topic })
+        : systemInstruction;
+
+    // The budget follows the same judgement: a short answer given a 4000-token
+    // allowance reliably grew to fill it, which is why every reply used to
+    // arrive as an essay. The on-demand tier also caps tokens/minute at 8000
+    // and max_tokens counts toward that, so staying low is cheaper and faster.
+    const budget = maxTokens || (wantsBrain ? brainSvc.BUDGET[level] : (task === 'reasoning' ? 5000 : 4000));
 
     const tryGroq = async () => {
         const groq = groqClient();
@@ -121,26 +160,29 @@ async function generateText(prompt, systemInstruction = 'You are a helpful assis
         const call = (m, tokens) => groq.chat.completions.create({
             model: m,
             messages: [
-                { role: 'system', content: systemInstruction },
+                { role: 'system', content: system },
                 { role: 'user', content: prompt }
             ],
             temperature: 0.2,
             max_tokens: tokens,
-            ...(json ? { response_format: { type: 'json_object' } } : {}),
+            ...(json ? { response_format: schema && ['openai/gpt-oss-120b','openai/gpt-oss-20b','qwen/qwen3.8-27b'].includes(m)
+                ? { type:'json_schema',json_schema:{name:'study_material',strict:true,schema} }
+                : { type: 'json_object' } } : {}),
             ...reasoningParams(m, task)
         });
 
         for (const m of modelChain(model)) {
             try {
-                const c = await call(m, m === model ? budget : Math.min(budget, 3000));
+                const c = await call(m, m === model || schema ? budget : Math.min(budget, 3000));
                 const text = stripThink(c.choices[0]?.message?.content);
                 // An empty reply (reasoning spent the budget) is a miss, not an answer.
                 if (!text) { console.warn(`[AI] ${m} returned an empty answer — trying next model`); continue; }
                 if (m !== model) console.warn(`[AI] ${model} unavailable — answered with ${m}`);
                 return text;
             } catch (err) {
-                if (!isRetryable(err)) { console.warn('[AI] Groq error:', err.message); break; }
-                console.warn(`[AI] ${m} unavailable (${err.status || err.message}) — trying next model`);
+                // Provider errors may embed the entire generated private document.
+                if (!isRetryable(err)) { console.warn('[AI] Groq request failed:', err.status || 'network'); break; }
+                console.warn(`[AI] ${m} unavailable (${err.status || 'network'}) — trying next model`);
             }
         }
         return null;
@@ -152,17 +194,45 @@ async function generateText(prompt, systemInstruction = 'You are a helpful assis
         try {
             const { GoogleGenerativeAI } = require('@google/generative-ai');
             const genAI = new GoogleGenerativeAI(key);
-            const m = genAI.getGenerativeModel({ model: geminiModel() });
-            const result = await m.generateContent(`${systemInstruction}\n\n${prompt}`);
+            const m = genAI.getGenerativeModel({ model: geminiModel(),generationConfig:{maxOutputTokens:budget,...(json?{responseMimeType:'application/json'}:{})} });
+            const result = await m.generateContent(`${system}\n\n${prompt}`);
             return result.response.text() || null;
         } catch (e) {
-            console.warn('[AI] Gemini error:', e.message);
+            console.warn('[AI] Gemini request failed:', e.status || 'provider unavailable');
             return null;
         }
     };
 
+    // OpenAI speaks the same chat-completions shape as Groq, so the Groq
+    // client library drives it with a different baseURL and key.
+    const tryOpenAI = async () => {
+        const key = openaiKey();
+        if (!key) return null;
+        try {
+            const OpenAI = require('openai');
+            const client = new OpenAI({ apiKey: key });
+            const c = await client.chat.completions.create({
+                model: openaiModel(),
+                messages: [
+                    { role: 'system', content: system },
+                    { role: 'user', content: prompt }
+                ],
+                temperature: 0.2,
+                max_tokens: budget,
+                ...(json ? { response_format: { type: 'json_object' } } : {})
+            });
+            return stripThink(c.choices[0]?.message?.content) || null;
+        } catch (e) {
+            console.warn('[AI] OpenAI request failed:', e.status || 'provider unavailable');
+            return null;
+        }
+    };
+
+    const PROVIDERS = { gemini: tryGemini, groq: tryGroq, openai: tryOpenAI };
     for (const provider of providerOrder()) {
-        const text = provider === 'gemini' ? await tryGemini() : await tryGroq();
+        const run = PROVIDERS[provider];
+        if (!run) continue;
+        const text = await run();
         if (text) return text;
     }
 
@@ -184,11 +254,11 @@ async function generateJSON(prompt, systemInstruction, opts = {}, fallback = nul
         if (m) {
             try { return JSON.parse(m[0]); } catch (e2) { /* fall through */ }
         }
-        console.warn('[AI] JSON parse failed:', e.message);
+        console.warn('[AI] The response was not valid JSON.');
         return fallback;
     }
 }
 
 module.exports = {
     modelChain, isRetryable, TEXT_FALLBACKS, VISION_FALLBACKS, generateText, generateJSON, TASK_MODELS,
-    providerOrder, geminiKey, geminiModel };
+    providerOrder, geminiKey, geminiModel, openaiKey, openaiModel };

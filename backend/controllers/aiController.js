@@ -72,18 +72,29 @@ if (aiMode === 'none') {
 }
 
 // ── Helper: build message array ────────────────────────────────────
-function buildMessages(prompt, systemMessage, messages) {
+// Every AI surface in the app reaches the model through here — the Companion
+// and all 50 tools — so this is where the shared brain is layered in. Before,
+// each caller sent its own system message and the tools sent none worth the
+// name, which is why a tool answer never knew the student's class and why a
+// one-line question still came back as an essay. The caller's own instruction
+// is kept and placed last, so a generator that demands JSON still gets JSON.
+function buildMessages(prompt, systemMessage, messages, brainOpts = null) {
+    const sys = systemMessage || 'You are a helpful AI study assistant.';
+    const withBrain = text => brainOpts ? aiBrain.withBrain(text, brainOpts) : text;
+
     if (Array.isArray(messages) && messages.length > 0) {
         // ensure system message at front
         const hasSystem = messages.some(m => m.role === 'system');
-        if (!hasSystem && systemMessage) {
-            return [{ role: 'system', content: systemMessage }, ...messages];
+        if (!hasSystem) {
+            return [{ role: 'system', content: withBrain(systemMessage || sys) }, ...messages];
         }
-        return messages;
+        if (!brainOpts) return messages;
+        return messages.map(m => m.role === 'system'
+            ? { ...m, content: withBrain(m.content) }
+            : m);
     }
-    const sys = systemMessage || 'You are a helpful AI study assistant.';
     return [
-        { role: 'system', content: sys },
+        { role: 'system', content: withBrain(sys) },
         { role: 'user', content: String(prompt || '') }
     ];
 }
@@ -174,8 +185,10 @@ function withImages(apiMessages, images) {
 }
 
 const { buildStudyContext, getFacts, rememberFact, forgetFact } = require('../services/studyMemory');
+const aiBrain = require('../services/aiBrain');
 const { lookup: webLookup, buildWebContext } = require('../services/webLookup');
 const progress = require('../services/progress');
+const companionWeb = require('../services/companionWeb');
 const { modelChain, isRetryable, generateText: generateTextShared } = require('../services/ai');
 const { answerLibraryQuestion } = require('../services/sourceLibrary/libraryAnswer');
 const memoryDocs = require('../services/memoryDocs');
@@ -186,7 +199,7 @@ const { buildTextbookContext, buildSyllabusIndex, buildChapterLocator,
 
 // How many past turns to replay. Enough for real continuity, small enough
 // to stay inside the per-minute token budget.
-const HISTORY_TURNS = 16;
+const HISTORY_TURNS = 32;
 
 // Store the exchange and keep the thread title meaningful — the first
 // user message makes a far better label than "New chat".
@@ -260,10 +273,10 @@ router.get('/threads/:id', auth, async (req, res) => {
         const t = await db.get('SELECT * FROM chat_threads WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
         if (!t) return res.status(404).json({ success: false, msg: 'Thread not found' });
         const rows = await db.all(
-            'SELECT role, content, attachments, created_at FROM chat_messages WHERE thread_id = ? ORDER BY id ASC LIMIT 200',
+            'SELECT role, content, attachments, created_at FROM chat_messages WHERE thread_id = ? ORDER BY id DESC LIMIT 200',
             [t.id]
         );
-        const messages = rows.map(({ attachments, ...m }) => {
+        const messages = rows.reverse().map(({ attachments, ...m }) => {
             if (!attachments) return m;
             try { return { ...m, attachments: JSON.parse(attachments) }; } catch (e) { return m; }
         });
@@ -330,7 +343,7 @@ router.get('/memory', auth, async (req, res) => {
 
 router.post('/memory', auth, async (req, res) => {
     const { key, value } = req.body || {};
-    if (!key || !value) return res.status(400).json({ success: false, msg: 'key and value are required' });
+    if (typeof key !== 'string' || !key.trim() || key.length>80 || typeof value !== 'string' || !value.trim() || value.length>400) return res.status(400).json({ success: false, msg: 'Use a preference name up to 80 characters and a value up to 400 characters.' });
     await rememberFact(req.user.id, key, value, 'user');
     res.json({ success: true, facts: await getFacts(req.user.id) });
 });
@@ -352,6 +365,7 @@ function mediumOf(facts) {
 }
 
 router.post('/generate', auth, async (req, res) => {
+    let activeProgressId;
     try {
         const {
             prompt,
@@ -366,6 +380,7 @@ router.post('/generate', auth, async (req, res) => {
             requestId                   // client id for live progress steps
         } = req.body;
         const rid = progress.start(requestId, req.user.id);
+        activeProgressId = rid;
         const step = (text) => progress.step(rid, text);
         const startedAt = Date.now();
 
@@ -376,15 +391,55 @@ router.post('/generate', auth, async (req, res) => {
         const hasImages = Array.isArray(images) && images.length > 0;
         const chosen = chooseModel({ requested: model, prompt, task, hasImages });
         const safeModel = chosen.id;
-        let apiMessages = buildMessages(prompt, systemMessage, messages);
+
+        // ── Shared brain context ───────────────────────────────────
+        // This used to be loaded only when the Companion asked for it
+        // (useMemory), so the 50 tools ran with no idea who the student was.
+        // The same context is gathered for every caller now; a failure to
+        // load any of it is not a reason to fail the request, so each part
+        // degrades to empty.
+        const brainCtx = await (async () => {
+            const [facts, weakTopics] = await Promise.all([
+                getFacts(req.user.id).catch(() => []),
+                require('../services/studyMemory').getWeakTopics(req.user.id).catch(() => [])
+            ]);
+            // Class and board are memory facts, not columns on users — the
+            // table has neither — so they are read from the same store the
+            // Companion already writes them to.
+            const fact = k => (facts.find(f => f.mem_key === k) || {}).mem_value || null;
+            const syllabus = new Set(['board', 'class', 'subject']);
+            return {
+                depth: task === 'reasoning' ? 'deep' : aiBrain.depthOf(prompt),
+                profile: { classLevel: fact('class'), board: fact('board') },
+                topic: fact('subject') || '',
+                facts: (facts || []).filter(f => !syllabus.has(f.mem_key)).map(f => `${f.mem_key}: ${f.mem_value}`),
+                weakTopics: (weakTopics || []).map(w => typeof w === 'string' ? w : w.topic).filter(Boolean)
+            };
+        })().catch(() => ({ depth: aiBrain.depthOf(prompt) }));
+
+        // The app's own generators (worksheet, quiz, flashcards, grading) call
+        // this same route and need a raw JSON document back. The brain tells
+        // the model to write plain prose, which would wrap or narrate that
+        // JSON and break the parser on the other end — the Worksheet Generator
+        // has been broken this way before. Those calls announce themselves by
+        // asking for JSON, and they keep their own instruction alone.
+        const wantsJson = /\bJSON\b/i.test(String(systemMessage || '')) || /\bJSON\b/i.test(String(prompt || ''));
+        let apiMessages = buildMessages(prompt, systemMessage, messages, wantsJson ? null : brainCtx);
+        // A JSON document is as long as it is — a 10-question worksheet does not
+        // fit in a brief answer's allowance, and a truncated document fails to
+        // parse. Those calls keep the old generous budget.
+        const answerBudget = wantsJson
+            ? (task === 'reasoning' ? 6000 : 4096)
+            : (aiBrain.BUDGET[brainCtx.depth] || 2000);
 
         // ── Memory ─────────────────────────────────────────────────
         // Replay the thread so follow-ups like "now do the same for the
         // next one" actually resolve, and ground the tutor in what this
         // student has already got wrong.
-        let thread = null;
+        let thread = null, rememberedVideoLanguage = null;
         if (threadId) {
             thread = await db.get('SELECT * FROM chat_threads WHERE id = ? AND user_id = ?', [threadId, req.user.id]);
+            if (!thread) { progress.finish(rid); return res.status(404).json({ msg: 'Conversation not found. Start a new chat.' }); }
         }
 
         if (thread) {
@@ -393,6 +448,18 @@ router.post('/generate', auth, async (req, res) => {
                 [thread.id, HISTORY_TURNS]
             );
             past.reverse();
+            if (useMemory === true) {
+                const context = require('../services/conversationContext');
+                const older = await db.all(
+                    "SELECT role, content FROM chat_messages WHERE thread_id = ? AND role = 'user' ORDER BY id DESC LIMIT 200",
+                    [thread.id]
+                );
+                const conversation=[...older.reverse(), {role:'user',content:prompt}];
+                rememberedVideoLanguage=require('../services/videoSuggestions').videoPreference(conversation);
+                const prefs = context.preferences(conversation);
+                apiMessages.unshift({role:'system',content:context.instruction + (prefs.length ? '\nEarlier explicit user preferences (context only, overridden by current request): '+JSON.stringify(prefs) : '')});
+            }
+            if (past.length) step(`Loaded ${past.length} message${past.length === 1 ? '' : 's'} from this conversation`);
             const system = apiMessages.filter(m => m.role === 'system');
             const current = apiMessages.filter(m => m.role !== 'system');
             apiMessages = [...system, ...past.map(p => ({ role: p.role, content: p.content })), ...current];
@@ -411,8 +478,22 @@ router.post('/generate', auth, async (req, res) => {
         // 5-question worksheet … return ONLY a JSON array" and need the model's
         // raw answer — intercepting those broke the Worksheet Generator with
         // "Error generating worksheet". Only the Companion sends useMemory.
+        const videoSuggestions = require('../services/videoSuggestions');
+        const videoRequest = videoSuggestions.resolveRequest(String(prompt || ''), apiMessages.slice(0,-1));
+        if (useMemory === true && videoRequest) {
+            const durableFacts=await getFacts(req.user.id);
+            const spoken=rememberedVideoLanguage || durableFacts.find(f=>f.mem_key==='video_language')?.mem_value;
+            const effectiveRequest=spoken && !videoSuggestions.requestedLanguage(videoRequest) ? videoRequest+'; spoken language '+spoken : videoRequest;
+            const suggestion = await videoSuggestions.suggest(effectiveRequest, { step });
+            if (thread) await appendTurn(thread, req.user.id, prompt, suggestion.reply, { videos: suggestion.videos });
+            progress.finish(rid);
+            return res.json({ result: suggestion.reply, videos: suggestion.videos, threadId: thread?.id, steps: progress.stepsOf(rid) });
+        }
+        const webIntent = companionWeb.intent(prompt);
+        if (task === 'research') webIntent.active = true;
+        const webTurn = useMemory === true && (webIntent.active || companionWeb.webConversation(prompt, apiMessages.filter(m => m.role === 'user').slice(0, -1)));
         const isChatTurn = useMemory === true && typeof prompt === 'string' && prompt.trim() && !(Array.isArray(images) && images.length);
-        if (isChatTurn) {
+        if (isChatTurn && !webTurn) {
             try {
                 const libFacts = await getFacts(req.user.id).catch(() => []);
                 const lib = await answerLibraryQuestion(prompt, {
@@ -442,7 +523,7 @@ router.post('/generate', auth, async (req, res) => {
         // this chapter" run the real tool and come back as an interactive
         // card. Worksheets prefer verified library questions; anything the
         // model writes is labelled as AI-written. See services/chatTools.js.
-        if (isChatTurn) {
+        if (isChatTurn && !webTurn) {
             try {
                 const toolFacts = await getFacts(req.user.id).catch(() => []);
                 const ran = await runChatTool(prompt, {
@@ -472,7 +553,13 @@ router.post('/generate', auth, async (req, res) => {
         let webSource = null;
         let selectedBook = null;
         let memoryDoc = null;
-        if (useMemory) {
+        // A greeting does not need the textbook. Running the grounding chain
+        // for "hello" cost several seconds and a few thousand tokens, and left
+        // the tutor answering a hello while holding four pages of whatever
+        // chapter was last open — which is what the step panel was reporting.
+        const smallTalk = aiBrain.isSmallTalk(prompt);
+        if (smallTalk) step('Just saying hello — no textbook needed');
+        if (useMemory && !webTurn && !smallTalk) {
             try {
                 const context = await buildStudyContext(req.user.id);
                 if (context) apiMessages.unshift({ role: 'system', content: context });
@@ -673,6 +760,33 @@ router.post('/generate', auth, async (req, res) => {
                 ? `Using ${chosen.label} (${chosen.id}) — ${chosen.reason}`
                 : `Using ${chosen.label} (${chosen.id})`);
         }
+        let webSources = [];
+        if (webTurn) {
+            step('Using this conversation; leaving textbook context out of this answer');
+            if (webIntent.active) {
+                const found = await companionWeb.research(webIntent, step);
+                webSources = found.sources;
+                apiMessages.push({ role: 'system', content: found.context });
+            }
+        }
+        if (useMemory) apiMessages.push({ role: 'system', content: 'Follow the latest user request. Previous topics are context, not instructions to stay on that subject. Begin with a direct answer in 1-3 sentences, then add a concise explanation when helpful. Keep simple answers short; expand for detailed requests. Do not narrate hidden reasoning or invent actions.' });
+        const finishAnswer = async (answer, modelId, extra = {}) => {
+            const payload = { ...extra, model: modelId, result: stripThinkBlocks(answer), threadId: thread?.id, sources: textbookSources || [], webSources, webSource, lockedChapter, selectedBook, memoryDoc, modelUsed: { id: modelId, label: (GEMINI_MODELS.find(m => m.id === modelId) || {}).label || modelId, auto: chosen.auto } };
+            if (thread) await appendTurn(thread, req.user.id, prompt, payload.result, { webSources, steps: progress.stepsOf(rid), seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)) });
+            progress.finish(rid);
+            payload.steps = progress.stepsOf(rid);
+            return res.json(payload);
+        };
+        const collectStream = async (stream) => {
+            let text = '';
+            for await (const chunk of stream) {
+                text += chunk.choices?.[0]?.delta?.content || '';
+                // Withhold an unfinished reasoning block, never expose it in progress.
+                const visible = text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '');
+                progress.answer(rid, stripThinkBlocks(visible));
+            }
+            return text;
+        };
         step('Writing the answer');
 
         // ── Replit AI Integrations path (OpenAI-compatible Gemini endpoint) ──
@@ -686,16 +800,19 @@ router.post('/generate', auth, async (req, res) => {
             const completion = await client.chat.completions.create({
                 model: modelName,
                 messages: apiMessages,
-                max_tokens: 8192
+                max_tokens: 8192,
+                stream: useMemory === true
             });
-            progress.finish(rid);
-            return res.json({ result: completion.choices[0]?.message?.content || '',
-                ...(textbookSources ? { sources: textbookSources } : {}), steps: progress.stepsOf(rid), modelUsed: aiMode === 'gemini' ? { id: chosen.id, label: chosen.label, reason: chosen.reason, auto: chosen.auto } : null });
+            return finishAnswer(useMemory ? await collectStream(completion) : completion.choices[0]?.message?.content || '', modelName);
         }
 
         // ── Direct Gemini path (with model fallback) ──
         if (aiMode === 'gemini' && gemini) {
-            const generationConfig = { temperature: 0.7, maxOutputTokens: 8192 };
+            // An 8192-token allowance was given to every request, and models
+            // reliably grow to fill the room they are given — which is why a
+            // one-line question came back as an essay. The allowance now
+            // follows what the question actually asked for.
+            const generationConfig = { temperature: 0.7, maxOutputTokens: answerBudget };
             const primaryModel = safeModel;
             // Only models confirmed to have quota on this key; lighter models listed first as backup
             // The chosen model first, then the rest of the catalogue as backup.
@@ -719,10 +836,22 @@ router.post('/generate', auth, async (req, res) => {
                         parts: [{ text: m.content }]
                     }));
                     const chat = genModel.startChat({ history, generationConfig });
+                    if (useMemory) {
+                        const result = await chat.sendMessageStream(userMessages[lastUserIdx].content);
+                        let text = '';
+                        for await (const chunk of result.stream) { text += chunk.text(); progress.answer(rid, stripThinkBlocks(text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, ''))); }
+                        return text;
+                    }
                     const result = await chat.sendMessage(userMessages[lastUserIdx].content);
                     return result.response?.text?.() || '';
                 }
                 const lastMsg = userMessages[userMessages.length - 1]?.content || String(prompt);
+                if (useMemory) {
+                    const result = await genModel.generateContentStream(lastMsg);
+                    let text = '';
+                    for await (const chunk of result.stream) { text += chunk.text(); progress.answer(rid, stripThinkBlocks(text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, ''))); }
+                    return text;
+                }
                 const result = await genModel.generateContent({
                     contents: [{ role: 'user', parts: [{ text: lastMsg }] }],
                     generationConfig
@@ -735,10 +864,11 @@ router.post('/generate', auth, async (req, res) => {
                 // Try each model up to 2 times for transient 503s
                 for (let attempt = 0; attempt < 2; attempt++) {
                     try {
-                        const genModel = gemini.getGenerativeModel({ model: tryModel, systemInstruction: systemMessage });
+                        progress.answer(rid, "");
+                        step(`Requesting answer from ${tryModel}${attempt ? " (retry)" : ""}`);
+                        const genModel = gemini.getGenerativeModel({ generationConfig, model: tryModel, systemInstruction: apiMessages.filter(m => m.role === 'system').map(m => m.content).join('\n\n') });
                         const text = await tryGenerate(genModel);
-                        progress.finish(rid);
-                        return res.json({ result: text, ...(textbookSources ? { sources: textbookSources } : {}), steps: progress.stepsOf(rid), modelUsed: aiMode === 'gemini' ? { id: chosen.id, label: chosen.label, reason: chosen.reason, auto: chosen.auto } : null });
+                        return finishAnswer(text, tryModel);
                     } catch (err) {
                         lastErr = err;
                         const msg = err.message || '';
@@ -786,17 +916,21 @@ router.post('/generate', auth, async (req, res) => {
             // heavy tasks need headroom — but the whole request (prompt +
             // max_tokens) is billed against the per-minute limit, which is
             // 8000 on the on-demand tier. Stay under it.
-            const baseMax = task === 'reasoning' ? 6000 : 4096;
+            const baseMax = answerBudget;
             const groqMessages = withImages(apiMessages, images);
 
             async function callGroq(modelName, maxTokens) {
-                return groq.chat.completions.create({
+                progress.answer(rid, "");
+                step(`Requesting answer from ${modelName}`);
+                const response = await groq.chat.completions.create({
                     messages: groqMessages,
                     model: modelName,
                     temperature: task === 'reasoning' ? 0.3 : 0.7,
                     max_tokens: maxTokens,
+                    stream: useMemory === true,
                     ...groqReasoningParams(modelName, task, wantReasoning)
                 });
+                return useMemory ? { choices: [{ message: { content: await collectStream(response) } }] } : response;
             }
 
             // Each model has its own per-minute quota, so a busy or retired
@@ -837,30 +971,16 @@ router.post('/generate', auth, async (req, res) => {
 
             const choice = completion.choices[0]?.message || {};
             const answer = stripThinkBlocks(choice.content);
-            const payload = { result: answer, model: usedModel };
-            if (textbookSources) payload.sources = textbookSources;
-            if (lockedChapter) payload.lockedChapter = lockedChapter;
-            if (webSource) payload.webSource = webSource;
-            if (selectedBook) payload.selectedBook = selectedBook;
-            if (memoryDoc) payload.memoryDoc = memoryDoc;
-            progress.finish(rid);
-            payload.steps = progress.stepsOf(rid);
-            payload.modelUsed = aiMode === 'gemini' ? { id: chosen.id, label: chosen.label, reason: chosen.reason, auto: chosen.auto } : null;
-            if (wantReasoning && choice.reasoning) {
-                payload.reasoning = String(choice.reasoning);
-            }
-            if (thread) {
-                payload.threadId = thread.id;
-                await appendTurn(thread, req.user.id, prompt, answer, { steps: progress.stepsOf(rid), seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)) });
-            }
-            return res.json(payload);
+            return finishAnswer(answer, usedModel, !useMemory && wantReasoning && choice.reasoning ? { reasoning: String(choice.reasoning) } : {});
         }
 
-        // ── Simulated fallback ──
-        await new Promise(r => setTimeout(r, 600));
-        return res.json({ result: '⚠️ No AI provider configured. Please set up the Gemini integration in your project settings.' });
+        progress.step(rid, 'No AI provider configured');
+        progress.finish(rid);
+        return res.status(503).json({ msg: 'No AI provider is configured. Please contact support.' });
 
     } catch (err) {
+        progress.step(activeProgressId, 'Request failed; please retry');
+        progress.finish(activeProgressId);
         console.error('AI Generation Error:', err.message);
         const rateLimited = err?.status === 413 || err?.status === 429 ||
             /rate_limit|too large/i.test(err?.message || '');

@@ -1,0 +1,132 @@
+// ================================================================
+// The shared brain
+// ----------------------------------------------------------------
+// Every AI surface in this app — the Companion, the 50 tools, the
+// quiz and worksheet generators, grading, summaries — used to send
+// its own ad-hoc system message. The result was 50 different
+// personalities and, more visibly, an app that explained at length
+// no matter how small the question was.
+//
+// This module holds the behaviour they now all share: answer at the
+// length the question actually deserves, use what we already know
+// about the student, and say so when unsure. Individual callers keep
+// their own task instructions; this is layered underneath, so a tool
+// that needs strict JSON still gets strict JSON.
+// ================================================================
+
+// ── How long should the answer be? ────────────────────────────────
+// Judged from the question itself. The point is that a one-line
+// question gets a one-line answer: the old behaviour opened with a
+// restatement, gave three headed sections and closed with a summary
+// even when the student asked what year something happened.
+const SHORT_ASK = /^\s*(what|who|when|where|which|is|are|was|were|does|do|did|can|will|how (?:many|much|old|far|long))\b/i;
+const WANTS_DEPTH = /\b(explain|why|derive|prove|step[- ]by[- ]step|in detail|walk me through|how does|how do|compare|discuss|essay|elaborate|teach me|full|detailed)\b/i;
+const WANTS_BREVITY = /\b(in (?:one|a) (?:line|sentence|word)|one[- ]liner|briefly|short(?:ly)?|just (?:the )?(?:answer|name|value)|tl;?dr|quickly|in short)\b/i;
+
+/**
+ * Classify how much answer a prompt is asking for.
+ * Returns 'brief' | 'normal' | 'deep'.
+ */
+function depthOf(prompt = '') {
+    const text = String(prompt || '').trim();
+    if (!text) return 'normal';
+    if (WANTS_BREVITY.test(text)) return 'brief';
+    if (WANTS_DEPTH.test(text)) return 'deep';
+    // A short factual question is a short answer, unless it asked for depth.
+    const words = text.split(/\s+/).length;
+    if (SHORT_ASK.test(text) && words <= 18) return 'brief';
+    if (words <= 8) return 'brief';
+    return 'normal';
+}
+
+const LENGTH_RULE = {
+    brief: 'This question wants a short answer. Give the answer itself in one or two sentences and stop. Do not add background, headings, bullet lists or a closing summary. If a single extra sentence genuinely helps, add one — no more.',
+    normal: 'Answer in a few sentences, or a short list if the content is genuinely a list. Do not pad with restatements, headings or a closing summary unless the answer is long enough to need them.',
+    deep: 'This question asks for depth, so take the room it needs: work through the reasoning in order, and show the steps rather than only the result. Still stop when the question is answered.'
+};
+
+// Token budget should follow the same judgement — a brief answer that is
+// allowed 4000 tokens tends to grow to fill them.
+const BUDGET = { brief: 700, normal: 2000, deep: 5000 };
+
+/**
+ * The behaviour every AI surface in the app shares.
+ *
+ * @param {object}   opts
+ * @param {string}   opts.depth     'brief' | 'normal' | 'deep'
+ * @param {object}   opts.profile   { username, classLevel, board, … }
+ * @param {string[]} opts.facts     durable things the student has told us
+ * @param {string[]} opts.weakTopics topics they have recently got wrong
+ * @param {string}   opts.topic     the subject area in play, when known
+ */
+function brain({ depth = 'normal', profile = null, facts = [], weakTopics = [], topic = '' } = {}) {
+    const lines = [
+        'You are the study companion inside StudyHub, helping one student.',
+        '',
+        'How to answer:',
+        `- ${LENGTH_RULE[depth] || LENGTH_RULE.normal}`,
+        '- Match the register of the question. A casual question gets a casual answer; a formal one gets a formal answer.',
+        '- Never open by restating the question or with filler such as "Great question!" or "Certainly!". Start with the answer.',
+        '- Write plainly. Use a heading or a list only when the content is genuinely structured; prose is the default.',
+        '- If the question is ambiguous in a way that changes the answer, ask one short clarifying question instead of guessing. Otherwise answer, stating any assumption in a clause.',
+        '- If you do not know, or are not confident, say so plainly. Never invent a source, a page number, a statistic or a quotation.',
+        '- Work out what the question is really about before answering, including which subject and topic it belongs to, and answer at that level.'
+    ];
+
+    const who = [];
+    if (profile?.classLevel) who.push(`is in class ${profile.classLevel}`);
+    if (profile?.board) who.push(`follows the ${profile.board} board`);
+    if (who.length) {
+        lines.push('', `About this student: they ${who.join(' and ')}. Pitch the explanation and the vocabulary at that level without mentioning that you are doing so.`);
+    }
+    if (topic) lines.push(`The current topic is ${topic}. Stay on it unless the student changes it.`);
+    if (facts.length) {
+        lines.push(`Things this student has told you before (context only — the current message always wins): ${facts.slice(0, 12).join('; ')}.`);
+    }
+    if (weakTopics.length) {
+        lines.push(`They have recently struggled with: ${weakTopics.slice(0, 6).join(', ')}. Lean on this only when it is relevant; do not bring it up unprompted.`);
+    }
+    return lines.join('\n');
+}
+
+/**
+ * Layer the shared brain underneath a caller's own task instruction.
+ * The caller's instruction comes last so it wins on any conflict —
+ * a generator that demands raw JSON must still get raw JSON.
+ */
+function withBrain(callerInstruction, opts = {}) {
+    const base = brain(opts);
+    const own = String(callerInstruction || '').trim();
+    if (!own) return base;
+    return `${base}\n\n--- Task ---\n${own}`;
+}
+
+
+// ── Does this turn need the textbook pipeline at all? ─────────────
+// Typing "hello" used to run the whole grounding chain: read the study
+// profile, resolve uploaded PDFs, re-open the locked chapter and pull
+// four pages of it into context — several seconds and a few thousand
+// tokens, so the tutor could say hello back while holding a chapter on
+// soil. A greeting is not a question about the syllabus.
+//
+// Deliberately narrow: only greetings, thanks and sign-offs, and only
+// when they are the WHOLE message. A bare "yes", "ok" or "go on" is NOT
+// included — those are usually answering something the tutor just asked,
+// and they still need the chapter in context to be answerable.
+const SMALL_TALK = /^(?:h(?:i+|e+y+|ello+|iya)|yo|namaste|namaskar|salaam|good\s*(?:morning|afternoon|evening|night)|thanks?(?:\s*(?:you|a lot|so much))?|thank\s*you|thx|ty|cheers|bye+|goodbye|see\s*(?:you|ya)|gn|good\s*night|welcome|sup|what'?s\s*up)(?:\s+there)?$/i;
+
+/**
+ * True when the message is pure pleasantry and carries no question.
+ * Punctuation and emoji are ignored, so "hi!!" and "hello 👋" count.
+ */
+function isSmallTalk(text) {
+    const cleaned = String(text || '')
+        .replace(/[\p{Extended_Pictographic}\u200d\uFE0F]/gu, '')
+        .replace(/[^\p{L}\p{N}\s']/gu, ' ')
+        .trim()
+        .replace(/\s+/g, ' ');
+    if (!cleaned || cleaned.split(' ').length > 3) return false;
+    return SMALL_TALK.test(cleaned);
+}
+
+module.exports = { brain, withBrain, depthOf, isSmallTalk, BUDGET, LENGTH_RULE };
