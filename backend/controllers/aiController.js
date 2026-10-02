@@ -409,6 +409,7 @@ router.post('/generate', auth, async (req, res) => {
             const fact = k => (facts.find(f => f.mem_key === k) || {}).mem_value || null;
             const syllabus = new Set(['board', 'class', 'subject']);
             return {
+                prompt: String(prompt || ''),
                 depth: task === 'reasoning' ? 'deep' : aiBrain.depthOf(prompt),
                 profile: { classLevel: fact('class'), board: fact('board') },
                 topic: fact('subject') || '',

@@ -35,6 +35,7 @@ const GEMINI_MODELS = [
         bestFor: 'Definitions, short factual questions and quick checks. Fastest.'
     }
 ];
+const { isMath } = require('./aiBrain');
 const MODEL_BY_ID = new Map(GEMINI_MODELS.map(m => [m.id, m]));
 const MODEL_BY_TIER = new Map(GEMINI_MODELS.map(m => [m.tier, m]));
 const DEFAULT_MODEL = MODEL_BY_TIER.get('balanced').id;
@@ -66,6 +67,16 @@ function chooseModel({ requested, prompt, task, hasImages } = {}) {
     }
     if (task === 'reasoning' || DEEP_CUES.test(text)) {
         return { ...deep, reason: 'this needs working through in steps', auto: true };
+    }
+    // Mathematics is routed on purpose rather than falling through to the
+    // all-rounder by accident. A calculation is judged on whether the number is
+    // right, so a multi-step one gets the model that works through steps and
+    // everything else gets Balanced, which is quick and accurate on arithmetic.
+    if (isMath(text)) {
+        const multiStep = DEEP_CUES.test(text) || text.length > 220 || /\b(simultaneous|system of|word problem|prove)\b/i.test(text);
+        return multiStep
+            ? { ...deep, reason: 'a multi-step calculation worth working through carefully', auto: true }
+            : { ...balanced, reason: 'a calculation — Balanced is quick and accurate here', auto: true };
     }
     if (text.length > 400) {
         return { ...deep, reason: 'a long question with a lot to hold together', auto: true };

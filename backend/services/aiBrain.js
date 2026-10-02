@@ -49,6 +49,34 @@ const LENGTH_RULE = {
 // allowed 4000 tokens tends to grow to fill them.
 const BUDGET = { brief: 700, normal: 2000, deep: 5000 };
 
+// ── Mathematics ───────────────────────────────────────────────────
+// A calculation is judged on whether the number is right, so it gets its own
+// rules. Without them the Math Solver opened by defining what a quadratic is
+// and restating the standard form before touching the actual equation: the
+// tool's own template says "solve step-by-step and teach clearly", which reads
+// as a request for depth, and the answer grew to fill the room.
+const MATH_CUES = /\b(solve|calculate|evaluate|simplify|factoris|factoriz|expand|integrate|differentiate|derivative|equation|quadratic|roots?|value of x|prove that|find the (?:value|sum|product|area|volume|perimeter|hcf|lcm)|\bsum of\b|percentage|ratio|probability)\b/i;
+const MATH_SHAPE = /[0-9]\s*[-+*/^=]\s*[0-9a-z(]|[a-z]\s*\^\s*[0-9]|\\frac|\\sqrt|∫|√|π|≤|≥|≠/i;
+// Arithmetic people write in words rather than symbols.
+const MATH_WORDS = /\b\d+\s*(?:times|multiplied by|divided by|plus|minus|squared|cubed|percent of|%\s*of)\b|\b(?:square root|cube root|hcf|lcm|factorial)\b/i;
+
+/** True when the question is a calculation rather than a discussion. */
+function isMath(text) {
+    const t = String(text || '');
+    if (!t.trim()) return false;
+    return MATH_CUES.test(t) || MATH_SHAPE.test(t) || MATH_WORDS.test(t);
+}
+
+const MATH_RULE = [
+    'This is a mathematics question. Accuracy is the whole job:',
+    '- Work the actual problem. Do not open by defining standard terms, restating the general form, or explaining what kind of problem it is — the student asked for the answer, not a textbook introduction.',
+    '- Show the steps that do the work, in order, with the arithmetic visible. Skip the commentary between them.',
+    '- Carry out each calculation carefully and check it before moving on. A wrong number makes the whole answer worthless, however well presented.',
+    '- Where the result can be checked — substituting a root back, re-adding a total, confirming units — do that check and say it passed.',
+    '- Finish with the answer stated plainly on its own line.',
+    '- If the question is ambiguous or missing a value, say exactly what is missing instead of assuming one.'
+].join('\n');
+
 /**
  * The behaviour every AI surface in the app shares.
  *
@@ -59,7 +87,8 @@ const BUDGET = { brief: 700, normal: 2000, deep: 5000 };
  * @param {string[]} opts.weakTopics topics they have recently got wrong
  * @param {string}   opts.topic     the subject area in play, when known
  */
-function brain({ depth = 'normal', profile = null, facts = [], weakTopics = [], topic = '' } = {}) {
+function brain({ depth = 'normal', profile = null, facts = [], weakTopics = [], topic = '', prompt = '' } = {}) {
+    const opts_isMath = isMath(prompt);
     const lines = [
         'You are the study companion inside StudyHub, helping one student.',
         '',
@@ -72,6 +101,12 @@ function brain({ depth = 'normal', profile = null, facts = [], weakTopics = [], 
         '- If you do not know, or are not confident, say so plainly. Never invent a source, a page number, a statistic or a quotation.',
         '- Work out what the question is really about before answering, including which subject and topic it belongs to, and answer at that level.'
     ];
+
+    // Mathematics overrides the length rule: the steps are the answer, but the
+    // padding around them is not.
+    if (opts_isMath) {
+        lines.push('', MATH_RULE);
+    }
 
     const who = [];
     if (profile?.classLevel) who.push(`is in class ${profile.classLevel}`);
@@ -129,4 +164,4 @@ function isSmallTalk(text) {
     return SMALL_TALK.test(cleaned);
 }
 
-module.exports = { brain, withBrain, depthOf, isSmallTalk, BUDGET, LENGTH_RULE };
+module.exports = { brain, withBrain, depthOf, isSmallTalk, isMath, BUDGET, LENGTH_RULE };

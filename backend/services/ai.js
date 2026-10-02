@@ -145,7 +145,7 @@ async function generateText(prompt, systemInstruction = 'You are a helpful assis
     const wantsBrain = useBrain && !json && !schema;
     const level = depth || (task === 'reasoning' ? 'deep' : brainSvc.depthOf(prompt));
     const system = wantsBrain
-        ? brainSvc.withBrain(systemInstruction, { depth: level, profile, facts, weakTopics, topic })
+        ? brainSvc.withBrain(systemInstruction, { depth: level, profile, facts, weakTopics, topic, prompt })
         : systemInstruction;
 
     // The budget follows the same judgement: a short answer given a 4000-token
