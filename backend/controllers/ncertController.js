@@ -76,6 +76,19 @@ router.post('/ask-auto', async (req, res, next) => {
         res.status(result.status).json(result.body);
     } catch (e) { next(e); }
 });
+// The classes and, per class, the subjects the corpus can actually answer on.
+// The study bar builds its two dropdowns from this, so the pair a student
+// picks is always one the library can serve.
+let syllabusCache = null, syllabusAt = 0;
+router.get('/syllabus', async (req, res, next) => {
+    try {
+        if (!syllabusCache || Date.now() - syllabusAt > 10 * 60 * 1000) {
+            syllabusCache = await store.syllabus();
+            syllabusAt = Date.now();
+        }
+        res.json(syllabusCache);
+    } catch (e) { next(e); }
+});
 router.get('/chapters', async (req, res, next) => {
     try {
         const { grade, subject, medium } = req.query;

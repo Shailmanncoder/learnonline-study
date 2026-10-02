@@ -8,6 +8,15 @@ require('./config/security').getJwtSecret();
 const app = express();
 
 app.use(cors());
+
+// ── Payments ──────────────────────────────────────────────────────
+// The webhook route is installed BEFORE express.json, because Razorpay's
+// signature is computed over the exact bytes it sent. Once a JSON parser has
+// read and re-serialised the body those bytes are gone, key order and spacing
+// included, and every signature check fails. It therefore takes the raw body
+// itself (express.raw inside installWebhooks).
+require('./payments/router').installWebhooks(app);
+
 app.use(express.json({ limit: '10mb' }));
 
 const authRoutes         = require('./controllers/authController');
@@ -24,12 +33,16 @@ app.use('/api/ai',           aiRoutes);
 app.use('/api/ncert',        require('./controllers/ncertController'));
 app.use('/api/memory',       require('./controllers/memoryController'));
 app.use('/api/library',      require('./controllers/libraryController'));
+app.use('/api/teaching-studio', require('./controllers/teachingStudioController'));
 app.use('/api/teacher',      teacherRoutes);
 app.use('/api/classroom',    classroomRoutes);
 app.use('/api/study',        studyRoutes);
 app.use('/api/learning', require('./controllers/learningController'));
+app.use('/api/studio', require('./controllers/studioController'));
+app.use('/api/roadmaps', require('./controllers/studioRoadmapController'));
 app.use('/api/review', require('./controllers/reviewController'));
 app.use('/api/gamification', gamificationRoutes);
+app.use('/api/payments',     require('./payments/router').router);
 
 // Verified Source Library admin screen. The page itself holds no data; every
 // call it makes is checked against the LIBRARY_ADMINS allowlist server-side.
@@ -37,6 +50,19 @@ app.get(['/admin/sources', '/admin/sources/'], (req, res) => {
     res.set('X-Frame-Options', 'DENY');
     res.sendFile(path.join(__dirname, '../frontend', 'admin-sources.html'));
 });
+// Billing and payment administration. Both serve the same page; it decides
+// what to show from /api/payments/catalog, and every privileged call is
+// re-checked server-side against PAYMENTS_ADMIN_IDS — the route itself grants
+// nothing. Registered before the static mount and before the SPA catch-all so
+// these paths are not swallowed by index.html.
+// /checkout is the purchase flow, /billing the history, /admin/payments the
+// administration view — payments.js switches on location.pathname, so all
+// three must reach it rather than falling through to the SPA shell.
+app.get(['/billing', '/billing/', '/checkout', '/checkout/', '/admin/payments', '/admin/payments/'], (req, res) => {
+    res.set('X-Frame-Options', 'DENY');
+    res.sendFile(path.join(__dirname, '../frontend', 'payments.html'));
+});
+
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 // SPA fallback. Anything that looks like a static asset must 404 rather than
@@ -64,6 +90,10 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 async function start() {
 await require('./config/db').ready();
+await require('./services/studioStore').ready();
+await require('./controllers/teachingStudioController').ready();
+require('./services/studioSources').start().catch(e => console.warn('[SOURCE]',e.message));
+require('./services/studioRoadmaps').start();
 // Finish any upload that was mid-OCR when the server last stopped.
 require('./services/memoryDocs').resumePending();
 // Seed the trusted source registry and resume any interrupted ingestion job.

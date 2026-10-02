@@ -80,6 +80,45 @@ function createStore(db) {
             return n;
         },
         // Candidate chapters for a class/subject, cheapest query first.
+        // What the corpus ACTUALLY holds, class by class.
+        //
+        // The study bar offered every subject for every class, but the corpus
+        // carries Physics/Chemistry/Biology only at Class 11-12 and Science
+        // only at Class 6-10 — so a Class 9 student choosing "Physics" (an
+        // option the app itself offered) matched zero chapters. Retrieval then
+        // reported "searching your Class 9 Physics textbooks", found nothing,
+        // and quietly answered from general knowledge instead.
+        //
+        // Reading the real coverage means the choices on screen can never
+        // again promise something the library cannot deliver, and new imports
+        // widen the options on their own.
+        async syllabus() {
+            await init();
+            const rows = await db.all(
+                `SELECT grade, subject, COUNT(*) AS n
+                   FROM ncert_chapters
+                  WHERE status = 'ready' AND grade IS NOT NULL AND grade <> ''
+                    AND subject IS NOT NULL AND subject <> ''
+                  GROUP BY grade, subject`
+            );
+            const byClass = new Map();
+            for (const r of rows) {
+                const m = /^Class\s+(\d+)$/i.exec(String(r.grade).trim());
+                if (!m) continue;            // "Foundational Stage", "Others" — not selectable
+                const cls = m[1];
+                if (!byClass.has(cls)) byClass.set(cls, new Map());
+                byClass.get(cls).set(r.subject, Number(r.n));
+            }
+            const classes = [...byClass.keys()].sort((a, b) => Number(a) - Number(b));
+            const subjectsByClass = {};
+            for (const c of classes) {
+                subjectsByClass[c] = [...byClass.get(c).entries()]
+                    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+                    .map(([name, chapters]) => ({ name, chapters }));
+            }
+            return { classes, subjectsByClass };
+        },
+
         async findChapters({ grade, subject, medium, status = 'ready', limit = 400 }) {
             await init();
             const where = ['status = ?'];

@@ -387,6 +387,22 @@ async function initMysql() {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB`);
 
+    // Daily goals shown on the dashboard. Keyed by (user, date) so each day
+    // starts fresh and yesterday's list stays as a record rather than being
+    // overwritten. goal_date is a plain YYYY-MM-DD string, which compares and
+    // sorts identically on both engines.
+    await pool.query(`CREATE TABLE IF NOT EXISTS daily_goals (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        goal_date VARCHAR(10) NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        done TINYINT NOT NULL DEFAULT 0,
+        position INT NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_daily_goals_day (user_id, goal_date),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
+
     console.log(`[DB] Connected to MySQL ${DB_HOST}:${DB_PORT}/${DB_NAME}`);
 }
 
@@ -704,6 +720,21 @@ async function initSqlite() {
         UNIQUE (user_id, mem_key),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`);
+    // Daily goals shown on the dashboard. Keyed by (user, date) so each day
+    // starts fresh and yesterday's list stays as a record rather than being
+    // overwritten. goal_date is a plain YYYY-MM-DD string, which compares and
+    // sorts identically on both engines.
+    await exec(`CREATE TABLE IF NOT EXISTS daily_goals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        goal_date TEXT NOT NULL,
+        title TEXT NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0,
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    await exec(`CREATE INDEX IF NOT EXISTS idx_daily_goals_day ON daily_goals(user_id, goal_date)`);
     await exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages(thread_id)`);
     await exec(`CREATE INDEX IF NOT EXISTS idx_chat_threads_user ON chat_threads(user_id, updated_at)`);
 
