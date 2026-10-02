@@ -1340,6 +1340,26 @@ async function loadPlusPlans() {
     const currentPlan = catalog.subscription && catalog.subscription.status === 'ACTIVE'
         ? catalog.subscription.plan_id : null;
 
+    // Plans are sold per workspace: Student Plus to student accounts, Developer
+    // Plus to developer accounts, and the server enforces it. A teacher account
+    // matches neither, so it used to see two greyed-out buttons reading "for
+    // student accounts" / "for developer accounts" and no way to act on either.
+    // Say what is going on instead of leaving two dead controls on the page.
+    const myRole = (currentUserData && currentUserData.role) || '';
+    const anyPlanForMe = (catalog.plans || []).some(p => p.role === myRole);
+    const roleNote = document.getElementById('plus-role-note');
+    if (roleNote) {
+        if (myRole && !anyPlanForMe) {
+            roleNote.innerHTML = `You are signed in as a <strong>${escapeHtml(myRole)}</strong> account.
+                Plus is sold to student and developer workspaces, so neither plan can be bought from here.
+                Nothing in StudyHub is locked behind a plan, so this account already has every feature —
+                sign in to your student account if you want a Plus subscription on it.`;
+            roleNote.style.display = '';
+        } else {
+            roleNote.style.display = 'none';
+        }
+    }
+
     grid.innerHTML = '';
     for (const plan of catalog.plans || []) {
         const card = document.createElement('div');
@@ -1365,7 +1385,9 @@ async function loadPlusPlans() {
             <button class="plus-cta${currentPlan === plan.id ? ' is-secondary' : ''}" data-plus-plan="${escapeHtml(plan.id)}"
                 ${!catalog.enabled || !forMyRole ? 'disabled' : ''}>
                 <i class="fa-solid fa-arrow-right"></i>
-                ${currentPlan === plan.id ? 'Manage in billing' : (forMyRole ? 'Continue to checkout' : `For ${escapeHtml(plan.role)} accounts`)}
+                ${currentPlan === plan.id ? 'Manage in billing'
+                    : forMyRole ? 'Continue to checkout'
+                    : `Needs a ${escapeHtml(plan.role)} account`}
             </button>`;
         grid.appendChild(card);
     }

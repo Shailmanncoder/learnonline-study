@@ -145,3 +145,17 @@
 @media (prefers-reduced-motion: reduce) {
     .nav-upgrade-card:hover, #plus .plus-cta:hover { transform: none; }
 }
+
+/* Shown when the signed-in workspace has no plan of its own — a teacher
+   account, for instance. Replaces two dead buttons with an explanation. */
+#plus .plus-role-note {
+    margin-bottom: 20px;
+    padding: 15px 18px;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 25%, var(--border-color));
+    background: color-mix(in srgb, var(--accent-primary) 7%, var(--card-bg));
+    color: var(--text-primary);
+    font-size: 13.5px;
+    line-height: 1.65;
+}
+#plus .plus-role-note strong { font-weight: 750; }
