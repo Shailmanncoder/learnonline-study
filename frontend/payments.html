@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
+ <title>Billing · LearnOnline.study</title>
+ <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+ <link rel="stylesheet" href="/payments.css"><script defer src="/payments.js"></script>
+</head>
+<body>
+ <a class="pay-skip" href="#pay-main">Skip to content</a>
+ <header class="pay-header"><a href="/" class="pay-brand"><span class="pay-brand-icon" aria-hidden="true">L</span> LearnOnline<span>.study</span></a><nav aria-label="Billing navigation"><a href="/billing">Billing</a><a href="/admin/payments" id="pay-admin-link" hidden>Payment admin</a><button class="pay-icon" id="pay-theme" aria-label="Switch colour theme">◐</button><a href="/dashboard" id="pay-workspace">Back to workspace ↗</a></nav></header>
+ <div class="pay-environment" id="pay-environment" hidden></div>
+ <main id="pay-main" class="pay-main" tabindex="-1"><div class="pay-skeleton" role="status" aria-label="Loading payments"><div></div><div></div><div></div></div></main>
+ <div id="pay-toast" class="pay-toast" role="status" aria-live="polite" hidden></div>
+ <dialog id="pay-dialog" class="pay-dialog" aria-labelledby="pay-dialog-title"><div class="pay-dialog-head"><h2 id="pay-dialog-title">Payment details</h2><button class="pay-icon" id="pay-dialog-close" aria-label="Close dialog">×</button></div><div id="pay-dialog-body"></div></dialog>
+ <noscript><p>Enable JavaScript to securely view billing and complete checkout.</p></noscript>
+</body></html>

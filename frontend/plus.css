@@ -1,0 +1,147 @@
+/* ============================================================
+   StudyHub Plus — plan cards and the sidebar upgrade card
+   ------------------------------------------------------------
+   No price is written in this file or in the markup. Every
+   amount shown comes from /api/payments/catalog, which is the
+   server's authoritative source, so a price can never drift
+   between the screen and what is actually charged.
+   ============================================================ */
+
+/* ── Sidebar card ─────────────────────────────────────────── */
+.nav-upgrade-card {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin: 0 10px 12px;
+    padding: 13px 14px;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 28%, var(--border-color));
+    background: color-mix(in srgb, var(--accent-primary) 8%, var(--card-bg));
+    cursor: pointer;
+    transition: border-color .15s ease, transform .15s ease, background .15s ease;
+}
+.nav-upgrade-card:hover { border-color: var(--accent-primary); transform: translateY(-1px); }
+.nav-upgrade-card:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-primary) 20%, transparent);
+}
+.nav-upgrade-icon {
+    width: 34px; height: 34px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 10px;
+    font-size: 15px;
+    color: #fff;
+    background: var(--accent-surface, var(--accent-primary));
+}
+.nav-upgrade-text { min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.nav-upgrade-text strong { font-size: 13.5px; font-weight: 750; color: var(--text-primary); }
+.nav-upgrade-text span { font-size: 11.5px; color: var(--text-secondary); }
+.sidebar.collapsed .nav-upgrade-card { display: none; }
+
+/* ── Plan screen ──────────────────────────────────────────── */
+#plus .plus-banner {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 13px 16px;
+    border-radius: 13px;
+    font-size: 13.5px;
+    font-weight: 600;
+    border: 1px solid rgba(245, 158, 11, .3);
+    background: rgba(245, 158, 11, .1);
+    color: #B45309;
+}
+[data-theme="dark"] #plus .plus-banner { color: #FBBF24; }
+#plus .plus-banner.is-shown { display: flex; }
+
+#plus .plus-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+    gap: 20px;
+    align-items: start;
+}
+#plus .plus-loading { color: var(--text-secondary); font-size: 14px; }
+
+#plus .plus-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 26px;
+    box-shadow: var(--glass-shadow);
+}
+#plus .plus-card.is-current { border-color: var(--accent-primary); }
+#plus .plus-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+#plus .plus-card h3 {
+    font-size: 19px; font-weight: 800; letter-spacing: -.5px;
+    color: var(--text-primary); margin: 0;
+}
+#plus .plus-current-pill {
+    font-size: 11px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 999px;
+    color: var(--success-color);
+    background: color-mix(in srgb, var(--success-color) 13%, transparent);
+    border: 1px solid color-mix(in srgb, var(--success-color) 24%, transparent);
+}
+#plus .plus-price {
+    display: flex; align-items: baseline; gap: 6px;
+    margin: 16px 0 4px;
+    font-size: 34px; font-weight: 800; letter-spacing: -1.4px;
+    color: var(--text-primary);
+}
+#plus .plus-price small { font-size: 14px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0; }
+#plus .plus-renewal { font-size: 12.5px; color: var(--text-secondary); margin: 0 0 18px; }
+
+#plus .plus-features { list-style: none; margin: 0 0 20px; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+#plus .plus-feature { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; line-height: 1.5; }
+#plus .plus-feature i { flex: none; margin-top: 3px; font-size: 12px; }
+/* Three honest states, never blurred together. */
+#plus .plus-feature.is-working { color: var(--text-primary); }
+#plus .plus-feature.is-working i { color: var(--success-color); }
+#plus .plus-feature.is-preview { color: var(--text-secondary); }
+#plus .plus-feature.is-preview i { color: var(--warning-color); }
+#plus .plus-feature.is-unavailable { color: var(--text-secondary); }
+#plus .plus-feature.is-unavailable i { color: var(--text-secondary); opacity: .7; }
+#plus .plus-feature-tag {
+    margin-left: 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .4px;
+    text-transform: uppercase; opacity: .85;
+}
+
+#plus .plus-cta {
+    margin-top: auto;
+    width: 100%;
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+    padding: 13px 20px;
+    border-radius: 13px;
+    border: 1px solid var(--accent-surface, var(--accent-primary));
+    background: var(--accent-surface, var(--accent-primary));
+    color: #fff;
+    font: inherit; font-size: 14.5px; font-weight: 700;
+    cursor: pointer;
+    transition: transform .14s ease, filter .14s ease;
+}
+#plus .plus-cta:hover { transform: translateY(-1px); filter: brightness(1.06); }
+#plus .plus-cta:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+#plus .plus-cta.is-secondary {
+    background: var(--card-bg);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+#plus .plus-note {
+    margin-top: 22px;
+    padding: 16px 18px;
+    border-radius: 14px;
+    border: 1px dashed var(--border-color);
+    background: var(--bg-color);
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+}
+#plus .plus-note strong { color: var(--text-primary); }
+
+@media (prefers-reduced-motion: reduce) {
+    .nav-upgrade-card:hover, #plus .plus-cta:hover { transform: none; }
+}
