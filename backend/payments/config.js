@@ -2,8 +2,8 @@
 const { createHmac, timingSafeEqual, randomUUID } = require('node:crypto');
 const { getJwtSecret } = require('../config/security');
 const plans = Object.freeze({
-    student: { id:'student', name:'Student Plus', amount:99900, currency:'INR', interval:'month', role:'student', features:['AI Companion and conversation memory','Exam preparation and study roadmaps','All 50 AI tools','NCERT discovery, notes and practice'] },
-    developer: { id:'developer', name:'Developer Plus', amount:199900, currency:'INR', interval:'month', role:'developer', features:['Technical mock tests','AI code review and refactoring','Technical notes and architecture guides','Skills and interview preparation'] }
+    student: { id:'student', name:'Student Plus', amount:99900, currency:'INR', interval:'month', role:'student', roles:['student','teacher','admin'], features:['AI Companion and conversation memory','Exam preparation and study roadmaps','All 50 AI tools','NCERT discovery, notes and practice'] },
+    developer: { id:'developer', name:'Developer Plus', amount:199900, currency:'INR', interval:'month', role:'developer', roles:['developer'], features:['Technical mock tests','AI code review and refactoring','Technical notes and architecture guides','Skills and interview preparation'] }
 });
 class PaymentError extends Error { constructor(status, message, code='PAYMENT_ERROR') { super(message); this.status=status; this.code=code; } }
 function fail(status, message, code) { throw new PaymentError(status,message,code); }

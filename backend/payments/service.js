@@ -42,7 +42,11 @@ async function catalog(user) {
 }
 async function createOrder(user,input,request={}) {
  await ready(); const c=assertEnabled(),k=key(input.idempotencyKey),q=price(input.planId,input.coupon);
- if(user.role!==plans[q.planId].role)fail(403,`This plan is for a ${plans[q.planId].role} account. Sign in to that workspace to subscribe.`);
+ // Checked against the plan's own list rather than a single role: the student
+ // workspace is what a teacher account actually uses day to day, so refusing it
+ // Student Plus left that account with the whole app and no way to pay for it.
+ const buyers = plans[q.planId].roles || [plans[q.planId].role];
+ if(!buyers.includes(user.role))fail(403,`This plan is for a ${plans[q.planId].role} account. Sign in to that workspace to subscribe.`);
  const customerName=clean(input.customerName)||user.username,customerEmail=clean(input.customerEmail,254);
  if(customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail))fail(400,'Enter a valid receipt email.');
  if(input.acceptedTerms!==true)fail(400,'Please accept the payment terms.');

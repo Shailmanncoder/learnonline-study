@@ -1346,7 +1346,7 @@ async function loadPlusPlans() {
     // student accounts" / "for developer accounts" and no way to act on either.
     // Say what is going on instead of leaving two dead controls on the page.
     const myRole = (currentUserData && currentUserData.role) || '';
-    const anyPlanForMe = (catalog.plans || []).some(p => p.role === myRole);
+    const anyPlanForMe = (catalog.plans || []).some(p => (p.roles || [p.role]).includes(myRole));
     const roleNote = document.getElementById('plus-role-note');
     if (roleNote) {
         if (myRole && !anyPlanForMe) {
@@ -1365,7 +1365,10 @@ async function loadPlusPlans() {
         const card = document.createElement('div');
         card.className = 'plus-card' + (currentPlan === plan.id ? ' is-current' : '');
 
-        const forMyRole = !currentUserData || currentUserData.role === plan.role;
+        // Same list the server checks, so the button and the server can never
+        // disagree about who may buy a plan.
+        const buyers = plan.roles || [plan.role];
+        const forMyRole = !currentUserData || buyers.includes(currentUserData.role);
         const features = (plan.features || []).map(f => {
             const meta = PLUS_FEATURE_STATUS[f] || { state: 'preview', note: 'Preview' };
             return `<li class="plus-feature is-${meta.state}">
