@@ -1,0 +1,130 @@
+name: Configure payments on the server
+
+# Run by hand only. It writes the Razorpay settings into the server's
+# backend/.env and recreates the app container so the new values are actually
+# loaded — a plain `restart` keeps the environment the container was created
+# with, which is why editing .env alone appears to do nothing.
+#
+# The values come from GitHub Actions secrets, so they are never in this file,
+# never in the repository, and never printed in the log. Add them under
+# Settings → Secrets and variables → Actions:
+#   RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Payment mode'
+        required: true
+        default: 'live'
+        type: choice
+        options: [live, test]
+
+concurrency:
+  group: studyhub-production
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    name: Write payment settings
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+      EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+      APP_DIR: ${{ secrets.APP_DIR }}
+      RZP_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
+      RZP_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
+      RZP_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
+      PAY_MODE: ${{ inputs.mode }}
+
+    steps:
+      - name: Check every secret is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          for v in EC2_HOST EC2_USER EC2_SSH_KEY EC2_KNOWN_HOSTS APP_DIR \
+                   RZP_KEY_ID RZP_KEY_SECRET RZP_WEBHOOK_SECRET; do
+            if [[ -z "${!v}" ]]; then
+              echo "::error::Missing GitHub Actions secret: ${v}"
+              exit 1
+            fi
+          done
+          # A live run must use a live key, and a test run a test key. Mixing
+          # them is the mistake that silently charges real cards.
+          case "$PAY_MODE:$RZP_KEY_ID" in
+            live:rzp_live_*|test:rzp_test_*) ;;
+            live:*) echo "::error::mode=live needs a key starting rzp_live_"; exit 1 ;;
+            test:*) echo "::error::mode=test needs a key starting rzp_test_"; exit 1 ;;
+          esac
+          echo "Mode $PAY_MODE with a matching key."
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$EC2_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Write settings and recreate the container
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" \
+              APP_DIR="$APP_DIR" PAY_MODE="$PAY_MODE" \
+              RZP_KEY_ID="$RZP_KEY_ID" RZP_KEY_SECRET="$RZP_KEY_SECRET" \
+              RZP_WEBHOOK_SECRET="$RZP_WEBHOOK_SECRET" \
+              bash -s <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+          cp backend/.env "backend/.env.bak-$(date +%Y%m%d-%H%M%S)"
+          grep -vE '^(RAZORPAY|PAYMENTS)_' backend/.env > /tmp/env.new
+          {
+            echo "PAYMENTS_MODE=$PAY_MODE"
+            echo "PAYMENTS_LIVE_ENABLED=$([ "$PAY_MODE" = live ] && echo true || echo false)"
+            echo "PAYMENTS_TEST_ENABLED=$([ "$PAY_MODE" = test ] && echo true || echo false)"
+            echo "PAYMENTS_TERMS_APPROVED=true"
+            echo "RAZORPAY_KEY_ID=$RZP_KEY_ID"
+            echo "RAZORPAY_KEY_SECRET=$RZP_KEY_SECRET"
+            echo "RAZORPAY_WEBHOOK_SECRET=$RZP_WEBHOOK_SECRET"
+            echo "PAYMENTS_PUBLIC_URL=https://learnonline.study"
+            echo "PAYMENTS_SELLER_NAME=LearnOnline.study"
+            echo "PAYMENTS_SUPPORT_EMAIL=shailmmanncoder@gmail.com"
+            echo "PAYMENTS_ADMIN_IDS=1"
+            echo "PAYMENTS_TAX_BPS=0"
+          } >> /tmp/env.new
+          mv /tmp/env.new backend/.env
+          chmod 600 backend/.env
+          echo "Settings written (names only):"
+          grep -oE '^(RAZORPAY|PAYMENTS)_[A-Z_]+' backend/.env | sort | sed 's/^/  /'
+
+          # Recreate, not restart: compose fixes a container's environment when
+          # it is created, so a restart would keep the old values.
+          docker compose up -d --force-recreate app
+          REMOTE
+
+      - name: Confirm the running container picked it up
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 25
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" \
+              'docker exec helpstudent-studyhub node -e "
+                 const c=require(\"/app/backend/payments/config\");
+                 const x=c.config(), e=process.env;
+                 console.log(JSON.stringify({
+                   mode:x.mode, enabled:x.enabled, provider:x.provider, simulated:x.simulated,
+                   keyPrefix:(e.RAZORPAY_KEY_ID||\"none\").slice(0,9),
+                   hasSecret:Boolean(e.RAZORPAY_KEY_SECRET),
+                   hasWebhookSecret:Boolean(e.RAZORPAY_WEBHOOK_SECRET)
+                 }, null, 1));"'
+          echo "--- public check ---"
+          curl -s -o /dev/null -w "catalog: %{http_code} (401 = live and asking for sign-in)\n" \
+            https://learnonline.study/api/payments/catalog
