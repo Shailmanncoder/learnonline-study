@@ -177,3 +177,99 @@ pre, code { overflow-x: auto; max-width: 100%; }
     #active-tool .tool-input-area,
     #active-tool .tool-output-wrapper { padding: 16px; }
 }
+
+/* ============================================================
+   Landing page
+   ------------------------------------------------------------
+   Measured signed-out at 320-1440. The page itself never scrolls
+   sideways, but the nav pill's contents did not fit inside it.
+   ============================================================ */
+
+/* The nav holds logo (152px) + actions (155px) + hamburger (44px)
+   with 28px gaps: 407px of content in a 301px pill at 375px, so
+   "Start learning" was cut off mid-word and ran past the edge.
+   landing.css hides the ghost "Log in" at 640px but keeps the
+   primary button, which is the wide one.
+
+   Below 640px the hamburger is already showing and #land-mobile-menu
+   carries both sign-up and log-in, so the nav buttons are a
+   duplicate. Tablets keep them — there is room there. */
+@media (max-width: 640px) {
+    #landing-page .land-nav-actions { display: none; }
+}
+
+/* Whatever the width, the pill must not be able to spill its
+   contents: the logo may shrink and the row may not overflow. */
+#landing-page .land-nav-inner {
+    min-width: 0;
+    max-width: 100%;
+}
+#landing-page .land-logo {
+    min-width: 0;
+}
+/* No overflow clipping on .land-nav: the mobile dropdown is a child of it,
+   so the pill's large border-radius clipped the open menu into a circle with
+   its items spilling over the hero. Hiding .land-nav-actions above is what
+   actually keeps the row inside the pill. */
+
+@media (max-width: 420px) {
+    /* Tighter gap so the logo keeps its full name next to the menu. */
+    #landing-page .land-nav-inner { gap: 12px; padding-left: 14px; padding-right: 10px; }
+}
+
+/* The open menu was `position: static; z-index: auto`, so it could not paint
+   above the hero: the headline and paragraph showed straight through a panel
+   that is 97% opaque. It needs its own stacking context. */
+#landing-page #land-mobile-menu {
+    position: relative;
+    z-index: 60;
+}
+
+/* landing.css hides .land-role-links below 900px. That rule is aimed at the
+   desktop nav row, but the same class is used inside the mobile menu, so the
+   educator and developer sign-ins disappeared on phones entirely — a teacher
+   could not reach their own login from a handset. Restored inside the menu,
+   where there is room for them. */
+#landing-page #land-mobile-menu .land-role-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    padding-top: 6px;
+}
+#landing-page #land-mobile-menu .land-role-links a,
+#landing-page #land-mobile-menu .land-role-links button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* With the menu open the nav grows from a 64px pill to a 445px panel while
+   keeping `border-radius: 999px`, which rounds it into a tall arc with the
+   links floating inside it. And although the nav sits at z-index 60, the hero
+   button still painted over the panel's last 10px. Both only happen in the
+   open state, so both are corrected there. */
+#landing-page .land-nav:has(#land-mobile-menu.open) {
+    border-radius: 26px;
+    z-index: 200;
+}
+#landing-page #land-mobile-menu.open {
+    border-bottom-left-radius: 22px;
+    border-bottom-right-radius: 22px;
+}
+
+/* Between the hamburger breakpoint and a wide desktop the full row —
+   logo 152 + links 404 + actions 431 + two 28px gaps = 1043px — did not fit
+   a 950px pill, so "Start learning" was clipped at 1024px. The secondary
+   role links are the first thing to go: they stay reachable from the footer
+   and from the mobile menu, and the two primary actions keep their room. */
+@media (max-width: 1180px) {
+    #landing-page .land-nav-actions .land-role-links,
+    #landing-page .land-nav-inner > .land-role-links { display: none; }
+    #landing-page .land-nav-inner { gap: 18px; }
+}
+@media (max-width: 1040px) {
+    /* Tighter still: the section links shrink before the buttons do. */
+    #landing-page .land-nav-links { gap: 14px; font-size: 13.5px; }
+    #landing-page .land-nav-inner { gap: 14px; }
+}
