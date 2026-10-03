@@ -10,7 +10,7 @@
 // The visible symptom was new markup rendering against old stylesheets.
 // Bump CACHE_VERSION on any release that changes shell assets.
 
-const CACHE_VERSION = 'v32-teacher-can-buy';
+const CACHE_VERSION = 'v33-responsive';
 const CACHE_NAME = `studyhub-shell-${CACHE_VERSION}`;
 const APP_SHELL = [
     '/',
@@ -30,6 +30,7 @@ const APP_SHELL = [
     '/tools.css',
     '/contrast.css',
     '/plus.css',
+    '/responsive.css',
     '/app.js',
     '/vendor/purify.min.js',
     '/teachingStudio.js',

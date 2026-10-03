@@ -1,0 +1,179 @@
+/* ============================================================
+   Responsive repairs
+   ------------------------------------------------------------
+   Measured in the running app at 320, 375, 768 and 1024, not
+   guessed. The layout itself was already sound — no horizontal
+   page scroll on any screen at 320px, and the sidebar goes
+   off-canvas correctly on tablets. What was wrong was touch
+   ergonomics, so that is what this fixes.
+
+   Loaded last so it wins. Desktop is deliberately left alone.
+   ============================================================ */
+
+/* ── iOS zoom on focus ─────────────────────────────────────────
+   97 inputs rendered below 16px. Safari on iOS zooms the page in
+   whenever a field smaller than 16px is focused, and does not zoom
+   back out afterwards — the page is left oversized and scrolled
+   sideways, which is the single worst thing about using this on a
+   phone today. 16px is the threshold that stops it, and it reads
+   better on a small screen anyway. */
+@media (max-width: 820px) {
+    input,
+    select,
+    textarea,
+    .section-container input,
+    .section-container select,
+    .section-container textarea,
+    .topbar .search-bar input,
+    #active-tool .tool-field-control,
+    .pay-field input,
+    .pay-field select {
+        font-size: 16px !important;
+    }
+    /* The visual box stays close to its designed height despite the
+       larger text. */
+    .section-container input[type="text"],
+    .section-container input[type="search"],
+    .section-container input[type="number"],
+    .section-container select {
+        padding-top: 11px;
+        padding-bottom: 11px;
+    }
+}
+
+/* ── Touch targets ─────────────────────────────────────────────
+   Icon buttons measured 30px wide (44 tall) and the favourite star
+   24px wide. A 30px target is small for a thumb; 44x44 is the size
+   both Apple and WCAG ask for. Applied on touch pointers and small
+   screens only, so the desktop keeps its compact toolbar. */
+@media (max-width: 820px), (pointer: coarse) {
+    /* styles.css sets `width: 30px !important; min-width: 30px !important`
+       on these, which already overrode the 44px rules the app declares for
+       itself in two other files. Matching that weight is the only way to
+       restore the size the design had asked for. */
+    .icon-btn,
+    .hamburger-btn,
+    .theme-toggle-btn,
+    #back-to-tools,
+    #hamburger-btn,
+    #theme-toggle,
+    .tool-act-btn,
+    .tool-fav-star,
+    .notif-btn,
+    .pay-icon {
+        min-width: 44px !important;
+        min-height: 44px !important;
+        width: auto !important;
+    }
+    /* Chips were 31px tall. */
+    .grok-chip-btn,
+    .filter-pill,
+    .lh-tabs button,
+    #dashboard .dash-tab,
+    .pay-method {
+        min-height: 44px;
+    }
+    /* A star inside a card needs the hit area without the padding
+       pushing the card's layout around. */
+    .tool-fav-star { display: inline-grid; place-items: center; }
+}
+
+/* ── Top bar ───────────────────────────────────────────────────
+   The search field carries `min-width: min(460px, 42vw)`, which at
+   320px is 134px — wider than the space left beside the menu button,
+   so it overflowed its own container and slid underneath the icons on
+   the right. It has to be allowed to shrink on a small screen. */
+@media (max-width: 820px) {
+    .topbar .search-bar {
+        min-width: 0 !important;
+        flex: 1 1 auto;
+    }
+    .topbar > div:first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+        gap: 10px;
+    }
+    .topbar .topbar-actions { flex: 0 0 auto; }
+}
+/* Below this the field is narrower than its own placeholder; the
+   magnifier alone is clearer than a sliver of a box. */
+@media (max-width: 420px) {
+    .topbar .search-bar input { min-width: 0; }
+    .topbar .search-kbd { display: none; }
+}
+
+/* ── Small text ────────────────────────────────────────────────
+   10.5px labels are legible on a desktop monitor and not on a phone
+   held at arm's length. Raised only where the screen is small. */
+@media (max-width: 560px) {
+    .nav-section-label,
+    .logo-tagline,
+    .grok-rail-label,
+    .plus-feature-tag,
+    .topbar .search-kbd {
+        font-size: 11.5px;
+    }
+}
+
+/* ── Controls in a flex row ────────────────────────────────────
+   A select sized by its widest option cannot shrink below that
+   content unless told to: a flex item defaults to min-width:auto.
+   The Summarizer's "Format:" row overflowed by 14px at 320px once
+   its text reached 16px. This is the general shape of that bug, so
+   it is fixed for every such row rather than that one control. */
+@media (max-width: 820px) {
+    .sum-format-wrap,
+    .sum-controls-row,
+    .section-container .form-row,
+    .section-container .controls-row {
+        flex-wrap: wrap;
+    }
+    .section-container select,
+    .section-container input,
+    .sum-format-wrap select {
+        min-width: 0;
+        max-width: 100%;
+    }
+}
+
+/* ── Things that overflow regardless of layout ─────────────────
+   Long unbroken strings — a pasted URL, a chemical name, a student's
+   own input — can push a card wider than the screen whatever the
+   grid does. */
+img, svg, video, canvas, iframe { max-width: 100%; height: auto; }
+pre, code { overflow-x: auto; max-width: 100%; }
+.section-container p,
+.section-container li,
+.section-container h1,
+.section-container h2,
+.section-container h3,
+.section-container h4,
+.tool-output-area,
+.grok-message,
+.note-card,
+.jump-card-info { overflow-wrap: anywhere; }
+
+/* A table is the one thing that genuinely cannot reflow; let it
+   scroll inside its own box rather than widening the page. */
+@media (max-width: 820px) {
+    .section-container table { display: block; overflow-x: auto; max-width: 100%; }
+}
+
+/* ── Landscape phones ──────────────────────────────────────────
+   Short viewports: a full-height hero leaves no room for content. */
+@media (max-height: 460px) and (orientation: landscape) {
+    #dashboard .dash-hero-banner { padding: 18px 20px; }
+    #dashboard .dash-hero-illustration { display: none; }
+}
+
+/* ── Very narrow phones ────────────────────────────────────────
+   320px is still a real width (iPhone SE, and any phone with the
+   display zoom setting turned up). */
+@media (max-width: 360px) {
+    .section-container { padding-left: 14px; padding-right: 14px; }
+    #dashboard .dash-hero-heading { font-size: 24px; }
+    #plus .plus-price { font-size: 28px; }
+    #active-tool .tool-top-bar,
+    #active-tool .tool-input-area,
+    #active-tool .tool-output-wrapper { padding: 16px; }
+}
