@@ -117,6 +117,31 @@ async function requireTeacherOfClass(req, res, next) {
     }
 }
 
+
+// Archiving a class closes it. The join routes already refuse new teachers and
+// students for an archived class, and a student cannot submit to one -- but the
+// teacher side kept accepting new announcements, homework, notes and worksheets
+// into it. A class archived at the end of term would still take work that its
+// students could read but never submit against.
+//
+// Returns true when the caller has been answered and the route should stop.
+async function classClosedForWriting(classId, res) {
+    const cls = await db.get('SELECT status FROM classrooms WHERE id = ?', [classId]);
+    if (!cls) {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } });
+        return true;
+    }
+    if (cls.status === 'archived') {
+        res.status(409).json({ success: false, error: { code: 'CLASS_ARCHIVED', message: 'This class is archived. Restore it before adding new work.' } });
+        return true;
+    }
+    if (cls.status === 'deleted') {
+        res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } });
+        return true;
+    }
+    return false;
+}
+
 // ============================================================================
 // 1. CREATE CLASSROOM
 // ============================================================================
@@ -391,8 +416,9 @@ router.post('/classes/:id/students/remove', auth, requireTeacherOfClass, async (
 router.post('/classes/:id/students/block', auth, requireTeacherOfClass, async (req, res) => {
     try {
         const classId = req.params.id;
-        const { studentId, reason } = req.body;
-        if (!studentId) return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Student ID required' } });
+        const studentId = Number(req.body?.studentId);
+        const { reason } = req.body;
+        if (!Number.isInteger(studentId)) return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Student ID required' } });
 
         await db.run(
             "UPDATE class_enrollments SET status = 'blocked', removed_at = CURRENT_TIMESTAMP, removed_by = ? WHERE class_id = ? AND student_id = ?",
@@ -418,10 +444,66 @@ router.post('/classes/:id/students/block', auth, requireTeacherOfClass, async (r
 router.post('/classes/:id/students/unblock', auth, requireTeacherOfClass, async (req, res) => {
     try {
         const classId = req.params.id;
-        const { studentId } = req.body;
-        await db.run('DELETE FROM class_student_restrictions WHERE class_id = ? AND student_id = ?', [classId, studentId]);
-        res.json({ success: true, message: 'Student restriction removed' });
+        const studentId = Number(req.body?.studentId);
+        if (!Number.isInteger(studentId)) {
+            return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Student ID required' } });
+        }
+
+        // Blocking writes to two places: it marks the enrolment 'blocked' AND
+        // records a restriction. Unblocking only ever deleted the restriction,
+        // so the enrolment stayed blocked -- and that is the row the access
+        // check reads. The teacher was told "restriction removed" while the
+        // student kept getting 403, and could not rejoin either, because the
+        // join route refuses a 'blocked' enrolment whether or not a
+        // restriction exists. There was no way back into the class for them.
+        //
+        // Both are undone together now, so lifting a block really lifts it.
+        const enrolment = await db.get(
+            'SELECT id, status FROM class_enrollments WHERE class_id = ? AND student_id = ?',
+            [classId, studentId]
+        );
+        const restriction = await db.get(
+            "SELECT id FROM class_student_restrictions WHERE class_id = ? AND student_id = ? AND type = 'blocked'",
+            [classId, studentId]
+        );
+        if (!enrolment && !restriction) {
+            return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'That student is not blocked in this class.' } });
+        }
+
+        await db.transaction(async () => {
+            await db.run('DELETE FROM class_student_restrictions WHERE class_id = ? AND student_id = ?', [classId, studentId]);
+            // Only a block is reversed here. A student who was *removed* is a
+            // separate decision, and they can already rejoin with the code.
+            await db.run(
+                "UPDATE class_enrollments SET status = 'active', removed_at = NULL, removed_by = NULL WHERE class_id = ? AND student_id = ? AND status = 'blocked'",
+                [classId, studentId]
+            );
+        });
+
+        const reinstated = enrolment && enrolment.status === 'blocked';
+        if (reinstated) {
+            const cls = await db.get('SELECT name, section FROM classrooms WHERE id = ?', [classId]);
+            await db.run(
+                'INSERT INTO notifications (user_id, type, title, message, reference_type, reference_id) VALUES (?, ?, ?, ?, ?, ?)',
+                [studentId, 'student_unblocked', 'Classroom access restored',
+                 `You can take part in ${cls ? `${cls.name}-${cls.section}` : 'the classroom'} again.`, 'classrooms', classId]
+            );
+        }
+
+        // Blocking writes an audit entry; lifting one is just as worth recording.
+        await logAudit(req.user.id, 'STUDENT_UNBLOCKED', 'class_enrollments', studentId, { classId, reinstated });
+        // Say what actually happened rather than assuming. "Not reinstated"
+        // can mean they were never blocked, were removed rather than blocked,
+        // or have no enrolment at all, and those need different next steps.
+        let message;
+        if (reinstated) message = 'Block lifted — the student is back in the class.';
+        else if (!enrolment) message = 'Block lifted. They have no place in this class yet, so they will need to join with the class code.';
+        else if (enrolment.status === 'removed') message = 'Block lifted. They were removed from the class, so they will need to rejoin with the class code.';
+        else message = 'That student was not blocked — no change was needed.';
+
+        res.json({ success: true, reinstated, status: enrolment ? enrolment.status : 'none', message });
     } catch (err) {
+        console.error('[UNBLOCK STUDENT ERROR]', err);
         res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
     }
 });
@@ -458,10 +540,39 @@ router.post('/classes/:id/regenerate-code', auth, requireTeacherOfClass, async (
 router.post('/classes/:id/archive', auth, requireTeacherOfClass, async (req, res) => {
     try {
         const classId = req.params.id;
+        const cls = await db.get('SELECT status FROM classrooms WHERE id = ?', [classId]);
+        if (!cls) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } });
+        if (cls.status === 'deleted') return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } });
+        if (cls.status === 'archived') return res.json({ success: true, status: 'archived', message: 'This class is already archived.' });
+
         await db.run("UPDATE classrooms SET status = 'archived' WHERE id = ?", [classId]);
         await logAudit(req.user.id, 'CLASS_ARCHIVED', 'classrooms', classId, {});
-        res.json({ success: true, message: 'Classroom archived' });
+        res.json({ success: true, status: 'archived', message: 'Classroom archived. You can restore it at any time.' });
     } catch (err) {
+        console.error('[ARCHIVE CLASS ERROR]', err);
+        res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
+    }
+});
+
+// Archiving had no way back. A class archived by mistake could never be
+// reopened: new teachers and students were refused, no new work could be added,
+// and nothing in the API set the status to anything else again. Archiving is
+// meant to close a class at the end of term, not destroy it.
+router.post('/classes/:id/restore', auth, requireTeacherOfClass, async (req, res) => {
+    try {
+        const classId = req.params.id;
+        const cls = await db.get('SELECT status FROM classrooms WHERE id = ?', [classId]);
+        if (!cls || cls.status === 'deleted') {
+            return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Classroom not found' } });
+        }
+        if (cls.status === 'active') {
+            return res.json({ success: true, status: 'active', message: 'This class is already open.' });
+        }
+        await db.run("UPDATE classrooms SET status = 'active' WHERE id = ?", [classId]);
+        await logAudit(req.user.id, 'CLASS_RESTORED', 'classrooms', classId, {});
+        res.json({ success: true, status: 'active', message: 'Classroom reopened.' });
+    } catch (err) {
+        console.error('[RESTORE CLASS ERROR]', err);
         res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: err.message } });
     }
 });
@@ -478,6 +589,7 @@ router.post('/announcements', auth, async (req, res) => {
 
         const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [classId, req.user.id]);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized for this class' } });
+        if (await classClosedForWriting(classId, res)) return;
 
         const result = await db.run(
             'INSERT INTO class_announcements (class_id, teacher_id, title, message, priority, attachments) VALUES (?, ?, ?, ?, ?, ?)',
@@ -512,6 +624,7 @@ router.post('/homework', auth, async (req, res) => {
 
         const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [classId, req.user.id]);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized for this class' } });
+        if (await classClosedForWriting(classId, res)) return;
 
         const result = await db.run(
             'INSERT INTO class_homework (class_id, teacher_id, title, subject, instructions, due_date, due_time, max_marks, attachments, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -595,6 +708,7 @@ router.post('/notes', auth, async (req, res) => {
 
         const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [classId, req.user.id]);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized' } });
+        if (await classClosedForWriting(classId, res)) return;
 
         const result = await db.run(
             'INSERT INTO class_notes (class_id, teacher_id, title, subject, content, attachments, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -763,6 +877,7 @@ router.post('/worksheets/publish', auth, async (req, res) => {
 
         const tc = await db.get('SELECT * FROM teacher_classes WHERE class_id = ? AND teacher_id = ?', [classId, req.user.id]);
         if (!tc) return res.status(403).json({ success: false, error: { code: 'NOT_AUTHORIZED', message: 'Not authorized for this class' } });
+        if (await classClosedForWriting(classId, res)) return;
 
         const result = await db.run(
             'INSERT INTO class_worksheets (class_id, teacher_id, title, subject, description, topic, difficulty, worksheet_data, total_marks, duration, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
