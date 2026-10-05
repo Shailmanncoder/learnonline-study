@@ -870,7 +870,7 @@ Respond ONLY with valid JSON in this exact shape (no markdown fences, no comment
 // Publish / Save Worksheet to Class
 router.post('/worksheets/publish', auth, async (req, res) => {
     try {
-        const { classId, title, subject, description, topic, difficulty, total_marks, duration, worksheet_data, status } = req.body;
+        const { classId, title, subject, description, topic, difficulty, total_marks, duration, worksheet_data, status, opens_at, closes_at, max_attempts } = req.body;
         if (!classId || !title || !worksheet_data) {
             return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Class ID, Title, and Worksheet Data are required' } });
         }
@@ -880,8 +880,13 @@ router.post('/worksheets/publish', auth, async (req, res) => {
         if (await classClosedForWriting(classId, res)) return;
 
         const result = await db.run(
-            'INSERT INTO class_worksheets (class_id, teacher_id, title, subject, description, topic, difficulty, worksheet_data, total_marks, duration, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [classId, req.user.id, title.trim(), subject || 'General', description || '', topic || title, difficulty || 'Medium', typeof worksheet_data === 'string' ? worksheet_data : JSON.stringify(worksheet_data), total_marks || 20, duration || 30, status || 'published']
+            // opens_at / closes_at / max_attempts are optional. Left unset the
+            // worksheet behaves as every existing one does: always open, any
+            // number of attempts. Set, they are enforced at submission.
+            'INSERT INTO class_worksheets (class_id, teacher_id, title, subject, description, topic, difficulty, worksheet_data, total_marks, duration, status, opens_at, closes_at, max_attempts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [classId, req.user.id, title.trim(), subject || 'General', description || '', topic || title, difficulty || 'Medium', typeof worksheet_data === 'string' ? worksheet_data : JSON.stringify(worksheet_data), total_marks || 20, duration || 30, status || 'published',
+             opens_at || null, closes_at || null,
+             Number.isInteger(Number(max_attempts)) && Number(max_attempts) > 0 ? Number(max_attempts) : null]
         );
 
         const wsId = result.lastID;
@@ -914,7 +919,7 @@ router.get('/worksheets/:id/attempts', auth, async (req, res) => {
              FROM worksheet_attempts wa
              JOIN users u ON u.id = wa.student_id
              WHERE wa.worksheet_id = ?
-             ORDER BY wa.submitted_at DESC`,
+             ORDER BY wa.submitted_at DESC, wa.id DESC`,
             [wsId]
         );
 
@@ -1051,7 +1056,7 @@ router.get('/worksheets/:id/analysis', auth, async (req, res) => {
         const attempts = await db.all(
             `SELECT wa.*, u.username as student_name
              FROM worksheet_attempts wa JOIN users u ON u.id = wa.student_id
-             WHERE wa.worksheet_id = ? ORDER BY wa.submitted_at DESC`,
+             WHERE wa.worksheet_id = ? ORDER BY wa.submitted_at DESC, wa.id DESC`,
             [wsId]
         );
 

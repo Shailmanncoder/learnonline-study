@@ -506,13 +506,19 @@ router.get('/:id/worksheets', auth, requireEnrolledOrTeacher, async (req, res) =
         const studentId = req.user.id;
         const rows = await db.all(
             `SELECT w.*, u.username as teacher_name,
-                (SELECT score FROM worksheet_attempts WHERE worksheet_id = w.id AND student_id = ? ORDER BY score DESC LIMIT 1) as my_score,
+                -- The teacher's analysis counts a student's LATEST attempt, but
+                -- this showed their BEST one. A student who scored 2/2 and then
+                -- 0/2 on a retake saw 2 while being graded 0. The headline
+                -- number is now the attempt that actually counts; the best is
+                -- still returned alongside it so nothing is hidden.
+                (SELECT score FROM worksheet_attempts WHERE worksheet_id = w.id AND student_id = ? ORDER BY submitted_at DESC, id DESC LIMIT 1) as my_score,
+                (SELECT MAX(score) FROM worksheet_attempts WHERE worksheet_id = w.id AND student_id = ?) as my_best_score,
                 (SELECT COUNT(*) FROM worksheet_attempts WHERE worksheet_id = w.id AND student_id = ?) as my_attempts
              FROM class_worksheets w
              JOIN users u ON u.id = w.teacher_id
              WHERE w.class_id = ? AND w.status = 'published'
              ORDER BY w.created_at DESC`,
-            [studentId, studentId, classId]
+            [studentId, studentId, studentId, classId]
         );
         res.json({ success: true, worksheets: req.isTeacher ? rows : rows.map(studentWorksheet) });
     } catch (err) {
@@ -536,6 +542,32 @@ router.post('/worksheets/:id/submit', auth, async (req, res) => {
 
         const enrolled = await db.get("SELECT 1 AS ok FROM class_enrollments e JOIN classrooms c ON c.id = e.class_id WHERE e.class_id = ? AND e.student_id = ? AND e.status = 'active' AND c.status = 'active'", [ws.class_id, req.user.id]);
         if (!enrolled || ws.status !== 'published') return res.status(403).json({ success: false, error: { message: 'This worksheet is not available to you.' } });
+
+        // opens_at, closes_at and max_attempts have been columns on
+        // class_worksheets all along and nothing ever read them, so a worksheet
+        // could be answered before it opened, after it closed, and any number
+        // of times. Unlimited retakes matter because the teacher's analysis
+        // counts the LATEST attempt: a student could simply resubmit until the
+        // mark suited them.
+        //
+        // Only enforced when the teacher has actually set a value, so every
+        // worksheet published before this behaves exactly as it did.
+        const nowMs = Date.now();
+        const opensAt = ws.opens_at ? Date.parse(String(ws.opens_at).replace(' ', 'T')) : null;
+        const closesAt = ws.closes_at ? Date.parse(String(ws.closes_at).replace(' ', 'T')) : null;
+        if (Number.isFinite(opensAt) && nowMs < opensAt) {
+            return res.status(403).json({ success: false, error: { code: 'NOT_OPEN_YET', message: 'This worksheet has not opened yet.' } });
+        }
+        if (Number.isFinite(closesAt) && nowMs > closesAt) {
+            return res.status(403).json({ success: false, error: { code: 'CLOSED', message: 'This worksheet has closed.' } });
+        }
+        const maxAttempts = Number(ws.max_attempts);
+        if (Number.isInteger(maxAttempts) && maxAttempts > 0) {
+            const used = await db.get('SELECT COUNT(*) AS n FROM worksheet_attempts WHERE worksheet_id = ? AND student_id = ?', [wsId, req.user.id]);
+            if (Number(used?.n || 0) >= maxAttempts) {
+                return res.status(409).json({ success: false, error: { code: 'NO_ATTEMPTS_LEFT', message: `You have used all ${maxAttempts} attempts for this worksheet.` } });
+            }
+        }
         if (answers.length > 100 || answers.some(a => !a || !['string', 'number'].includes(typeof a.id) || !['string', 'number'].includes(typeof a.answer) || String(a.answer).length > 10000)) return res.status(400).json({ success: false, error: { message: 'Invalid answers.' } });
         let parsedData = {};
         try {
