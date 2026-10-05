@@ -23,6 +23,21 @@ const SHORT_ASK = /^\s*(what|who|when|where|which|is|are|was|were|does|do|did|ca
 const WANTS_DEPTH = /\b(explain|why|derive|prove|step[- ]by[- ]step|in detail|walk me through|how does|how do|compare|discuss|essay|elaborate|teach me|full|detailed)\b/i;
 const WANTS_BREVITY = /\b(in (?:one|a) (?:line|sentence|word)|one[- ]liner|briefly|short(?:ly)?|just (?:the )?(?:answer|name|value)|tl;?dr|quickly|in short)\b/i;
 
+// A request for a whole DOCUMENT, as opposed to an answer. The tools send
+// templates, not questions: "write a comprehensive technical study guide" with
+// four numbered sections is not a short ask, but none of the WANTS_DEPTH verbs
+// appear in it, so it classified as 'normal' and was handed 2000 tokens and the
+// instruction "Answer in a few sentences". The Developer Hub's AI Notes and
+// Code Review both asked for five sections including a refactored code example
+// and were cut off part-way through, every time.
+const WANTS_DOCUMENT = /\b(comprehensive|exhaustive|in[- ]depth|thorough(?:ly)?|authoritative|complete guide|study guide|write (?:an?|the) (?:report|guide|article|review|analysis))\b/i;
+
+// Three or more numbered headings is a caller laying out the shape of a
+// document it expects back.
+function asksForSections(text) {
+    return (String(text).match(/^[ \t]*\d+[.)][ \t]+\S/gm) || []).length >= 3;
+}
+
 /**
  * Classify how much answer a prompt is asking for.
  * Returns 'brief' | 'normal' | 'deep'.
@@ -31,7 +46,7 @@ function depthOf(prompt = '') {
     const text = String(prompt || '').trim();
     if (!text) return 'normal';
     if (WANTS_BREVITY.test(text)) return 'brief';
-    if (WANTS_DEPTH.test(text)) return 'deep';
+    if (WANTS_DEPTH.test(text) || WANTS_DOCUMENT.test(text) || asksForSections(text)) return 'deep';
     // A short factual question is a short answer, unless it asked for depth.
     const words = text.split(/\s+/).length;
     if (SHORT_ASK.test(text) && words <= 18) return 'brief';

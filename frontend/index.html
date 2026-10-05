@@ -2405,9 +2405,6 @@
                     <li class="devhub-nav-item" data-dev-tab="notes">
                         <i class="fa-solid fa-file-lines"></i> <span>AI Notes</span>
                     </li>
-                    <li class="devhub-nav-item" data-dev-tab="projects">
-                        <i class="fa-regular fa-folder-closed"></i> <span>Projects</span>
-                    </li>
                     <li class="devhub-nav-item" data-dev-tab="review">
                         <i class="fa-solid fa-code-compare"></i> <span>AI Code Review</span>
                     </li>
@@ -2451,7 +2448,7 @@
                             </div>
                             <p class="devhub-stat-label-jsx">Skills Added</p>
                             <p class="devhub-stat-val-jsx" id="devhub-stat-skills">0</p>
-                            <p class="devhub-stat-delta-jsx">Saved in this browser</p>
+                            <p class="devhub-stat-delta-jsx">Saved to your account</p>
                         </div>
                         <!-- Card 2 -->
                         <div class="devhub-stat-card-jsx">
@@ -2460,7 +2457,7 @@
                             </div>
                             <p class="devhub-stat-label-jsx">Tests Taken</p>
                             <p class="devhub-stat-val-jsx" id="devhub-stat-tests">0</p>
-                            <p class="devhub-stat-delta-jsx">Saved in this browser</p>
+                            <p class="devhub-stat-delta-jsx">Saved to your account</p>
                         </div>
                         <!-- Card 3 -->
                         <div class="devhub-stat-card-jsx">
@@ -2469,7 +2466,7 @@
                             </div>
                             <p class="devhub-stat-label-jsx">Code Reviews</p>
                             <p class="devhub-stat-val-jsx" id="devhub-stat-projects">0</p>
-                            <p class="devhub-stat-delta-jsx">Saved in this browser</p>
+                            <p class="devhub-stat-delta-jsx">Saved to your account</p>
                         </div>
                         <!-- Card 4 -->
                         <div class="devhub-stat-card-jsx">
@@ -2478,7 +2475,7 @@
                             </div>
                             <p class="devhub-stat-label-jsx">Latest AI Review</p>
                             <p class="devhub-stat-val-jsx" id="devhub-stat-score">—</p>
-                            <p class="devhub-stat-note-jsx">Saved in this browser</p>
+                            <p class="devhub-stat-note-jsx">Saved to your account</p>
                         </div>
                     </section>
 
@@ -2782,6 +2779,70 @@
                                 </div>
                             </div>
                             <div id="devhub-reviewed-feedback-body" class="dev-guide-body" style="margin-top: 18px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. SETTINGS -->
+                <div id="devhub-tab-settings" class="devhub-tab-pane" style="display: none;">
+                    <div class="devhub-pane-header">
+                        <h2><i class="fa-solid fa-gear"></i> Developer Hub Settings</h2>
+                        <p>Your account, appearance and Hub data. Changes here save straight away.</p>
+                    </div>
+
+                    <div class="devhub-test-config-card">
+                        <h3 class="devhub-set-head">Account</h3>
+                        <dl class="devhub-set-list">
+                            <div class="devhub-set-row">
+                                <dt>Signed in as</dt>
+                                <dd id="devhub-set-username">&mdash;</dd>
+                            </div>
+                            <div class="devhub-set-row">
+                                <dt>Level</dt>
+                                <dd id="devhub-set-level">&mdash;</dd>
+                            </div>
+                            <div class="devhub-set-row">
+                                <dt>Plan</dt>
+                                <dd id="devhub-set-plan">&mdash;</dd>
+                            </div>
+                        </dl>
+                        <p class="devhub-set-note">Your name, password and picture are shared with the rest of StudyHub, so they are changed on your profile.</p>
+                        <button class="devhub-btn-secondary" id="devhub-set-open-profile">
+                            <i class="fa-solid fa-user-pen"></i> Edit profile
+                        </button>
+                    </div>
+
+                    <div class="devhub-test-config-card">
+                        <h3 class="devhub-set-head">Appearance</h3>
+                        <div class="devhub-set-row">
+                            <div>
+                                <dt>Theme</dt>
+                                <p class="devhub-set-note" style="margin: 2px 0 0;">Applies everywhere you are signed in on this device.</p>
+                            </div>
+                            <button class="devhub-btn-secondary" data-theme-toggle>
+                                <i class="fa-solid fa-circle-half-stroke"></i> <span>Switch theme</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="devhub-test-config-card">
+                        <h3 class="devhub-set-head">Skills</h3>
+                        <p class="devhub-set-note">Your skills drive the mock tests the Hub suggests. They are stored on your account, so they follow you to any device.</p>
+                        <button class="devhub-btn-secondary" id="devhub-set-manage-skills">
+                            <i class="fa-solid fa-atom"></i> Manage skills
+                        </button>
+                    </div>
+
+                    <div class="devhub-test-config-card">
+                        <h3 class="devhub-set-head">Leaving the Hub</h3>
+                        <p class="devhub-set-note">The student portal keeps all your study tools. Signing out ends the session on this device.</p>
+                        <div class="devhub-set-actions">
+                            <button class="devhub-btn-secondary" id="devhub-set-student-portal">
+                                <i class="fa-solid fa-graduation-cap"></i> Go to student portal
+                            </button>
+                            <button class="devhub-btn-secondary devhub-btn-danger" id="devhub-set-logout">
+                                <i class="fa-solid fa-right-from-bracket"></i> Log out
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -5156,7 +5156,12 @@ textarea:focus {
     max-height: 100vh;
     max-height: 100dvh;
     overflow: hidden;
-    background-color: #F8FAFD;
+    /* This was a hardcoded #F8FAFD while the text beside it used
+       var(--text-primary). In dark mode the Hub therefore painted a near-white
+       page and wrote light text on it: the pane headings measured 1.05:1 and
+       the descriptions 2.44:1, so the whole Developer Hub was unreadable in
+       dark mode. The text colour was already themed; the background was not. */
+    background-color: var(--bg-color);
     color: var(--text-primary);
     display: flex;
     flex-direction: column;
@@ -9561,3 +9566,128 @@ img, video, canvas, svg {
     cursor: pointer; font-size: 20px; padding: 8px; line-height: 1;
 }
 .modal-content > .modal-x-btn { position: absolute; top: 16px; right: 16px; }
+
+/* ── Developer Hub: action buttons and Settings ──────────────────────
+   .devhub-btn-primary had no rule anywhere in the stylesheet, so every
+   "Generate Notes" / "Run Review" / "Start Test" button in the Hub rendered
+   as a default grey browser button with nothing but padding from
+   .devhub-btn-lg. These are the Hub's main actions. */
+.devhub-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #2563EB, #1D4ED8);
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: filter .15s ease, transform .15s ease;
+}
+.devhub-btn-primary:hover:not(:disabled) { filter: brightness(1.07); }
+.devhub-btn-primary:active:not(:disabled) { transform: translateY(1px); }
+.devhub-btn-primary:disabled { opacity: .55; cursor: not-allowed; }
+
+.devhub-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+}
+.devhub-btn-secondary:hover { border-color: #2563EB; }
+.devhub-btn-danger { color: #B91C1C; }
+[data-theme="dark"] .devhub-btn-danger { color: #FCA5A5; }
+.devhub-btn-danger:hover { border-color: currentColor; }
+
+.devhub-tab-pane#devhub-tab-settings { flex-direction: column; gap: 16px; }
+#devhub-tab-settings .devhub-test-config-card { margin-bottom: 16px; }
+.devhub-set-head {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin: 0 0 12px;
+}
+.devhub-set-list { margin: 0 0 12px; }
+.devhub-set-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+.devhub-set-list .devhub-set-row:last-child { border-bottom: none; }
+.devhub-set-row:only-child { border-bottom: none; padding-bottom: 0; }
+.devhub-set-row dt {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.devhub-set-row dd {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+.devhub-set-note {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin: 0 0 12px;
+}
+.devhub-set-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* The Hub's form fields pinned a near-white background with no colour to go
+   with it, so in dark mode the value depended on the browser's own default
+   for form text. Set both, as the worksheet builder already does. */
+[data-theme="dark"] .devhub-field select,
+[data-theme="dark"] .devhub-field input {
+    background: #0F172A;
+    border-color: #334155;
+    color: #F8FAFC;
+}
+
+/* ── Developer Hub: colours that only worked in one theme ────────────
+   Measured on the rendered page, both themes, every pane. Each of these was
+   a hardcoded Tailwind-palette value sitting on a themed surface, so it
+   failed on one side or the other:
+     .devhub-stat-label-jsx   #9CA3AF on white        2.54:1
+     .devhub-learn-desc-jsx   #9CA3AF on white        2.54:1
+     .devhub-upload-sub-text  #9CA3AF on white        2.54:1
+     .devhub-add-skill-btn    #9CA3AF on white        2.54:1
+     .devhub-stat-delta/note  #10B981 on white        2.54:1
+     .devhub-skill-lvl-jsx    #3B82F6 on #F5F9FF      3.50:1
+     .devhub-link-btn-jsx     #2563EB on dark card    3.29:1
+     .devhub-upload-main-text #374151 on dark card    1.74:1
+   The muted greys become the themed secondary ink; the accents get a value
+   per theme. WCAG AA for body text is 4.5:1. */
+.devhub-stat-label-jsx,
+.devhub-learn-desc-jsx,
+.devhub-upload-sub-text,
+.devhub-add-skill-btn-jsx { color: var(--text-secondary); }
+
+.devhub-upload-main-text { color: var(--text-primary); }
+
+.devhub-stat-delta-jsx,
+.devhub-stat-note-jsx { color: #047857; }
+[data-theme="dark"] .devhub-stat-delta-jsx,
+[data-theme="dark"] .devhub-stat-note-jsx { color: #34D399; }
+
+.devhub-skill-lvl-jsx { color: #1D4ED8; }
+[data-theme="dark"] .devhub-skill-lvl-jsx { color: #93C5FD; }
+
+.devhub-link-btn-jsx { color: #1D4ED8; }
+[data-theme="dark"] .devhub-link-btn-jsx { color: #93C5FD; }

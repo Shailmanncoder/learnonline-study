@@ -377,8 +377,13 @@ router.post('/generate', auth, async (req, res) => {
             wantReasoning = false,      // return the model's reasoning separately
             threadId,                   // conversation to continue and append to
             useMemory = false,          // prepend the student's study context
-            requestId                   // client id for live progress steps
+            requestId,                  // client id for live progress steps
+            depth                       // 'brief' | 'normal' | 'deep', when the caller knows
         } = req.body;
+        // A tool sends a template, not a question, so guessing the length from
+        // its wording is unreliable. A caller that knows what shape of output
+        // it needs says so, and only these three names are accepted.
+        const askedDepth = ['brief', 'normal', 'deep'].includes(depth) ? depth : null;
         const rid = progress.start(requestId, req.user.id);
         activeProgressId = rid;
         const step = (text) => progress.step(rid, text);
@@ -410,13 +415,13 @@ router.post('/generate', auth, async (req, res) => {
             const syllabus = new Set(['board', 'class', 'subject']);
             return {
                 prompt: String(prompt || ''),
-                depth: task === 'reasoning' ? 'deep' : aiBrain.depthOf(prompt),
+                depth: askedDepth || (task === 'reasoning' ? 'deep' : aiBrain.depthOf(prompt)),
                 profile: { classLevel: fact('class'), board: fact('board') },
                 topic: fact('subject') || '',
                 facts: (facts || []).filter(f => !syllabus.has(f.mem_key)).map(f => `${f.mem_key}: ${f.mem_value}`),
                 weakTopics: (weakTopics || []).map(w => typeof w === 'string' ? w : w.topic).filter(Boolean)
             };
-        })().catch(() => ({ depth: aiBrain.depthOf(prompt) }));
+        })().catch(() => ({ depth: askedDepth || aiBrain.depthOf(prompt) }));
 
         // The app's own generators (worksheet, quiz, flashcards, grading) call
         // this same route and need a raw JSON document back. The brain tells

@@ -4352,54 +4352,60 @@ devBackdropEl?.addEventListener('click', () => {
 });
 
 // Tab Switcher inside Developer Hub
+// Which pane each sidebar entry opens, and how it lays out. Settings used to
+// throw the developer OUT of the Hub and into the student profile, because the
+// Hub had no settings panel; it has one now. 'projects' is kept as an alias so
+// a bookmarked /developer/projects and a stored activeDevTab still land
+// somewhere sensible -- there is no project feature, only code review.
+const DEV_TABS = {
+    dashboard: { pane: 'devhub-tab-dashboard', display: 'flex' },
+    tests:     { pane: 'devhub-tab-tests',     display: 'block' },
+    notes:     { pane: 'devhub-tab-notes',     display: 'block' },
+    review:    { pane: 'devhub-tab-review',    display: 'block' },
+    settings:  { pane: 'devhub-tab-settings',  display: 'block' },
+    // Skills live on the dashboard, so the entry scrolls to them there.
+    skills:    { pane: 'devhub-tab-dashboard', display: 'flex', scrollTo: '#devhub-skills-tiles-container' }
+};
+const DEV_TAB_ALIASES = { projects: 'review' };
+
 function switchDevTab(tabId, updateUrl = true) {
-    // The Developer Hub has no settings panel of its own, so Settings opens the
-    // shared profile. That is a visit, not a move: the portal is not persisted,
-    // so a refresh brings the developer back to the Hub.
-    if (tabId === 'settings') { switchPortal('student', false, false); navigateToSection('profile', updateUrl); return; }
-    if (!['dashboard', 'tests', 'notes', 'review', 'skills', 'projects'].includes(tabId)) tabId = 'dashboard';
+    tabId = DEV_TAB_ALIASES[tabId] || tabId;
+    if (!DEV_TABS[tabId]) tabId = 'dashboard';
+    const spec = DEV_TABS[tabId];
     localStorage.setItem('activeDevTab', tabId);
     if (updateUrl) {
         syncUrl(tabId === 'dashboard' ? '/developer' : `/developer/${tabId}`);
     }
     toggleDevMobileSidebar(false); // Close mobile drawer when clicking a tab
 
-    // Update nav item active states
+    // The highlighted entry has to be one that exists. 'skills' shows the
+    // dashboard pane but is its own entry, so highlight the tab, not the pane.
     document.querySelectorAll('.devhub-nav-item').forEach(item => {
-        if (item.getAttribute('data-dev-tab') === tabId) {
-            item.classList.add('active');
-        } else {
-            item.classList.remove('active');
-        }
+        item.classList.toggle('active', item.getAttribute('data-dev-tab') === tabId);
     });
 
-    // Hide all panes
-    document.querySelectorAll('.devhub-tab-pane').forEach(pane => pane.style.display = 'none');
+    document.querySelectorAll('.devhub-tab-pane').forEach(pane => { pane.style.display = 'none'; });
+    const pane = document.getElementById(spec.pane);
+    if (pane) pane.style.display = spec.display;
 
-    // Show target pane
-    if (tabId === 'dashboard') {
-        document.getElementById('devhub-tab-dashboard').style.display = 'flex';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (tabId === 'tests') {
-        document.getElementById('devhub-tab-tests').style.display = 'block';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (tabId === 'notes') {
-        document.getElementById('devhub-tab-notes').style.display = 'block';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (tabId === 'review') {
-        document.getElementById('devhub-tab-review').style.display = 'block';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (tabId === 'skills') {
-        document.getElementById('devhub-tab-dashboard').style.display = 'flex';
-        document.getElementById('devhub-skills-tiles-container')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else if (tabId === 'projects') {
-        document.getElementById('devhub-tab-dashboard').style.display = 'flex';
-        document.querySelector('.devhub-proj-grid-jsx')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (tabId === 'settings') renderDevSettings();
+
+    if (spec.scrollTo) {
+        document.querySelector(spec.scrollTo)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {
-        // Achievements / Bookmarks / Community / Settings
-        document.getElementById('devhub-tab-dashboard').style.display = 'flex';
-        showToast(`Navigated to ${tabId.charAt(0).toUpperCase() + tabId.slice(1)} Studio`, 'info');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+}
+
+// Settings shows what the account actually says, read at open time so it is
+// never a stale copy from sign-in.
+function renderDevSettings() {
+    const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    const u = currentUserData || {};
+    set('devhub-set-username', u.username || 'Not signed in');
+    set('devhub-set-level', u.level ? `Level ${u.level}` : '\u2014');
+    const plan = String(u.plan || 'free');
+    set('devhub-set-plan', plan === 'free' ? 'Free' : plan.charAt(0).toUpperCase() + plan.slice(1));
 }
 
 document.querySelectorAll('.devhub-nav-item').forEach(item => {
@@ -4410,6 +4416,17 @@ document.querySelectorAll('.devhub-nav-item').forEach(item => {
 });
 
 // Continue Learning Buttons
+document.getElementById('devhub-set-open-profile')?.addEventListener('click', () => {
+    // A visit to the shared profile, not a move out of the Hub: the portal is
+    // not persisted, so coming back lands in the Developer Hub again.
+    switchPortal('student', false, false);
+    navigateToSection('profile', true);
+});
+document.getElementById('devhub-set-manage-skills')?.addEventListener('click', () => switchDevTab('skills'));
+document.getElementById('devhub-set-student-portal')?.addEventListener('click', () => switchPortal('student', true, true));
+document.getElementById('devhub-set-logout')?.addEventListener('click', () => {
+    document.getElementById('devhub-logout-btn')?.click();
+});
 document.getElementById('devhub-btn-start-test')?.addEventListener('click', () => switchDevTab('tests'));
 document.getElementById('devhub-btn-explore-notes')?.addEventListener('click', () => switchDevTab('notes'));
 document.getElementById('devhub-btn-upload-project')?.addEventListener('click', () => switchDevTab('review'));
@@ -4804,8 +4821,9 @@ Structure your guide in clean Markdown with:
 4. ⚠️ Critical Performance Bottlenecks, Memory/Concurrency Pitfalls & Anti-Patterns`;
 
     try {
-        const res = await api.generateAI(authToken, prompt, "You are an elite technical educator writing clean markdown.");
+        const res = await api.generateAI(authToken, prompt, "You are an elite technical educator writing clean markdown.", null, { depth: 'deep' });
         currentRenderedDevNotes = res.result || '';
+        if (!currentRenderedDevNotes.trim()) throw new Error('The writer returned nothing. Please retry.');
 
         document.getElementById('devhub-rendered-notes-title').textContent = `${topic} • ${level}`;
         const bodyEl = document.getElementById('devhub-rendered-notes-body');
@@ -4870,7 +4888,7 @@ Provide a comprehensive code review report formatted in Markdown:
 5. 🚀 Refactored Production Code Example`;
 
     try {
-        const res = await api.generateAI(authToken, prompt, "You are a senior code reviewer formatting in markdown.");
+        const res = await api.generateAI(authToken, prompt, "You are a senior code reviewer formatting in markdown.", null, { depth: 'deep' });
         const text = (res.result || '').trim();
         // An empty answer still counted as a completed review: it was recorded
         // in the history, the score tile showed "Not scored", and 60 XP was
@@ -5454,20 +5472,30 @@ async function sendGrokMessage() {
             }
         });
 
-        bubbleEl.querySelector('.grok-savenote-btn')?.addEventListener('click', () => {
-            const noteTitle = text.length > 30 ? text.substring(0, 30) + '...' : text;
-            const newNote = {
-                id: 'note_' + Date.now(),
-                title: 'AI Companion: ' + noteTitle,
-                content: resultText,
-                date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-            };
+        // Notes live in the notes table, keyed by account, and the Note Taker
+        // reads them from there. This button used to push the answer into a
+        // localStorage key called studyUserNotes that NOTHING ever read back,
+        // then toast "Saved note to Smart Note Taker!" regardless -- so the
+        // note was gone the moment it was written, and a failed write said
+        // nothing at all. Save where the Note Taker actually looks.
+        bubbleEl.querySelector('.grok-savenote-btn')?.addEventListener('click', async (ev) => {
+            const btn = ev.currentTarget;
+            if (btn.disabled) return;
+            if (!authToken) return showToast('Sign in to save notes', 'info');
+            const body = (resultText || '').trim();
+            if (!body) return showToast('Nothing to save yet', 'info');
+            const asked = (text || '').trim();
+            const noteTitle = asked.length > 60 ? asked.slice(0, 60) + '\u2026' : (asked || 'Chat answer');
+            btn.disabled = true;
             try {
-                const existing = JSON.parse(localStorage.getItem('studyUserNotes') || '[]');
-                existing.unshift(newNote);
-                localStorage.setItem('studyUserNotes', JSON.stringify(existing));
-                showToast('Saved note to Smart Note Taker! 📝', 'success');
-            } catch(e) {}
+                await api.saveNote(authToken, 'AI Companion: ' + noteTitle, body);
+                showToast('Saved to your Notes!', 'success');
+                if (typeof loadNotes === 'function') loadNotes();
+            } catch (err) {
+                showToast('Could not save the note. Please try again.', 'error');
+            } finally {
+                btn.disabled = false;
+            }
         });
 
         bubbleEl.querySelector('.grok-quizme-btn')?.addEventListener('click', () => {
