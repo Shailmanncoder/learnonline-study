@@ -16,16 +16,37 @@ const db = require('../config/db');
 
 const MAX_FACTS = 12;
 
+// Board, class and subject are what ground every answer in the right syllabus,
+// so they are never allowed to age out of the window.
+//
+// This used to take the most recent MAX_FACTS rows and nothing else. A student
+// who set a dozen ordinary preferences pushed their own class or subject out of
+// the list, and the tutor quietly stopped knowing which syllabus to teach --
+// with nothing on screen to say so. Worse, rows saved in the same second share
+// a timestamp, so WHICH facts survived was decided arbitrarily by the database.
 async function getFacts(userId) {
     try {
-        return await db.all(
-            'SELECT mem_key, mem_value FROM user_memory WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?',
-            [userId, MAX_FACTS]
+        const syllabus = await db.all(
+            `SELECT mem_key, mem_value FROM user_memory
+              WHERE user_id = ? AND mem_key IN ('board', 'class', 'subject')`,
+            [userId]
         );
+        const room = Math.max(0, MAX_FACTS - syllabus.length);
+        const others = room === 0 ? [] : await db.all(
+            `SELECT mem_key, mem_value FROM user_memory
+              WHERE user_id = ? AND mem_key NOT IN ('board', 'class', 'subject')
+              ORDER BY updated_at DESC, id DESC LIMIT ?`,
+            [userId, room]
+        );
+        return [...syllabus, ...others];
     } catch (e) {
         return [];
     }
 }
+
+// Upserting by key meant a distinct key always inserted, so the table could
+// grow without bound even though only MAX_FACTS are ever read back.
+const MAX_STORED_FACTS = 60;
 
 async function rememberFact(userId, key, value, source = 'chat') {
     const k = String(key || '').trim().slice(0, 80);
@@ -37,6 +58,18 @@ async function rememberFact(userId, key, value, source = 'chat') {
         if (existing) {
             await db.run('UPDATE user_memory SET mem_value = ?, source = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [v, source, existing.id]);
         } else {
+            // Make room by dropping the oldest ordinary preference. The
+            // syllabus keys are never evicted.
+            const count = await db.get('SELECT COUNT(*) AS n FROM user_memory WHERE user_id = ?', [userId]);
+            if (Number(count?.n || 0) >= MAX_STORED_FACTS) {
+                const oldest = await db.get(
+                    `SELECT id FROM user_memory
+                      WHERE user_id = ? AND mem_key NOT IN ('board', 'class', 'subject')
+                      ORDER BY updated_at ASC, id ASC LIMIT 1`,
+                    [userId]
+                );
+                if (oldest) await db.run('DELETE FROM user_memory WHERE id = ?', [oldest.id]);
+            }
             await db.run('INSERT INTO user_memory (user_id, mem_key, mem_value, source) VALUES (?, ?, ?, ?)', [userId, k, v, source]);
         }
     } catch (e) {
