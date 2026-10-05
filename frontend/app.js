@@ -4094,37 +4094,78 @@ let devExamRewarded = false;
 let devExamClockInterval = null;
 let currentRenderedDevNotes = '';
 
-// Persistent & Interactive Developer Skills Store
-function getDeveloperSkills() {
-    try {
-        const stored = JSON.parse(localStorage.getItem(accountStorageKey('devUserSkills')) || '[]');
-        return Array.isArray(stored) ? stored.filter(s => s && typeof s.name === 'string' && typeof s.level === 'string') : [];
-    } catch { return []; }
-}
+// ── Developer Hub state ───────────────────────────────────────────
+// Skills and practice history live on the server now. They used to be kept
+// in localStorage, which meant a developer signing in on a second device
+// found an empty Hub and clearing site data destroyed the record for good.
+//
+// The server's reply is held here so the render functions stay synchronous
+// and their call sites did not have to change; every mutation returns the
+// whole new state, so this copy cannot drift from the server's.
+let devHubState = { skills: [], progress: { tests: 0, reviews: 0, events: [] } };
+let devHubLoaded = false;
 
-function saveDeveloperSkills(skills) {
-    try { localStorage.setItem(accountStorageKey('devUserSkills'), JSON.stringify(skills)); }
-    catch { showToast('Browser storage is full. Your skills were not saved.', 'error'); }
+function getDeveloperSkills() { return devHubState.skills || []; }
+function getDeveloperProgress() { return devHubState.progress || { tests: 0, reviews: 0, events: [] }; }
+
+function applyDevHubState(state) {
+    if (state && Array.isArray(state.skills) && state.progress) devHubState = state;
     renderDevSkills();
-}
-
-// These are browser-local practice results, never school grades or credentials.
-function getDeveloperProgress() {
-    try {
-        const saved = JSON.parse(localStorage.getItem(accountStorageKey('devProgress')) || '{}');
-        return { tests: Number(saved.tests) || 0, reviews: Number(saved.reviews) || 0, events: Array.isArray(saved.events) ? saved.events : [] };
-    } catch { return { tests: 0, reviews: 0, events: [] }; }
-}
-function recordDeveloperProgress(kind, title, detail) {
-    const progress = getDeveloperProgress();
-    if (kind === 'test') progress.tests++;
-    if (kind === 'review') progress.reviews++;
-    progress.events.unshift({kind, title, detail, time: Date.now()});
-    progress.events = progress.events.slice(0, 12);
-    try { localStorage.setItem(accountStorageKey('devProgress'), JSON.stringify(progress)); }
-    catch { showToast('This result could not be saved in your browser.', 'info'); }
     renderDeveloperProgress();
 }
+
+// Anything this browser stored before the move, lifted once into the account
+// so nobody loses the skills they had already entered. The server ignores the
+// import if the account already has data, so a stale second browser cannot
+// resurrect deleted rows.
+async function migrateLocalDevHub() {
+    let skills = [], events = [];
+    try { skills = JSON.parse(localStorage.getItem(accountStorageKey('devUserSkills')) || '[]') || []; } catch (e) {}
+    try { events = (JSON.parse(localStorage.getItem(accountStorageKey('devProgress')) || '{}') || {}).events || []; } catch (e) {}
+    if (!skills.length && !events.length) return null;
+    try {
+        const state = await api.importDeveloperHub(authToken, { skills, events });
+        // Only drop the local copy once the server has it.
+        localStorage.removeItem(accountStorageKey('devUserSkills'));
+        localStorage.removeItem(accountStorageKey('devProgress'));
+        if (state.imported) showToast('Your Developer Hub is now saved to your account.', 'success');
+        return state;
+    } catch (e) { return null; }
+}
+
+async function loadDeveloperHub() {
+    if (!authToken) return;
+    try {
+        let state = await api.getDeveloperHub(authToken);
+        if (!state.skills.length && !state.progress.events.length) {
+            state = (await migrateLocalDevHub()) || state;
+        }
+        devHubLoaded = true;
+        applyDevHubState(state);
+    } catch (e) {
+        devHubLoaded = false;
+        showToast('Could not load your Developer Hub. Refresh to retry.', 'error');
+    }
+}
+
+async function addDeveloperSkill(name, level) {
+    try { applyDevHubState(await api.addDeveloperSkill(authToken, name, level)); return true; }
+    catch (e) { showToast(e.message, 'error'); return false; }
+}
+
+async function removeDeveloperSkill(id, label) {
+    try {
+        applyDevHubState(await api.removeDeveloperSkill(authToken, id));
+        showToast(`Removed ${label} from skills`, 'info');
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+// These are practice results, never school grades or credentials.
+async function recordDeveloperProgress(kind, title, detail) {
+    try { applyDevHubState(await api.recordDeveloperEvent(authToken, kind, title, detail)); }
+    catch (e) { showToast('That result could not be saved to your account.', 'error'); }
+}
+
 function renderDeveloperProgress() {
     const p = getDeveloperProgress();
     document.getElementById('devhub-stat-tests').textContent = p.tests;
@@ -4151,7 +4192,7 @@ function renderDevSkills() {
             box.innerHTML = `
                 <div class="devhub-skill-top-row">
                     <p class="devhub-skill-name-jsx">${escapeHtml(skill.name)}</p>
-                    <button class="devhub-skill-delete-btn" data-index="${idx}" title="Remove ${escapeHtml(skill.name)}">
+                    <button class="devhub-skill-delete-btn" data-skill-id="${skill.id}" data-skill-name="${escapeHtml(skill.name)}" title="Remove ${escapeHtml(skill.name)}">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
@@ -4168,13 +4209,10 @@ function renderDevSkills() {
         container.querySelectorAll('.devhub-skill-delete-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const index = parseInt(btn.getAttribute('data-index'), 10);
-                const current = getDeveloperSkills();
-                if (!isNaN(index) && current[index]) {
-                    const removed = current.splice(index, 1);
-                    saveDeveloperSkills(current);
-                    showToast(`Removed ${removed[0].name} from skills`, 'info');
-                }
+                const id = Number(btn.getAttribute('data-skill-id'));
+                if (!Number.isInteger(id)) return;
+                btn.disabled = true;
+                removeDeveloperSkill(id, btn.getAttribute('data-skill-name') || 'that skill');
             });
         });
     }
@@ -4246,11 +4284,14 @@ function showDeveloperPortal(defaultTab = 'dashboard', updateUrl = true) {
     if (devNameEl && username) devNameEl.textContent = username;
     if (greetingEl && capitalizedName) greetingEl.textContent = capitalizedName;
     if (heroNameEl && capitalizedName) heroNameEl.textContent = capitalizedName;
-    if (devLvlEl) devLvlEl.textContent = `Level ${currentUserData?.level || 4}`;
+    if (devLvlEl) devLvlEl.textContent = `Level ${currentUserData?.level ?? 1}`;
 
     updateDeveloperAvatar(capitalizedName);
+    // Draw whatever is already cached so the panel is never blank, then fetch
+    // this account's own Hub from the server.
     renderDevSkills();
     renderDeveloperProgress();
+    loadDeveloperHub();
 
     // Switch to target or saved tab
     const tabToOpen = defaultTab || localStorage.getItem('activeDevTab') || 'dashboard';
@@ -4407,23 +4448,24 @@ document.querySelectorAll('.devhub-chip-btn').forEach(chip => {
     });
 });
 
-document.getElementById('devhub-save-new-skill-btn')?.addEventListener('click', () => {
+document.getElementById('devhub-save-new-skill-btn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
     const skillName = document.getElementById('devhub-new-skill-name')?.value?.trim();
     const skillLevel = document.getElementById('devhub-new-skill-level')?.value || 'Intermediate';
     if (!skillName) return showToast('Enter or choose a skill to add.', 'info');
 
-    const current = getDeveloperSkills();
-    // Avoid duplicate names
-    const existingIdx = current.findIndex(s => s.name.toLowerCase() === skillName.toLowerCase());
-    if (existingIdx >= 0) {
-        current[existingIdx].level = skillLevel;
-        showToast(`Updated ${skillName} level to ${skillLevel}! ✨`, 'info');
-    } else {
-        current.push({ name: skillName, level: skillLevel });
-        showToast(`Fed & added ${skillName} (${skillLevel}) to your profile! ✨`, 'success');
-    }
+    // The server decides whether this is a new skill or a level change for one
+    // already listed — it holds the list, and its unique constraint is what
+    // actually prevents the duplicate the old client-side check only hoped to.
+    const already = getDeveloperSkills().some(sk => sk.name.toLowerCase() === skillName.toLowerCase());
+    btn.disabled = true;
+    const ok = await addDeveloperSkill(skillName, skillLevel);
+    btn.disabled = false;
+    if (!ok) return;   // the failure was already reported; keep what they typed
 
-    saveDeveloperSkills(current);
+    showToast(already
+        ? `Updated ${skillName} to ${skillLevel}.`
+        : `Added ${skillName} (${skillLevel}) to your profile.`, already ? 'info' : 'success');
     document.getElementById('devhub-new-skill-name').value = '';
     document.querySelectorAll('.devhub-chip-btn').forEach(c => c.classList.remove('selected'));
     if (addSkillModal) addSkillModal.style.display = 'none';

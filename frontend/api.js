@@ -136,6 +136,52 @@ const api = {
         return res.json();
     },
 
+    // --- Developer Hub (skills + practice history, stored on the server) ---
+    // Every mutation returns the whole Hub state, so the client never has to
+    // reassemble it and cannot drift out of step with the server.
+    getDeveloperHub: async (token) => {
+        const res = await fetch(`${API_BASE_URL}/developer`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Could not load your Developer Hub');
+        return res.json();
+    },
+    addDeveloperSkill: async (token, name, level) => {
+        const res = await fetch(`${API_BASE_URL}/developer/skills`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, level })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Could not save that skill');
+        return data;
+    },
+    removeDeveloperSkill: async (token, id) => {
+        const res = await fetch(`${API_BASE_URL}/developer/skills/${id}`, {
+            method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Could not remove that skill');
+        return data;
+    },
+    recordDeveloperEvent: async (token, kind, title, detail) => {
+        const res = await fetch(`${API_BASE_URL}/developer/events`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind, title, detail })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Could not record that result');
+        return data;
+    },
+    importDeveloperHub: async (token, payload) => {
+        const res = await fetch(`${API_BASE_URL}/developer/import`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Could not import your previous Hub data');
+        return res.json();
+    },
+
     // Plans, prices and the caller's own subscription. The server is the
     // authoritative source for every amount; nothing is priced on the client.
     getPaymentCatalog: async (token) => {

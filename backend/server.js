@@ -54,6 +54,7 @@ app.use('/api/studio', require('./controllers/studioController'));
 app.use('/api/roadmaps', require('./controllers/studioRoadmapController'));
 app.use('/api/review', require('./controllers/reviewController'));
 app.use('/api/gamification', gamificationRoutes);
+app.use('/api/developer',    require('./controllers/developerController'));
 app.use('/api/payments',     require('./payments/router').router);
 
 // Verified Source Library admin screen. The page itself holds no data; every

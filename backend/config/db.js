@@ -391,6 +391,33 @@ async function initMysql() {
     // starts fresh and yesterday's list stays as a record rather than being
     // overwritten. goal_date is a plain YYYY-MM-DD string, which compares and
     // sorts identically on both engines.
+    // Developer Hub: the skills a developer lists and the log of practice they
+    // have completed. These lived in localStorage, so they were lost on a new
+    // device or a cleared browser and could never be reported on.
+    //
+    // The test and review counters are NOT stored. They are counted from the
+    // event log on read, so the number on the dashboard cannot drift away from
+    // the history that is meant to explain it — which the old pair of
+    // independent counters could.
+    await pool.query(`CREATE TABLE IF NOT EXISTS developer_skills (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        name VARCHAR(80) NOT NULL,
+        level VARCHAR(40) NOT NULL DEFAULT 'Intermediate',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_dev_skill (user_id, name),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS developer_events (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        kind VARCHAR(20) NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        detail VARCHAR(300),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_dev_events_user (user_id, id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
     await pool.query(`CREATE TABLE IF NOT EXISTS daily_goals (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
@@ -724,6 +751,33 @@ async function initSqlite() {
     // starts fresh and yesterday's list stays as a record rather than being
     // overwritten. goal_date is a plain YYYY-MM-DD string, which compares and
     // sorts identically on both engines.
+    // Developer Hub: the skills a developer lists and the log of practice they
+    // have completed. These lived in localStorage, so they were lost on a new
+    // device or a cleared browser and could never be reported on.
+    //
+    // The test and review counters are NOT stored. They are counted from the
+    // event log on read, so the number on the dashboard cannot drift away from
+    // the history that is meant to explain it — which the old pair of
+    // independent counters could.
+    await exec(`CREATE TABLE IF NOT EXISTS developer_skills (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        level TEXT NOT NULL DEFAULT 'Intermediate',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (user_id, name),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    await exec(`CREATE TABLE IF NOT EXISTS developer_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    await exec(`CREATE INDEX IF NOT EXISTS idx_dev_events_user ON developer_events(user_id, id)`);
     await exec(`CREATE TABLE IF NOT EXISTS daily_goals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
