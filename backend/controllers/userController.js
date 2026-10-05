@@ -190,27 +190,54 @@ router.post('/profile', auth, async (req, res) => {
 
 // @route   POST api/user/xp
 // @desc    Add XP and time to user
+// The largest award any screen in the app grants is 80 XP for 25 minutes.
+// Anything beyond that did not come from finishing a piece of work.
+const MAX_XP_PER_AWARD = 100;
+const MAX_MINUTES_PER_AWARD = 30;
+
 router.post('/xp', auth, async (req, res) => {
     try {
         const { xp, time, tool } = req.body;
 
+        // This endpoint used to add whatever number the request contained,
+        // straight into the column: `xp: 999999` set the account to level
+        // 10000 in one call, and a negative value took XP away again. The
+        // leaderboard is public, so that is not a cosmetic problem.
+        //
+        // The client is not a source of truth about how much work was done,
+        // but it is the only thing that knows which award just fired, so the
+        // value is bounded rather than trusted: a whole number, never
+        // negative, never larger than the biggest award the app actually has.
+        const award = Number(xp);
+        const minutes = Number(time);
+        if (!Number.isInteger(award) || award < 0 || award > MAX_XP_PER_AWARD) {
+            return res.status(400).json({ msg: 'That is not a valid amount of XP.' });
+        }
+        if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_MINUTES_PER_AWARD) {
+            return res.status(400).json({ msg: 'That is not a valid amount of study time.' });
+        }
+        const label = typeof tool === 'string' ? tool.trim().slice(0, 80) : '';
+
         await db.run(
             'UPDATE users SET xp = xp + ?, time_spent = time_spent + ? WHERE id = ?',
-            [xp || 0, time || 0, req.user.id]
+            [award, minutes, req.user.id]
         );
 
         const user = await db.get('SELECT xp, level, time_spent FROM users WHERE id = ?', [req.user.id]);
         const prevLevel = user.level;
         const newLevel = Math.floor(user.xp / 100) + 1;
         const leveledUp = newLevel > prevLevel;
-        if (leveledUp) {
+        // Level is derived from XP, so it is written whenever the two differ.
+        // Only ever raising it meant a level set by the old unchecked endpoint
+        // stayed put even after the XP behind it was corrected.
+        if (newLevel !== prevLevel) {
             await db.run('UPDATE users SET level = ? WHERE id = ?', [newLevel, req.user.id]);
         }
 
-        if (tool) {
+        if (label) {
             await db.run(
                 'INSERT INTO activity (user_id, tool_used, time_spent, xp_earned) VALUES (?, ?, ?, ?)',
-                [req.user.id, tool, time || 0, xp || 0]
+                [req.user.id, label, minutes, award]
             );
         }
 
@@ -219,9 +246,9 @@ router.post('/xp', auth, async (req, res) => {
 
         res.json({
             xp: user.xp,
-            level: leveledUp ? newLevel : prevLevel,
+            level: newLevel,
             newTotal: user.xp,
-            newLevel: leveledUp ? newLevel : prevLevel,
+            newLevel: newLevel,
             levelUp: leveledUp,
             time_spent: user.time_spent,
             studied_today,

@@ -118,7 +118,11 @@ function handleAppRouting(initial = false) {
     }
 
     // 2. Developer Hub Routes
-    if (route.first === 'developer' || route.first === 'devhub' || (!route.first && savedPortal === 'developer')) {
+    // The teacher branch above checks the account's role; this one only looked
+    // at the saved mode, so a developer whose mode had been flipped to student
+    // fell through to the student app for good.
+    if (route.first === 'developer' || route.first === 'devhub'
+        || (!route.first && (savedPortal === 'developer' || accountRole() === 'developer'))) {
         const devTab = route.second || localStorage.getItem('activeDevTab') || 'dashboard';
         switchPortal('developer', false);
         if (typeof switchDevTab === 'function') switchDevTab(devTab, false);
@@ -4084,6 +4088,9 @@ safeOn('delete-note-btn', 'click', async () => {
 // ================================================================
 const devPortalContainer = document.getElementById('developer-portal-container');
 let currentDevExamQuestions = [];
+// Whether the current set of questions has already paid out. Reset when a new
+// paper is generated, not when one is retaken.
+let devExamRewarded = false;
 let devExamClockInterval = null;
 let currentRenderedDevNotes = '';
 
@@ -4305,7 +4312,10 @@ devBackdropEl?.addEventListener('click', () => {
 
 // Tab Switcher inside Developer Hub
 function switchDevTab(tabId, updateUrl = true) {
-    if (tabId === 'settings') { switchPortal('student', false); navigateToSection('profile', updateUrl); return; }
+    // The Developer Hub has no settings panel of its own, so Settings opens the
+    // shared profile. That is a visit, not a move: the portal is not persisted,
+    // so a refresh brings the developer back to the Hub.
+    if (tabId === 'settings') { switchPortal('student', false, false); navigateToSection('profile', updateUrl); return; }
     if (!['dashboard', 'tests', 'notes', 'review', 'skills', 'projects'].includes(tabId)) tabId = 'dashboard';
     localStorage.setItem('activeDevTab', tabId);
     if (updateUrl) {
@@ -4400,7 +4410,7 @@ document.querySelectorAll('.devhub-chip-btn').forEach(chip => {
 document.getElementById('devhub-save-new-skill-btn')?.addEventListener('click', () => {
     const skillName = document.getElementById('devhub-new-skill-name')?.value?.trim();
     const skillLevel = document.getElementById('devhub-new-skill-level')?.value || 'Intermediate';
-    if (!skillName) return alert('Please enter or select a skill/framework.');
+    if (!skillName) return showToast('Enter or choose a skill to add.', 'info');
 
     const current = getDeveloperSkills();
     // Avoid duplicate names
@@ -4474,7 +4484,7 @@ function startDevExamTimer(seconds = 900) {
         if (timeLeft <= 0) {
             clearInterval(devExamClockInterval);
             tick();
-            alert('⏱️ Exam time has elapsed! Auto-submitting answers for AI evaluation...');
+            showToast('Time is up — submitting your answers for marking.', 'info');
             document.getElementById('devhub-submit-exam-btn')?.click();
         } else {
             tick();
@@ -4515,6 +4525,7 @@ Return ONLY a valid JSON array of objects with NO surrounding markdown backticks
         if (!Array.isArray(parsed) || parsed.length !== count || !parsed.every(q => q && typeof q.question === 'string' && Array.isArray(q.options) && q.options.length === 4 && q.options.every(o => typeof o === 'string') && q.options.includes(q.correct_answer))) throw new Error('Incomplete practice questions');
         const questions = parsed.map((q, i) => ({ ...q, id: i + 1, code_snippet: typeof q.code_snippet === 'string' ? q.code_snippet : '' }));
         currentDevExamQuestions = questions;
+        devExamRewarded = false;
 
         document.getElementById('devhub-exam-paper-title').textContent = `${skill} • ${level}`;
         const qContainer = document.getElementById('devhub-exam-questions-list');
@@ -4694,15 +4705,23 @@ ${JSON.stringify(studentAnswers, null, 2)}`;
             });
         }
 
-        recordDeveloperProgress('test', 'Completed technical practice', scoreText + ' · AI assessment');
+        // Retake resets the answers but keeps the same questions, so submitting
+        // again used to add another completed test and another 80 XP — an
+        // unlimited loop on one generated paper. The result is still shown and
+        // still marked; only the reward is once per set of questions.
+        const firstAttempt = !devExamRewarded;
+        devExamRewarded = true;
+        if (firstAttempt) {
+            recordDeveloperProgress('test', 'Completed technical practice', scoreText + ' · AI assessment');
+        }
 
         document.getElementById('devhub-exam-results-area').style.display = 'block';
         document.getElementById('devhub-exam-results-area').scrollIntoView({ behavior: 'smooth' });
 
-        api.addXp(authToken, 80, 15, 'Completed Technical Mock Test').then(r => applyXpResult(r));
+        if (firstAttempt) api.addXp(authToken, 80, 15, 'Completed Technical Mock Test').then(r => applyXpResult(r));
     } catch (err) {
         console.error(err);
-        alert('Failed to evaluate assessment. Please retry.');
+        showToast('Could not mark that assessment. Please retry.', 'error');
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-check-double"></i> Submit Test for AI Grading';
@@ -4727,7 +4746,7 @@ document.getElementById('devhub-gen-notes-btn')?.addEventListener('click', async
     const level = document.getElementById('devhub-notes-level-select')?.value;
     const loading = document.getElementById('devhub-notes-loading-msg');
 
-    if (!topic) return alert('Please enter a technical topic or concept.');
+    if (!topic) return showToast('Enter a topic to write notes on.', 'info');
     if (loading) loading.style.display = 'block';
     document.getElementById('devhub-notes-render-area').style.display = 'none';
 
@@ -4789,7 +4808,7 @@ document.getElementById('devhub-run-review-btn')?.addEventListener('click', asyn
     const code = document.getElementById('devhub-review-code-input')?.value?.trim();
     const loading = document.getElementById('devhub-review-loading-msg');
 
-    if (!code) return alert('Please paste your source code to review.');
+    if (!code) return showToast('Paste the source code you want reviewed.', 'info');
     if (loading) loading.style.display = 'block';
     document.getElementById('devhub-review-render-area').style.display = 'none';
 
@@ -4810,7 +4829,11 @@ Provide a comprehensive code review report formatted in Markdown:
 
     try {
         const res = await api.generateAI(authToken, prompt, "You are a senior code reviewer formatting in markdown.");
-        const text = res.result || '';
+        const text = (res.result || '').trim();
+        // An empty answer still counted as a completed review: it was recorded
+        // in the history, the score tile showed "Not scored", and 60 XP was
+        // granted for nothing. Treat it as the failure it is.
+        if (!text) throw new Error('The reviewer returned nothing. Please retry.');
 
         // Extract score if present
         const match = text.match(/Score[:\s]+(\d+)\s*\/\s*100/i) || text.match(/(\d+)\s*\/\s*100/);
@@ -4833,7 +4856,11 @@ Provide a comprehensive code review report formatted in Markdown:
         api.addXp(authToken, 60, 10, 'Ran AI Code Review').then(r => applyXpResult(r));
     } catch (err) {
         console.error(err);
-        if (loading) loading.textContent = 'Error reviewing code. Please retry.';
+        // The loading element's own text used to be overwritten with the error,
+        // so every later run showed "Error reviewing code" as its progress
+        // message. Say it in a toast and leave the element as it was.
+        if (loading) loading.style.display = 'none';
+        showToast(err.message || 'Could not review that code. Please retry.', 'error');
     }
 });
 
@@ -5461,7 +5488,19 @@ let currentEditingWorksheet = null;
 let activeWorksheetTimer = null;
 
 // --- Portal Switcher Function ---
-function switchPortal(portal, updateUrl = true) {
+// The portal an account belongs to. A developer's workspace IS the Developer
+// Hub; the saved mode is only a memory of where they were, never authority
+// over where they should be.
+function portalForRole(role) {
+    return role === 'developer' ? 'developer' : 'student';
+}
+function accountRole() {
+    if (currentUserData && currentUserData.role) return currentUserData.role;
+    try { return JSON.parse(localStorage.getItem('studyUser') || '{}').role || ''; }
+    catch (e) { return ''; }
+}
+
+function switchPortal(portal, updateUrl = true, persist = true) {
     if (!isAuthenticated()) {
         showLandingOnly();
         return;
@@ -5484,7 +5523,11 @@ function switchPortal(portal, updateUrl = true) {
     }
 
     currentPortal = portal;
-    localStorage.setItem('activePortalMode', portal);
+    // A developer opening Settings is shown the shared profile, which lives in
+    // the student container. Writing 'student' here made that one click their
+    // permanent home: every later visit opened the student dashboard instead
+    // of the Developer Hub, with no way back except typing /developer.
+    if (persist) localStorage.setItem('activePortalMode', portal);
 
     if (landingPage) landingPage.style.display = 'none';
 

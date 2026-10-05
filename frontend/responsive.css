@@ -263,10 +263,15 @@ pre, code { overflow-x: auto; max-width: 100%; }
    a 950px pill, so "Start learning" was clipped at 1024px. The secondary
    role links are the first thing to go: they stay reachable from the footer
    and from the mobile menu, and the two primary actions keep their room. */
+/* Tightening the row is enough to make it fit; the role links must NOT be
+   hidden here. The hamburger only appears at 1024px, so hiding them at 1180
+   left the band 1025-1180 with neither the links nor the menu — the developer
+   and educator sign-ins were unreachable at those widths entirely. Below
+   1024 the hamburger takes over and the menu carries them. */
 @media (max-width: 1180px) {
-    #landing-page .land-nav-actions .land-role-links,
-    #landing-page .land-nav-inner > .land-role-links { display: none; }
-    #landing-page .land-nav-inner { gap: 18px; }
+    #landing-page .land-nav-inner { gap: 14px; }
+    #landing-page .land-nav-links { gap: 16px; font-size: 13.5px; }
+    #landing-page .land-role-links { gap: 9px; font-size: 12.5px; }
 }
 @media (max-width: 1040px) {
     /* Tighter still: the section links shrink before the buttons do. */
