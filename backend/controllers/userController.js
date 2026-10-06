@@ -291,6 +291,52 @@ router.post('/notes', auth, async (req, res) => {
     }
 });
 
+// @route   PUT api/user/notes/:id
+// @desc    Update one of the signed-in user's notes
+// Clicking a note loads it into the editor, so Save has to mean "save this
+// note". Without this route it always POSTed, and editing a note silently
+// left a second copy behind.
+router.put('/notes/:id', auth, async (req, res) => {
+    try {
+        const { title, content } = req.body;
+        if (!title || !content) return res.status(400).json({ msg: 'Please provide title and content' });
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ msg: 'Invalid note id' });
+
+        // Scoped by user_id, so another account's note id is a 404, not an edit.
+        const result = await db.run(
+            'UPDATE notes SET title = ?, content = ? WHERE id = ? AND user_id = ?',
+            [title, content, id, req.user.id]
+        );
+        // config/db.js normalises both drivers to { lastID, changes }.
+        if (!result.changes) return res.status(404).json({ msg: 'Note not found' });
+
+        res.json({ id, title, content });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+});
+
+// @route   DELETE api/user/notes/:id
+// @desc    Delete one of the signed-in user's notes
+// The Delete button in the Note Taker had no route to call at all.
+router.delete('/notes/:id', auth, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ msg: 'Invalid note id' });
+
+        const result = await db.run('DELETE FROM notes WHERE id = ? AND user_id = ?', [id, req.user.id]);
+        // config/db.js normalises both drivers to { lastID, changes }.
+        if (!result.changes) return res.status(404).json({ msg: 'Note not found' });
+
+        res.json({ ok: true, id });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+});
+
 // @route   GET api/user/leaderboard
 // @desc    Get leaderboard (top 50) — always includes current user if token provided
 router.get('/leaderboard', auth, async (req, res) => {

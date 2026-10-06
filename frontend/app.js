@@ -2250,39 +2250,83 @@ async function extractTextFromFile(file) {
 }
 
 // Notes Logic
+// Which saved note the editor is currently showing, or null for a new one.
+// Nothing ever set this before, so Delete could never find a note to delete
+// and Save always created another copy.
+let currentNoteId = null;
+
+function setCurrentNote(id) {
+    currentNoteId = id;
+    window.currentNoteId = id;   // some older handlers still read it off window
+    document.querySelectorAll('#notes-items-container .note-item').forEach(n => {
+        n.classList.toggle('active', String(n.dataset.noteId) === String(id));
+    });
+    const del = document.getElementById('delete-note-btn');
+    if (del) del.disabled = !id;
+}
+
+function clearNoteEditor() {
+    document.getElementById('note-title').value = '';
+    document.getElementById('note-content').value = '';
+    setCurrentNote(null);
+}
+
 async function loadNotes() {
     try {
         const notes = await api.getNotes(authToken);
-        const list = document.getElementById('notes-list');
+        // This used to empty #notes-list, which is the whole sidebar -- it took
+        // the search box and the items container with it, leaving the search
+        // input bound to a detached node. The notes belong in the container.
+        const list = document.getElementById('notes-items-container');
+        if (!list) return;
         list.innerHTML = '';
-        
+
+        if (!notes.length) {
+            list.innerHTML = '<p class="notes-empty">No notes yet. Write one, or save an answer from the AI Companion.</p>';
+            setCurrentNote(null);
+            return;
+        }
+
         notes.forEach(note => {
             const div = document.createElement('div');
             div.className = 'note-item';
+            div.dataset.noteId = note.id;
             div.innerHTML = `<h4>${escapeHtml(note.title)}</h4><p>${new Date(note.created_at).toLocaleDateString()}</p>`;
             div.addEventListener('click', () => {
                 document.getElementById('note-title').value = note.title;
                 document.getElementById('note-content').value = note.content;
-                document.querySelectorAll('.note-item').forEach(n => n.classList.remove('active'));
-                div.classList.add('active');
+                setCurrentNote(note.id);
             });
             list.appendChild(div);
         });
+
+        // Keep the highlight if the open note is still in the list.
+        setCurrentNote(notes.some(n => String(n.id) === String(currentNoteId)) ? currentNoteId : null);
     } catch (err) {
         console.error(err);
     }
 }
 
 document.getElementById('save-note-btn').addEventListener('click', async () => {
-    const title = document.getElementById('note-title').value;
-    const content = document.getElementById('note-content').value;
-    
+    const title = document.getElementById('note-title').value.trim();
+    const content = document.getElementById('note-content').value.trim();
+
     if (!title || !content) {
-        alert("Please provide both title and content.");
+        showToast('Give the note a title and some content.', 'info');
         return;
     }
-    
+    if (!authToken) return showToast('Sign in to save notes', 'info');
+
     try {
+        // Clicking a note loads it into this editor, so saving means saving
+        // THAT note. It always POSTed before, quietly leaving a second copy
+        // behind every time someone edited an existing note.
+        if (currentNoteId) {
+            await api.updateNote(authToken, currentNoteId, title, content);
+            showToast('Note updated', 'success');
+            loadNotes();
+            return;
+        }
         await api.saveNote(authToken, title, content);
         const noteXp = await api.addXp(authToken, 5, 2, 'Note Taker');
         applyXpResult(noteXp);
@@ -4032,12 +4076,20 @@ document.querySelectorAll('.timer-mode-btn').forEach(btn => {
     });
 });
 
+// "New Note" had no handler, so the only way to start a fresh note was to
+// clear the fields by hand -- and with the editor still holding a note id,
+// saving would have overwritten the one that was open.
+safeOn('new-note-btn', 'click', () => {
+    clearNoteEditor();
+    document.getElementById('note-title')?.focus();
+});
+
 // 8. Note Taker Search & "AI Quiz Me" Action
 const notesSearchInput = document.getElementById('notes-search');
 if (notesSearchInput) {
     notesSearchInput.addEventListener('input', (e) => {
         const query = e.target.value.toLowerCase().trim();
-        document.querySelectorAll('#notes-items-container .note-item, #notes-list .note-item').forEach(item => {
+        document.querySelectorAll('#notes-items-container .note-item').forEach(item => {
             const title = item.querySelector('h4')?.textContent.toLowerCase() || '';
             const desc = item.querySelector('p')?.textContent.toLowerCase() || '';
             if (!query || title.includes(query) || desc.includes(query)) {
@@ -4065,17 +4117,19 @@ safeOn('quiz-note-btn', 'click', () => {
 });
 
 safeOn('delete-note-btn', 'click', async () => {
-    if (window.currentNoteId && authToken) {
-        if (!confirm('Are you sure you want to delete this note?')) return;
+    // api.deleteNote did not exist and neither did the route behind it, while
+    // currentNoteId was never assigned -- so this button only ever blanked the
+    // two fields and left the note sitting in the list.
+    if (currentNoteId && authToken) {
+        const name = document.getElementById('note-title').value.trim() || 'this note';
+        if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
         try {
-            await api.deleteNote(authToken, window.currentNoteId);
+            await api.deleteNote(authToken, currentNoteId);
             showToast('Note deleted', 'info');
-            window.currentNoteId = null;
-            document.getElementById('note-title').value = '';
-            document.getElementById('note-content').value = '';
+            clearNoteEditor();
             loadNotes();
         } catch (err) {
-            showToast('Failed to delete: ' + err.message, 'error');
+            showToast('Could not delete the note. Please try again.', 'error');
         }
     } else {
         document.getElementById('note-title').value = '';
@@ -4848,7 +4902,7 @@ document.getElementById('devhub-save-notes-to-book-btn')?.addEventListener('clic
 
     if (authToken) {
         try {
-            await api.createNote(authToken, topic, currentRenderedDevNotes);
+            await api.saveNote(authToken, topic, currentRenderedDevNotes);
             showToast(`Saved "${topic}" to your Notebook! 📝`, 'success');
             loadNotes();
         } catch (err) {

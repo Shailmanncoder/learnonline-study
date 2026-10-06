@@ -9691,3 +9691,15 @@ img, video, canvas, svg {
 
 .devhub-link-btn-jsx { color: #1D4ED8; }
 [data-theme="dark"] .devhub-link-btn-jsx { color: #93C5FD; }
+
+/* Note Taker: empty state, and a Delete that cannot act with nothing open. */
+.notes-empty {
+    padding: 18px 14px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+#delete-note-btn:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}

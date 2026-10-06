@@ -89,6 +89,25 @@ const api = {
         return res.json();
     },
 
+    updateNote: async (token, id, title, content) => {
+        const res = await fetch(`${API_BASE_URL}/user/notes/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, content })
+        });
+        if (!res.ok) throw new Error('Failed to update note');
+        return res.json();
+    },
+
+    deleteNote: async (token, id) => {
+        const res = await fetch(`${API_BASE_URL}/user/notes/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to delete note');
+        return res.json();
+    },
+
     getLeaderboard: async (token) => {
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         const res = await fetch(`${API_BASE_URL}/user/leaderboard`, { headers });
