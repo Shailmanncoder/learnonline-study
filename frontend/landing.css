@@ -493,3 +493,22 @@
 #landing-page .land-footer-links a { color: var(--ink-soft); }
 #landing-page .land-footer-links a:hover { color: var(--blue); }
 #landing-page .land-logo-accent { color: var(--blue); }
+
+/* ── "For educators" hidden from the landing nav ─────────────────────
+   Hidden, not removed: the buttons, their click handlers, the teacher
+   sign-in modal and the whole Teacher Hub are untouched. Delete this one
+   block to bring the link back exactly as it was.
+
+   The separator next to it goes too, otherwise the row renders as
+   "· For developers" with a dangling middle dot.
+
+   Because these two buttons were the ONLY openers of the teacher sign-in
+   modal, /teacher now opens it for a signed-out visitor — see the note in
+   handleAppRouting. Hiding the link should not lock existing teachers out
+   of their own accounts. */
+#landing-page #nav-teacher-login-btn,
+#landing-page #nav-teacher-login-btn + .land-role-sep,
+#landing-page #mobile-teacher-login-btn,
+#landing-page #mobile-teacher-login-btn + .land-role-sep {
+    display: none !important;
+}

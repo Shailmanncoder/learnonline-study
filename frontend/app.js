@@ -46,6 +46,19 @@ function getRouteFromPath(pathname) {
     return { clean, parts, first, second };
 }
 
+// "For educators" is hidden from the landing nav (see landing.css), and those
+// two buttons were the only things that opened the teacher sign-in. /teacher
+// is the quiet way in, so hiding the link does not leave existing teachers
+// unable to reach their own accounts. It reveals nothing that the link did
+// not: it is the same sign-in form, and no portal is shown until they sign in.
+// Call this BEFORE anything that rewrites the URL to "/".
+function wantsTeacherSignIn(pathname) {
+    return ['teacher', 'teacher-hub'].includes(getRouteFromPath(pathname).first);
+}
+function openTeacherSignIn() {
+    document.getElementById('teacher-auth-modal')?.style.setProperty('display', 'flex');
+}
+
 // Persists the signed-in user (id, username, role) alongside the token.
 // The portal role guards read this, so every auth path must call it.
 function persistStudyUser(res, profile, fallbackRole) {
@@ -89,8 +102,11 @@ function showLandingOnly(replaceHistory = true) {
 
 function handleAppRouting(initial = false) {
     if (!isAuthenticated()) {
+        // Read the path before showLandingOnly(), which rewrites it to "/".
+        const askedForTeacher = wantsTeacherSignIn();
         // Signed out: never reveal a portal, whatever the URL says.
         showLandingOnly();
+        if (askedForTeacher) openTeacherSignIn();
         return;
     }
 
@@ -246,10 +262,13 @@ async function initApp() {
 
 // Auth UI Logic
 function showAuth() {
+    // syncUrl('/') below erases the path, so decide from it first.
+    const askedForTeacher = wantsTeacherSignIn();
     authModal.style.display = 'none';
     appContainer.style.display = 'none';
     if (window.showLanding) window.showLanding();
     syncUrl('/');
+    if (askedForTeacher) openTeacherSignIn();
 }
 
 function showApp() {
