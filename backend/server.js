@@ -19,7 +19,49 @@ const app = express();
 // same person.
 app.set('trust proxy', 1);
 
-app.use(cors());
+// ── Security headers ──────────────────────────────────────────────
+// The app served NONE of these. X-Frame-Options was set on two routes only,
+// so every other page -- the whole student, teacher and developer app -- could
+// be framed by any site and clicked through invisibly. There was no HSTS on a
+// site taking live card payments, and no nosniff.
+//
+// Express advertises itself in X-Powered-By; there is no reason to tell an
+// attacker which stack to look up.
+app.disable('x-powered-by');
+
+app.use((req, res, next) => {
+    // Browsers remember this and refuse plain HTTP to the domain afterwards.
+    // Only meaningful over TLS, and only truthful once HTTPS works everywhere,
+    // which it does: nginx terminates TLS in front of this process.
+    if (req.secure) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('X-Frame-Options', 'DENY');
+    res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Nothing here uses these, so decline them rather than leave them open.
+    res.set('Permissions-Policy', 'geolocation=(), camera=(), payment=(), usb=(), interest-cohort=()');
+    next();
+});
+
+// ── CORS ──────────────────────────────────────────────────────────
+// This was a bare cors(), which answers every origin with
+// Access-Control-Allow-Origin: *, so any website could call this API from a
+// visitor's browser and read the reply. The frontend is served by THIS
+// process, so the app itself never makes a cross-origin call; allow only
+// origins that are named deliberately.
+const ALLOWED_ORIGINS = String(process.env.CORS_ORIGINS || '')
+    .split(',').map(o => o.trim()).filter(Boolean);
+app.use(cors({
+    origin(origin, callback) {
+        // No Origin header: same-origin navigations, curl, health checks.
+        if (!origin) return callback(null, true);
+        if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+        // Deny by not reflecting the origin. This is not an error -- the
+        // request still runs, the browser simply refuses to hand over the
+        // response, which is what a cross-origin denial should look like.
+        return callback(null, false);
+    },
+    credentials: false
+}));
 
 // ── Payments ──────────────────────────────────────────────────────
 // The webhook route is installed BEFORE express.json, because Razorpay's

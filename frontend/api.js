@@ -26,8 +26,12 @@ const api = {
             const e = await res.json().catch(() => ({ msg: 'Login failed' }));
             const err = new Error(e.msg || 'Login failed');
             err.data = e;
-            err.notFound = e.notFound;
-            err.requiresRegister = e.requiresRegister;
+            // notFound / requiresRegister are gone: sign-in no longer says
+            // whether an account exists, because that let anyone test an email
+            // address against the site. canRegister is set on ANY failure, so
+            // the "create an account" button still appears without answering
+            // the question.
+            err.canRegister = e.canRegister;
             err.isStudent = e.isStudent;
             throw err;
         }

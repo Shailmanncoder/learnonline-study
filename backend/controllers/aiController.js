@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const { rateLimit } = require('../middleware/rateLimit');
 const db = require('../config/db');
 const { providerOrder, geminiKey, geminiModel } = require('../services/ai');
 const {
@@ -1049,7 +1050,15 @@ router.post('/tool/grade', auth, async (req, res) => {
     }
 });
 
-router.get('/image', async (req, res) => {
+// This was open to the internet with no token and no limit: anyone could
+// drive unlimited upstream image generation through this server, on this
+// server's bill and from this server's address. The upstream host is fixed and
+// both user values are URL-encoded into it, so it cannot be pointed elsewhere,
+// but it still needs an account behind it and a ceiling on volume.
+router.get('/image', auth, rateLimit({
+    name: 'ai-image', windowMs: 60_000, max: 10,
+    message: 'Too many image requests. Please wait a moment.'
+}), async (req, res) => {
     try {
         const { prompt, model, width, height, enhance } = req.query;
         if (!prompt) return res.status(400).json({ msg: 'Prompt required' });

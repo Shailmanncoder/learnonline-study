@@ -676,11 +676,13 @@ if (teacherAuthForm) {
         } catch (err) {
             console.error('[TEACHER AUTH ERROR]', err);
             if (teacherAuthError) {
-                if (err.notFound || err.requiresRegister) {
+                if (err.canRegister) {
+                    // Deliberately does not say whether this account exists --
+                    // that answer is what let anyone enumerate real users.
                     teacherAuthError.innerHTML = `
                         <div style="background: rgba(239,68,68,0.1); border: 1px solid #EF4444; border-radius: 10px; padding: 10px; margin-top: 6px; color: #DC2626; font-size: 13px; text-align: center;">
-                            <strong>Teacher account not found!</strong><br>
-                            Please create your educator account first.<br>
+                            <strong>Those details did not match.</strong><br>
+                            Check your username and password, or create an educator account.<br>
                             <button type="button" id="btn-quick-switch-teacher-reg" style="margin-top: 8px; background: #059669; color: #fff; border: none; border-radius: 8px; padding: 6px 14px; font-weight: 700; font-size: 12px; cursor: pointer;">
                                 <i class="fa-solid fa-user-plus"></i> Create Teacher Account Now
                             </button>

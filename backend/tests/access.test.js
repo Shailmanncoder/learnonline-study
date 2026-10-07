@@ -38,7 +38,15 @@ test('signup, login and free tools work; every former billing endpoint is remove
     const loggedIn = await post('/api/auth/login', credentials);
     assert.equal(loggedIn.status, 200);
     const { token } = await loggedIn.json();
-    assert.equal((await post('/api/auth/login', { ...credentials, password: 'wrong' })).status, 400);
+    // 401, and identical to an unknown username: sign-in used to answer 400
+    // "Incorrect password" for a real account and 404 "Account not found" for
+    // an unknown one, which told anyone whether an address was registered.
+    const wrongPassword = await post('/api/auth/login', { ...credentials, password: 'wrong' });
+    const unknownUser = await post('/api/auth/login', { username: 'no-such-account-here', password: 'wrong' });
+    assert.equal(wrongPassword.status, 401);
+    assert.equal(unknownUser.status, 401);
+    assert.equal((await wrongPassword.json()).msg, (await unknownUser.json()).msg,
+        'the two failures must be indistinguishable');
     assert.equal((await post('/api/auth/register', { username: {}, password: 123 })).status, 400);
     const profile = await fetch(base + '/api/user/profile', { headers: { Authorization: `Bearer ${token}` } });
     assert.equal(profile.status, 200);

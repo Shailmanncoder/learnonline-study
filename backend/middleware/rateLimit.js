@@ -21,13 +21,18 @@ function sweep(now) {
 }
 
 function clientKey(req) {
-    // Trusting X-Forwarded-For blindly lets a caller pick their own bucket, so
-    // it is only used when a proxy is declared to be in front.
-    const forwarded = process.env.TRUST_PROXY === 'true' ? req.headers['x-forwarded-for'] : null;
-    const ip = (forwarded ? String(forwarded).split(',')[0].trim() : null)
-        || (req.socket && req.socket.remoteAddress)
-        || 'unknown';
-    return ip;
+    // req.ip is Express's own trust-proxy-aware client address: with
+    // app.set('trust proxy', 1) it is the last entry nginx added to
+    // X-Forwarded-For, and without it the socket address. A caller cannot pick
+    // their own bucket by sending the header, because Express only honours the
+    // one declared hop.
+    //
+    // This used to read X-Forwarded-For only when TRUST_PROXY === 'true', and
+    // that variable is set nowhere. Behind nginx every request therefore keyed
+    // on nginx's own address, so every visitor on the site shared ONE bucket:
+    // the payment limiters throttled unrelated people together, and a per-IP
+    // brake on password guessing would have been no brake at all.
+    return (req.ip || (req.socket && req.socket.remoteAddress) || 'unknown');
 }
 
 /**
