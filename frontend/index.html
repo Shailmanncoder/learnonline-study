@@ -2292,14 +2292,23 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="settings-email">Recovery email</label>
+                        <input type="email" id="settings-email" placeholder="you@example.com" autocomplete="email"
+                               style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-primary);">
+                        <p class="field-hint" id="settings-email-hint">
+                            Where we send your code if you forget your password. Without one, there is no way
+                            back into this account.
+                        </p>
+                    </div>
+
+                    <div class="form-group">
                         <label>Bio</label>
                         <textarea id="settings-bio" placeholder="e.g. High school senior studying for SATs..." rows="3" style="width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-primary); outline: none; resize: vertical;"></textarea>
                     </div>
 
                     <button class="btn" id="save-profile-btn" style="width: 100%;"><i class="fa-solid fa-save"></i> Save Changes</button>
                     <p id="profile-status-msg" style="text-align:center; font-size:14px;"></p>
-
-
+                </div>
             </section>
         </main>
     </div>

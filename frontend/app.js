@@ -1142,6 +1142,17 @@ function updateDashboardUI() {
     if (sUser) sUser.value = currentUserData?.username || '';
     const sBio = document.getElementById('settings-bio');
     if (sBio) sBio.value = currentUserData?.bio || '';
+    const sEmail = document.getElementById('settings-email');
+    if (sEmail) sEmail.value = currentUserData?.email || '';
+    // Say plainly when there is no way back into the account yet.
+    const emailHint = document.getElementById('settings-email-hint');
+    if (emailHint) {
+        const hasEmail = Boolean(currentUserData?.email);
+        emailHint.textContent = hasEmail
+            ? 'Where we send your code if you forget your password.'
+            : 'No recovery email set. Without one there is no way back into this account if you forget your password.';
+        emailHint.classList.toggle('field-hint-warn', !hasEmail);
+    }
 
     // XP Progress Bar
     const xpPerLevel = 100;
@@ -1707,25 +1718,36 @@ document.getElementById('settings-avatar-file').addEventListener('change', (e) =
 document.getElementById('save-profile-btn').addEventListener('click', async (e) => {
     const btn = document.getElementById('save-profile-btn');
     const msg = document.getElementById('profile-status-msg');
-    const newUsername = document.getElementById('settings-username').value;
+    const newUsername = document.getElementById('settings-username').value.trim();
     const newAvatar = document.getElementById('settings-avatar-url').value;
     const newBio = document.getElementById('settings-bio').value;
-    
+    const newEmail = document.getElementById('settings-email')?.value.trim() ?? '';
+
     msg.textContent = '';
     btn.disabled = true;
-    
+
     try {
-        await api.updateProfile(authToken, newUsername, newAvatar, newBio);
-        currentUserData.username = newUsername;
-        currentUserData.profile_picture = newAvatar;
-        currentUserData.bio = newBio;
+        const saved = await api.updateProfile(authToken, {
+            username: newUsername,
+            profile_picture: newAvatar,
+            bio: newBio,
+            email: newEmail
+        });
+        // Take what the server stored, not what was typed: it lowercases the
+        // address and may have rejected part of the change.
+        Object.assign(currentUserData, saved.user || {
+            username: newUsername, profile_picture: newAvatar, bio: newBio, email: newEmail || null
+        });
         updateDashboardUI();
         loadLeaderboard(); // Update leaderboard with new avatar
         msg.style.color = 'var(--success-color)';
         msg.textContent = 'Profile updated successfully!';
     } catch (err) {
+        // The server says exactly what was wrong -- taken username, invalid or
+        // duplicate email. Repeating "Username might be taken" for all of them
+        // sent people looking in the wrong place.
         msg.style.color = 'var(--danger-color)';
-        msg.textContent = 'Error: Username might be taken.';
+        msg.textContent = err.message;
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-save"></i> Save Changes';

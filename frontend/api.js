@@ -46,14 +46,19 @@ const api = {
         return res.json();
     },
 
-    updateProfile: async (token, username, profile_picture, bio) => {
+    // Takes an object so a caller can send only the fields it means to change;
+    // the server now touches exactly the keys that are present.
+    updateProfile: async (token, fields) => {
         const res = await fetch(`${API_BASE_URL}/user/profile`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, profile_picture, bio })
+            body: JSON.stringify(fields)
         });
-        if (!res.ok) throw new Error('Failed to update profile');
-        return res.json();
+        const data = await res.json().catch(() => ({}));
+        // Surface the server's reason -- "that email is already in use" is
+        // something the person can act on; "Failed to update profile" is not.
+        if (!res.ok) throw new Error(data.msg || 'Failed to update profile');
+        return data;
     },
 
     deleteAccount: async (token) => {

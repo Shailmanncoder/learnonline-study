@@ -9725,3 +9725,19 @@ img, video, canvas, svg {
     font-weight: 700;
     text-align: center;
 }
+
+
+/* Explanatory line under a settings field. */
+.field-hint {
+    margin: 6px 0 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+/* An account with no recovery email cannot be recovered at all — say so. */
+.field-hint-warn {
+    color: #B45309;
+    font-weight: 600;
+}
+[data-theme="dark"] .field-hint-warn { color: #FCD34D; }

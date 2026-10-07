@@ -39,7 +39,7 @@ async function calcTodayStudyTime(userId) {
 router.get('/profile', auth, async (req, res) => {
     try {
         // `role` is included so the client can gate the teacher/developer portals.
-        const user = await db.get('SELECT id, username, role, xp, level, time_spent, profile_picture, bio, created_at FROM users WHERE id = ?', [req.user.id]);
+        const user = await db.get('SELECT id, username, email, role, xp, level, time_spent, profile_picture, bio, created_at FROM users WHERE id = ?', [req.user.id]);
         if (!user) return res.status(404).json({ msg: 'User not found' });
         const streak = await calcStreak(req.user.id);
         const studied_today = await calcTodayStudyTime(req.user.id);
@@ -165,26 +165,78 @@ router.delete('/goals/:id', auth, async (req, res) => {
     }
 });
 
+// Deliberately permissive about shape, strict about content. Anything that
+// gets near an address people can reset an account with is checked properly.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 // @route   POST api/user/profile
 // @desc    Update user profile settings
 router.post('/profile', auth, async (req, res) => {
     try {
-        const { username, profile_picture, bio } = req.body;
-        
-        const normalizedProfilePicture =
-            profile_picture == null || String(profile_picture).trim().length === 0
+        const body = req.body || {};
+        const sets = [];
+        const values = [];
+
+        // Only fields actually present are touched. This used to write all
+        // three unconditionally, so a client saving just a bio sent
+        // username = undefined and the UPDATE failed against NOT NULL --
+        // and nothing validated the username it did send.
+        if ('username' in body) {
+            const username = String(body.username ?? '').trim();
+            if (!username || username.length > 50) {
+                return res.status(400).json({ msg: 'Choose a username between 1 and 50 characters.' });
+            }
+            const taken = await db.get('SELECT id FROM users WHERE username = ? AND id <> ?', [username, req.user.id]);
+            if (taken) return res.status(409).json({ msg: 'That username is already taken.' });
+            sets.push('username = ?'); values.push(username);
+        }
+
+        if ('email' in body) {
+            const raw = String(body.email ?? '').trim();
+            if (!raw) {
+                // Clearing it is allowed; it only means password reset by email
+                // stops working for this account.
+                sets.push('email = ?'); values.push(null);
+            } else {
+                const email = raw.toLowerCase();
+                if (email.length > 254 || !EMAIL_RE.test(email)) {
+                    return res.status(400).json({ msg: 'Enter a valid email address.' });
+                }
+                // A reset looks an account up by username OR email, so an
+                // address must not be ambiguous. If two accounts could share
+                // one -- or if it matched somebody else's username -- whose
+                // account a reset code belonged to would be a coin toss, and
+                // that is a way to take over someone else's recovery.
+                const clash = await db.get(
+                    'SELECT id FROM users WHERE (email = ? OR username = ?) AND id <> ?',
+                    [email, email, req.user.id]
+                );
+                if (clash) return res.status(409).json({ msg: 'That email is already in use on another account.' });
+                sets.push('email = ?'); values.push(email);
+            }
+        }
+
+        if ('profile_picture' in body) {
+            const picture = body.profile_picture == null || String(body.profile_picture).trim().length === 0
                 ? null
-                : String(profile_picture).trim();
+                : String(body.profile_picture).trim();
+            sets.push('profile_picture = ?'); values.push(picture);
+        }
 
-        await db.run(
-            'UPDATE users SET username = ?, profile_picture = ?, bio = ? WHERE id = ?',
-            [username, normalizedProfilePicture, bio || '', req.user.id]
-        );
+        if ('bio' in body) {
+            sets.push('bio = ?'); values.push(String(body.bio ?? '').slice(0, 2000));
+        }
 
-        res.json({ msg: 'Profile updated successfully' });
+        if (!sets.length) return res.status(400).json({ msg: 'Nothing to update.' });
+
+        values.push(req.user.id);
+        await db.run(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, values);
+
+        const user = await db.get('SELECT id, username, email, role, profile_picture, bio FROM users WHERE id = ?', [req.user.id]);
+        res.json({ msg: 'Profile updated successfully', user });
     } catch (err) {
         console.error(err.message);
-        res.status(500).json({ msg: 'Server Error (Username might be taken)' });
+        res.status(500).json({ msg: 'Could not save your profile. Please try again.' });
     }
 });
 
