@@ -83,6 +83,30 @@ const api = {
         return res.json();
     },
 
+    // Password reset. Both calls answer the same way whether or not the
+    // account exists, so neither can be used to test an address.
+    forgotPassword: async (username) => {
+        const res = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Could not send the code');
+        return data;
+    },
+
+    resetPassword: async (username, code, password) => {
+        const res = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, code, password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Could not reset the password');
+        return data;
+    },
+
     saveNote: async (token, title, content) => {
         const res = await fetch(`${API_BASE_URL}/user/notes`, {
             method: 'POST',

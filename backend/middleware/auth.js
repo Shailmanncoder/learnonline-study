@@ -19,8 +19,17 @@ module.exports = async function (req, res, next) {
         return res.status(401).json({ msg: 'Token is not valid' });
     }
     try {
-        const account=await db.get('SELECT id,role FROM users WHERE id=?',[decoded.user.id]);
+        const account=await db.get('SELECT id,role,password_changed_at FROM users WHERE id=?',[decoded.user.id]);
         if(!account)return res.status(401).json({msg:'Account is no longer available. Please sign in.'});
+        // A password reset has to end the sessions opened with the old one, or
+        // whoever took the account keeps their token for its full five days.
+        // Tokens are stateless, so the test is when this one was issued: iat is
+        // in seconds, the column in milliseconds. One second of slack absorbs
+        // the rounding when a token is issued in the same second as a change.
+        if (account.password_changed_at && decoded.iat
+            && decoded.iat * 1000 < Number(account.password_changed_at) - 1000) {
+            return res.status(401).json({msg:'Your password was changed. Please sign in again.'});
+        }
         req.user = {...decoded.user,role:account.role};
         next();
     } catch (err) {

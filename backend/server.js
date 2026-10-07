@@ -145,6 +145,10 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 async function start() {
 await require('./config/db').ready();
+// Password reset needs users.email and users.password_changed_at, and the auth
+// middleware reads password_changed_at on EVERY request -- so the columns have
+// to exist before anything is served, not on first use.
+await require('./migrations/003_password_reset')(require('./config/db'));
 await require('./services/studioStore').ready();
 await require('./controllers/teachingStudioController').ready();
 require('./services/studioSources').start().catch(e => console.warn('[SOURCE]',e.message));

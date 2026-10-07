@@ -9703,3 +9703,25 @@ img, video, canvas, svg {
     opacity: .45;
     cursor: not-allowed;
 }
+
+/* "Forgot password?" sits right under the password field, aligned with it. */
+.auth-forgot-row {
+    display: flex;
+    justify-content: flex-end;
+    margin: -6px 0 12px;
+}
+.auth-forgot-row a {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    text-decoration: none;
+}
+.auth-forgot-row a:hover { text-decoration: underline; }
+
+/* The code is read back digit by digit, so give it room and spacing. */
+#reset-code {
+    letter-spacing: 0.35em;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+}

@@ -632,6 +632,100 @@ if (teacherAuthSwitchBtn) {
     });
 }
 
+// ── Password reset ────────────────────────────────────────────────
+// Two steps in one modal: ask for a code, then set the new password. The
+// server answers identically whether or not the account exists, and this
+// screen says the same thing, so neither can be used to test an address.
+const resetModal = document.getElementById('reset-modal');
+const resetRequestForm = document.getElementById('reset-request-form');
+const resetConfirmForm = document.getElementById('reset-confirm-form');
+
+function openResetModal(prefill = '') {
+    if (!resetModal) return;
+    if (authModal) authModal.style.display = 'none';
+    document.getElementById('reset-username').value = prefill;
+    document.getElementById('reset-code').value = '';
+    document.getElementById('reset-password').value = '';
+    document.getElementById('reset-request-error').textContent = '';
+    document.getElementById('reset-confirm-error').textContent = '';
+    resetRequestForm.style.display = '';
+    resetConfirmForm.style.display = 'none';
+    document.getElementById('reset-title').textContent = 'Reset your password';
+    document.getElementById('reset-subtitle').textContent = "We'll email you a 6-digit code.";
+    resetModal.style.display = 'flex';
+    document.getElementById('reset-username').focus();
+}
+
+safeOn('auth-forgot-btn', 'click', (e) => {
+    e.preventDefault();
+    // Carry over whatever they already typed, so they do not retype it.
+    openResetModal(document.getElementById('username')?.value?.trim() || '');
+});
+safeOn('reset-close-btn', 'click', () => { if (resetModal) resetModal.style.display = 'none'; });
+safeOn('reset-back-btn', 'click', (e) => {
+    e.preventDefault();
+    if (resetModal) resetModal.style.display = 'none';
+    if (authModal) authModal.style.display = 'flex';
+});
+safeOn('reset-toggle-pw', 'click', () => {
+    const field = document.getElementById('reset-password');
+    if (!field) return;
+    field.type = field.type === 'password' ? 'text' : 'password';
+});
+
+resetRequestForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('reset-request-submit');
+    const err = document.getElementById('reset-request-error');
+    const username = document.getElementById('reset-username').value.trim();
+    if (!username) return;
+    btn.disabled = true;
+    err.textContent = '';
+    try {
+        const out = await api.forgotPassword(username);
+        // Deliberately the same message either way.
+        document.getElementById('reset-title').textContent = 'Check your email';
+        document.getElementById('reset-subtitle').textContent = out.msg;
+        resetRequestForm.style.display = 'none';
+        resetConfirmForm.style.display = '';
+        document.getElementById('reset-code').focus();
+        if (out.emailConfigured === false) {
+            err.textContent = '';
+            document.getElementById('reset-confirm-error').textContent =
+                'Note: email delivery is not configured on this server yet, so no code will arrive.';
+        }
+    } catch (e2) {
+        err.textContent = e2.message;
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+resetConfirmForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('reset-confirm-submit');
+    const err = document.getElementById('reset-confirm-error');
+    const username = document.getElementById('reset-username').value.trim();
+    const code = document.getElementById('reset-code').value.trim();
+    const password = document.getElementById('reset-password').value;
+    btn.disabled = true;
+    err.textContent = '';
+    try {
+        await api.resetPassword(username, code, password);
+        if (resetModal) resetModal.style.display = 'none';
+        showToast('Password changed. Please sign in.', 'success');
+        // No token comes back, by design: a stolen code alone must not hand
+        // over a session. Send them to sign in with the new password.
+        if (authModal) authModal.style.display = 'flex';
+        const field = document.getElementById('username');
+        if (field) { field.value = username; document.getElementById('password')?.focus(); }
+    } catch (e2) {
+        err.textContent = e2.message;
+    } finally {
+        btn.disabled = false;
+    }
+});
+
 // Landing Page Teacher Login Openers
 document.getElementById('nav-teacher-login-btn')?.addEventListener('click', () => {
     if (teacherAuthModal) teacherAuthModal.style.display = 'flex';

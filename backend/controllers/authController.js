@@ -5,6 +5,16 @@ const jwt = require('jsonwebtoken');
 const { getJwtSecret } = require('../config/security');
 const db = require('../config/db');
 const { rateLimit, refund } = require('../middleware/rateLimit');
+const crypto = require('node:crypto');
+const mailer = require('../services/mailer');
+
+// The reset tables are created on first use, the same way the payment tables
+// are, so no separate migration step is needed on deploy.
+let resetSchema;
+const ensureResetSchema = () => (resetSchema ||= require('../migrations/003_password_reset')(db));
+
+const RESET_TTL_MS = 10 * 60_000;   // a code is worth ten minutes
+const RESET_MAX_TRIES = 5;          // then it is spent, whatever the attacker does
 
 // Sign-in and sign-up had no limit of any kind: twelve wrong passwords in a
 // row came back twelve times with no delay and no lockout, so an attacker
@@ -74,6 +84,129 @@ router.post('/register', registerLimit, async (req, res) => {
     } catch (err) {
         console.error(err.message);
         res.status(500).json({ msg: 'Server error during registration' });
+    }
+});
+
+// ── Forgot password ───────────────────────────────────────────────
+// Both routes answer the same way whether or not the account exists. That is
+// the whole point: sign-in used to reveal which addresses were registered, and
+// a reset form is exactly the same oracle if it says "no such account".
+const RESET_SENT = 'If that account exists and has a recovery email, a 6-digit code is on its way. It expires in 10 minutes.';
+
+const forgotLimit = rateLimit({
+    name: 'auth-forgot', windowMs: 15 * 60_000, max: 5,
+    message: 'Too many reset requests. Please wait a few minutes.'
+});
+const resetLimit = rateLimit({
+    name: 'auth-reset', windowMs: 15 * 60_000, max: 10,
+    message: 'Too many attempts. Please wait a few minutes.'
+});
+
+// An account is found by username or by its recovery email, so someone who has
+// forgotten which they used can enter either.
+async function findAccount(identifier) {
+    const value = String(identifier || '').trim();
+    if (!value || value.length > 254) return null;
+    return db.get('SELECT * FROM users WHERE username = ? OR email = ?', [value, value]);
+}
+
+// @route   POST api/auth/forgot-password
+router.post('/forgot-password', forgotLimit, async (req, res) => {
+    try {
+        await ensureResetSchema();
+        const user = await findAccount(req.body && req.body.username);
+        // The reply is sent regardless. Everything below is best-effort.
+        res.json({ msg: RESET_SENT, emailConfigured: mailer.isConfigured() });
+
+        if (!user) return;
+        const recipient = user.email || (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(user.username) ? user.username : null);
+        if (!recipient) return;   // nothing on file to send to
+
+        // Six digits from a cryptographic source, never Math.random.
+        const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+        const now = Date.now();
+        // Only the hash is stored, so a copy of the database is not a pile of
+        // working reset codes. bcrypt also makes each guess cost something.
+        const codeHash = await bcrypt.hash(code, 10);
+
+        // One live code per account: asking again replaces the old one.
+        await db.run('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL', [user.id]);
+        await db.run(
+            'INSERT INTO password_resets (id, user_id, code_hash, created_at, expires_at, attempts) VALUES (?, ?, ?, ?, ?, 0)',
+            [crypto.randomUUID(), user.id, codeHash, now, now + RESET_TTL_MS]
+        );
+
+        if (!mailer.isConfigured()) {
+            // In development the code goes to the server log so the flow can be
+            // used without a mail account. Never in production: that would put
+            // working reset codes into the log file.
+            if (process.env.NODE_ENV !== 'production') {
+                console.log(`[AUTH] reset code for user ${user.id}: ${code} (SMTP not configured)`);
+            } else {
+                console.error('[AUTH] password reset requested but SMTP is not configured; no email sent');
+            }
+            return;
+        }
+        await mailer.send({
+            to: recipient,
+            subject: 'Your LearnOnline.study password reset code',
+            text: `Your password reset code is ${code}\n\n`
+                + `It expires in 10 minutes and can be used once.\n\n`
+                + `If you did not ask to reset your password, you can ignore this email — `
+                + `your password has not changed.`
+        });
+    } catch (err) {
+        // The response has usually gone already; never turn a mail failure into
+        // a signal about whether the account exists.
+        console.error('[AUTH] forgot-password failed:', err.message);
+        if (!res.headersSent) res.json({ msg: RESET_SENT, emailConfigured: mailer.isConfigured() });
+    }
+});
+
+// @route   POST api/auth/reset-password
+router.post('/reset-password', resetLimit, async (req, res) => {
+    try {
+        await ensureResetSchema();
+        const { username, code, password } = req.body || {};
+        if (typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
+            return res.status(400).json({ msg: 'Choose a new password of at least 8 characters.' });
+        }
+        if (typeof code !== 'string' || !/^\d{6}$/.test(code.trim())) {
+            return res.status(400).json({ msg: 'Enter the 6-digit code from your email.' });
+        }
+
+        const INVALID = 'That code is not valid or has expired. Request a new one.';
+        const user = await findAccount(username);
+        if (!user) return res.status(400).json({ msg: INVALID });
+
+        const row = await db.get(
+            'SELECT * FROM password_resets WHERE user_id = ? AND used_at IS NULL ORDER BY created_at DESC',
+            [user.id]
+        );
+        if (!row || row.expires_at < Date.now() || row.attempts >= RESET_MAX_TRIES) {
+            return res.status(400).json({ msg: INVALID });
+        }
+
+        // Count the attempt before checking it, so a crash mid-check cannot be
+        // used to get unlimited guesses at a six-digit code.
+        await db.run('UPDATE password_resets SET attempts = attempts + 1 WHERE id = ?', [row.id]);
+        if (!(await bcrypt.compare(code.trim(), row.code_hash))) {
+            return res.status(400).json({ msg: INVALID });
+        }
+
+        const now = Date.now();
+        const hashed = await bcrypt.hash(password, await bcrypt.genSalt(10));
+        await db.run('UPDATE users SET password = ?, password_changed_at = ? WHERE id = ?', [hashed, now, user.id]);
+        await db.run('UPDATE password_resets SET used_at = ? WHERE id = ?', [now, row.id]);
+        // Any other outstanding code for this account is now meaningless.
+        await db.run('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL', [user.id]);
+
+        // No token is returned. Whoever reset the password signs in with it,
+        // which also means a stolen code alone does not hand over a session.
+        res.json({ msg: 'Your password has been changed. Please sign in.' });
+    } catch (err) {
+        console.error('[AUTH] reset-password failed:', err.message);
+        res.status(500).json({ msg: 'Could not reset the password. Please try again.' });
     }
 });
 

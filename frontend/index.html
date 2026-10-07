@@ -68,6 +68,9 @@
                         <button type="button" class="toggle-pw" id="toggle-pw"><i class="fa-solid fa-eye"></i></button>
                     </div>
                 </div>
+                <div class="auth-forgot-row">
+                    <a href="#" id="auth-forgot-btn">Forgot password?</a>
+                </div>
                 <div id="auth-error" class="error-msg"></div>
                 <button type="submit" class="btn btn-full btn-glow" id="auth-submit">
                     <span id="auth-btn-text">Enter Student Portal</span>
@@ -78,6 +81,54 @@
             <div class="auth-toggle">
                 <span id="auth-switch-text">Don't have a student account?</span>
                 <a href="#" id="auth-switch-btn">Sign Up</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password reset: ask for a code, then set a new password. -->
+    <div id="reset-modal" class="auth-overlay" style="display:none;">
+        <div class="auth-container glass">
+            <button class="auth-close-btn" id="reset-close-btn"><i class="fa-solid fa-xmark"></i></button>
+            <div class="auth-logo-mini"><i class="fa-solid fa-key"></i></div>
+
+            <h2 id="reset-title">Reset your password</h2>
+            <p id="reset-subtitle">We'll email you a 6-digit code.</p>
+
+            <!-- Step 1 -->
+            <form id="reset-request-form">
+                <div class="form-group">
+                    <label for="reset-username">Username or email</label>
+                    <input type="text" id="reset-username" required placeholder="The username or email on your account" autocomplete="username">
+                </div>
+                <div id="reset-request-error" class="error-msg"></div>
+                <button type="submit" class="btn btn-full btn-glow" id="reset-request-submit">
+                    <span>Send me a code</span> <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
+
+            <!-- Step 2 -->
+            <form id="reset-confirm-form" style="display:none;">
+                <div class="form-group">
+                    <label for="reset-code">6-digit code</label>
+                    <input type="text" id="reset-code" required placeholder="000000" inputmode="numeric"
+                           autocomplete="one-time-code" maxlength="6" pattern="\d{6}">
+                </div>
+                <div class="form-group">
+                    <label for="reset-password">New password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="reset-password" required placeholder="At least 8 characters"
+                               autocomplete="new-password" minlength="8">
+                        <button type="button" class="toggle-pw" id="reset-toggle-pw"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                </div>
+                <div id="reset-confirm-error" class="error-msg"></div>
+                <button type="submit" class="btn btn-full btn-glow" id="reset-confirm-submit">
+                    <span>Change my password</span> <i class="fa-solid fa-check"></i>
+                </button>
+            </form>
+
+            <div class="auth-toggle">
+                <a href="#" id="reset-back-btn">Back to sign in</a>
             </div>
         </div>
     </div>
