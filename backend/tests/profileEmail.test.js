@@ -13,29 +13,36 @@ const html = read('../../frontend/index.html');
 const profileRoute = () => {
     const src = stripComments(userCtl);
     const from = src.indexOf("router.post('/profile'");
-    return src.slice(from, src.indexOf("router.post('/xp'", from) + 1 || src.length);
+    return src.slice(from, src.indexOf("router.post('/email'", from));
+};
+// Email moved out of the profile save into its own verified flow.
+const emailRoute = () => {
+    const src = stripComments(userCtl);
+    const from = src.indexOf("router.post('/email'");
+    return src.slice(from, src.indexOf("router.post('/xp'", from));
 };
 
 test('a recovery email must be unique against every username AND email', () => {
+    const route = emailRoute();
     // A reset looks an account up by "username = ? OR email = ?". If two
     // accounts could hold the same address -- or if one account's email
     // matched another's username -- which account a reset code belonged to
     // would depend on row order. That is a way to take over someone else's
     // recovery, so both collisions are refused.
-    const route = profileRoute();
     assert.match(route, /SELECT id FROM users WHERE \(email = \? OR username = \?\) AND id <> \?/,
         'the check must cover both columns, and exclude the caller');
     assert.match(route, /already in use on another account/);
 });
 
 test('an email is validated and normalised before it is stored', () => {
-    const route = profileRoute();
+    const route = emailRoute();
     assert.match(userCtl, /const EMAIL_RE =/);
     assert.match(route, /\.toLowerCase\(\)/, 'addresses are case-insensitive in practice');
     assert.match(route, /EMAIL_RE\.test\(email\)/);
     assert.match(route, /email\.length > 254/);
-    // Clearing it has to stay possible.
-    assert.match(route, /sets\.push\('email = \?'\); values\.push\(null\)/);
+    // Clearing it has to stay possible, and needs no code: removing an address
+    // takes capability away rather than granting it.
+    assert.match(route, /UPDATE users SET email = NULL, email_verified_at = NULL/);
 });
 
 test('saving one field does not blank the others', () => {
@@ -44,8 +51,9 @@ test('saving one field does not blank the others', () => {
     // against NOT NULL. Only keys actually present are touched now.
     const route = profileRoute();
     assert.match(route, /'username' in body/);
-    assert.match(route, /'email' in body/);
     assert.match(route, /'bio' in body/);
+    // 'email' is deliberately NOT here any more -- see emailVerification.test.js.
+    assert.ok(!/'email' in body/.test(route));
     assert.ok(!/UPDATE users SET username = \?, profile_picture = \?, bio = \? WHERE/.test(userCtl));
     assert.match(route, /if \(!sets\.length\)/, 'an empty update should be refused, not run');
 });
@@ -57,11 +65,12 @@ test('the username is validated on update, as it is on register', () => {
 });
 
 test('the profile returns the email so the screen can show it', () => {
-    assert.match(userCtl, /SELECT id, username, email, role, xp/);
+    assert.match(userCtl, /SELECT id, username, email, email_verified_at, role, xp/);
     assert.ok(html.includes('id="settings-email"'), 'the field must exist in the page');
     assert.match(app, /getElementById\('settings-email'\)/);
     // And an account with no way back has to be told so.
     assert.match(app, /No recovery email set/);
+    assert.match(app, /renderEmailState/);
 });
 
 test('the client sends named fields and shows the server’s reason', () => {

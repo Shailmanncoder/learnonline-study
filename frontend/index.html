@@ -2292,13 +2292,25 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="settings-email">Recovery email</label>
-                        <input type="email" id="settings-email" placeholder="you@example.com" autocomplete="email"
-                               style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-primary);">
+                        <label for="settings-email">Recovery email <span id="settings-email-badge" class="email-badge" hidden></span></label>
+                        <div class="email-row">
+                            <input type="email" id="settings-email" placeholder="you@example.com" autocomplete="email">
+                            <button type="button" class="btn btn-secondary email-send-btn" id="settings-email-send">Send code</button>
+                        </div>
                         <p class="field-hint" id="settings-email-hint">
                             Where we send your code if you forget your password. Without one, there is no way
                             back into this account.
                         </p>
+
+                        <!-- Shown only while a code is outstanding. -->
+                        <div id="settings-email-verify" hidden>
+                            <div class="email-row">
+                                <input type="text" id="settings-email-code" placeholder="000000" inputmode="numeric"
+                                       autocomplete="one-time-code" maxlength="6" pattern="\d{6}">
+                                <button type="button" class="btn email-send-btn" id="settings-email-confirm">Confirm</button>
+                            </div>
+                            <p class="field-hint" id="settings-email-verify-hint"></p>
+                        </div>
                     </div>
 
                     <div class="form-group">

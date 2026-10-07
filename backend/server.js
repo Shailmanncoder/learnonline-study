@@ -149,6 +149,7 @@ await require('./config/db').ready();
 // middleware reads password_changed_at on EVERY request -- so the columns have
 // to exist before anything is served, not on first use.
 await require('./migrations/003_password_reset')(require('./config/db'));
+await require('./migrations/004_email_verification')(require('./config/db'));
 await require('./services/studioStore').ready();
 await require('./controllers/teachingStudioController').ready();
 require('./services/studioSources').start().catch(e => console.warn('[SOURCE]',e.message));

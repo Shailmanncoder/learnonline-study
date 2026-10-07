@@ -61,6 +61,30 @@ const api = {
         return data;
     },
 
+    // Changing the recovery email is two steps, so the address is only stored
+    // once the person has shown they can read it.
+    requestEmailVerification: async (token, email) => {
+        const res = await fetch(`${API_BASE_URL}/user/email`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Could not send the code');
+        return data;
+    },
+
+    confirmEmailVerification: async (token, code) => {
+        const res = await fetch(`${API_BASE_URL}/user/email/verify`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Could not confirm the email');
+        return data;
+    },
+
     deleteAccount: async (token) => {
         const res = await fetch(`${API_BASE_URL}/user/account`, {
             method: 'DELETE',

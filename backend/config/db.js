@@ -84,6 +84,7 @@ async function initMysql() {
         profile_picture TEXT DEFAULT NULL,
         bio TEXT,
         email VARCHAR(254),
+        email_verified_at BIGINT,
         password_changed_at BIGINT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB`);
@@ -458,6 +459,7 @@ async function initSqlite() {
         profile_picture TEXT DEFAULT NULL,
         bio TEXT,
         email TEXT,
+        email_verified_at INTEGER,
         password_changed_at INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`);

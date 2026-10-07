@@ -9741,3 +9741,46 @@ img, video, canvas, svg {
     font-weight: 600;
 }
 [data-theme="dark"] .field-hint-warn { color: #FCD34D; }
+
+/* Recovery email: address and action on one line, code entry underneath. */
+.email-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+.email-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-primary);
+}
+.email-row #settings-email-code {
+    letter-spacing: 0.3em;
+    font-weight: 700;
+    text-align: center;
+}
+.email-send-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 10px 14px;
+    font-size: 13px;
+}
+#settings-email-verify { margin-top: 10px; }
+
+/* Whether the address on file actually works for recovery. */
+.email-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    vertical-align: middle;
+}
+.email-badge-verified { background: color-mix(in srgb, #047857 14%, transparent); color: #047857; }
+.email-badge-unverified { background: color-mix(in srgb, #B45309 16%, transparent); color: #B45309; }
+[data-theme="dark"] .email-badge-verified { background: color-mix(in srgb, #34D399 18%, transparent); color: #34D399; }
+[data-theme="dark"] .email-badge-unverified { background: color-mix(in srgb, #FCD34D 18%, transparent); color: #FCD34D; }

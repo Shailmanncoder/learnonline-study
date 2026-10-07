@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const db = require('../config/db');
+const bcrypt = require('bcryptjs');
 
 // Helper: calculate day streak from activity records
 async function calcStreak(userId) {
@@ -39,7 +40,7 @@ async function calcTodayStudyTime(userId) {
 router.get('/profile', auth, async (req, res) => {
     try {
         // `role` is included so the client can gate the teacher/developer portals.
-        const user = await db.get('SELECT id, username, email, role, xp, level, time_spent, profile_picture, bio, created_at FROM users WHERE id = ?', [req.user.id]);
+        const user = await db.get('SELECT id, username, email, email_verified_at, role, xp, level, time_spent, profile_picture, bio, created_at FROM users WHERE id = ?', [req.user.id]);
         if (!user) return res.status(404).json({ msg: 'User not found' });
         const streak = await calcStreak(req.user.id);
         const studied_today = await calcTodayStudyTime(req.user.id);
@@ -191,30 +192,10 @@ router.post('/profile', auth, async (req, res) => {
             sets.push('username = ?'); values.push(username);
         }
 
-        if ('email' in body) {
-            const raw = String(body.email ?? '').trim();
-            if (!raw) {
-                // Clearing it is allowed; it only means password reset by email
-                // stops working for this account.
-                sets.push('email = ?'); values.push(null);
-            } else {
-                const email = raw.toLowerCase();
-                if (email.length > 254 || !EMAIL_RE.test(email)) {
-                    return res.status(400).json({ msg: 'Enter a valid email address.' });
-                }
-                // A reset looks an account up by username OR email, so an
-                // address must not be ambiguous. If two accounts could share
-                // one -- or if it matched somebody else's username -- whose
-                // account a reset code belonged to would be a coin toss, and
-                // that is a way to take over someone else's recovery.
-                const clash = await db.get(
-                    'SELECT id FROM users WHERE (email = ? OR username = ?) AND id <> ?',
-                    [email, email, req.user.id]
-                );
-                if (clash) return res.status(409).json({ msg: 'That email is already in use on another account.' });
-                sets.push('email = ?'); values.push(email);
-            }
-        }
+        // Email is NOT settable here. It goes through /user/email, which sends
+        // a code and only writes the address once it has been confirmed --
+        // otherwise an ordinary profile save could replace a verified address
+        // with a typo, and reset codes would go to a stranger.
 
         if ('profile_picture' in body) {
             const picture = body.profile_picture == null || String(body.profile_picture).trim().length === 0
@@ -232,11 +213,153 @@ router.post('/profile', auth, async (req, res) => {
         values.push(req.user.id);
         await db.run(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, values);
 
-        const user = await db.get('SELECT id, username, email, role, profile_picture, bio FROM users WHERE id = ?', [req.user.id]);
+        const user = await db.get('SELECT id, username, email, email_verified_at, role, profile_picture, bio FROM users WHERE id = ?', [req.user.id]);
         res.json({ msg: 'Profile updated successfully', user });
     } catch (err) {
         console.error(err.message);
         res.status(500).json({ msg: 'Could not save your profile. Please try again.' });
+    }
+});
+
+// ── Recovery email ────────────────────────────────────────────────
+// Changing it is two steps: ask for a code, then confirm it. The new address
+// is held in email_verifications until confirmed, so a half-finished change
+// never disturbs an address that already works. Only a CONFIRMED address
+// receives password reset codes.
+const crypto = require('node:crypto');
+const mailer = require('../services/mailer');
+const { rateLimit } = require('../middleware/rateLimit');
+
+let emailSchema;
+const ensureEmailSchema = () => (emailSchema ||= require('../migrations/004_email_verification')(db));
+
+const VERIFY_TTL_MS = 15 * 60_000;
+const VERIFY_MAX_TRIES = 5;
+
+const emailSendLimit = rateLimit({
+    name: 'email-verify-send', windowMs: 60 * 60_000, max: 6,
+    message: 'Too many verification emails. Please wait a while before trying again.'
+});
+const emailCheckLimit = rateLimit({
+    name: 'email-verify-check', windowMs: 15 * 60_000, max: 10,
+    message: 'Too many attempts. Please wait a few minutes.'
+});
+
+// @route   POST api/user/email
+// @desc    Start (or cancel) a recovery-email change
+router.post('/email', auth, emailSendLimit, async (req, res) => {
+    try {
+        await ensureEmailSchema();
+        const raw = String((req.body || {}).email ?? '').trim();
+
+        // Removing the address is immediate: it takes capability away rather
+        // than granting it, so there is nothing to prove.
+        if (!raw) {
+            await db.run('UPDATE users SET email = NULL, email_verified_at = NULL WHERE id = ?', [req.user.id]);
+            await db.run('DELETE FROM email_verifications WHERE user_id = ? AND used_at IS NULL', [req.user.id]);
+            return res.json({ msg: 'Recovery email removed.', email: null, emailVerified: false, pendingEmail: null });
+        }
+
+        const email = raw.toLowerCase();
+        if (email.length > 254 || !EMAIL_RE.test(email)) {
+            return res.status(400).json({ msg: 'Enter a valid email address.' });
+        }
+        // A reset looks an account up by username OR email, so an address must
+        // not be ambiguous between two accounts. Checked at send AND again at
+        // confirm, because somebody else could claim it in between.
+        const clash = await db.get(
+            'SELECT id FROM users WHERE (email = ? OR username = ?) AND id <> ?',
+            [email, email, req.user.id]
+        );
+        if (clash) return res.status(409).json({ msg: 'That email is already in use on another account.' });
+
+        const me = await db.get('SELECT email, email_verified_at FROM users WHERE id = ?', [req.user.id]);
+        if (me && me.email === email && me.email_verified_at) {
+            return res.json({ msg: 'That address is already verified.', email, emailVerified: true, pendingEmail: null });
+        }
+
+        const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+        const now = Date.now();
+        const codeHash = await bcrypt.hash(code, 10);
+        await db.run('DELETE FROM email_verifications WHERE user_id = ? AND used_at IS NULL', [req.user.id]);
+        await db.run(
+            'INSERT INTO email_verifications (id, user_id, email, code_hash, created_at, expires_at, attempts) VALUES (?, ?, ?, ?, ?, ?, 0)',
+            [crypto.randomUUID(), req.user.id, email, codeHash, now, now + VERIFY_TTL_MS]
+        );
+
+        if (!mailer.isConfigured()) {
+            if (process.env.NODE_ENV !== 'production') {
+                console.log(`[USER] email verification code for user ${req.user.id}: ${code} (SMTP not configured)`);
+            } else {
+                console.error('[USER] email verification requested but SMTP is not configured; no email sent');
+            }
+            return res.json({
+                msg: 'Email delivery is not configured on this server, so no code was sent.',
+                emailConfigured: false, pendingEmail: email, emailVerified: false
+            });
+        }
+
+        try {
+            await mailer.send({
+                to: email,
+                subject: 'Confirm your LearnOnline.study recovery email',
+                text: `Your confirmation code is ${code}\n\n`
+                    + `Enter it on your profile to finish adding this address. It expires in 15 minutes.\n\n`
+                    + `If you did not ask for this, you can ignore this email — nothing has changed.`
+            });
+        } catch (err) {
+            console.error('[USER] verification email failed:', err.message);
+            return res.status(502).json({ msg: 'We could not send to that address. Check it and try again.' });
+        }
+
+        res.json({ msg: `We sent a 6-digit code to ${email}. It expires in 15 minutes.`,
+                   emailConfigured: true, pendingEmail: email, emailVerified: false });
+    } catch (err) {
+        console.error('[USER] email change failed:', err.message);
+        res.status(500).json({ msg: 'Could not start the email change. Please try again.' });
+    }
+});
+
+// @route   POST api/user/email/verify
+// @desc    Confirm the pending recovery email with the emailed code
+router.post('/email/verify', auth, emailCheckLimit, async (req, res) => {
+    try {
+        await ensureEmailSchema();
+        const code = String((req.body || {}).code ?? '').trim();
+        if (!/^\d{6}$/.test(code)) return res.status(400).json({ msg: 'Enter the 6-digit code from your email.' });
+
+        const INVALID = 'That code is not valid or has expired. Send a new one.';
+        const row = await db.get(
+            'SELECT * FROM email_verifications WHERE user_id = ? AND used_at IS NULL ORDER BY created_at DESC',
+            [req.user.id]
+        );
+        if (!row || row.expires_at < Date.now() || row.attempts >= VERIFY_MAX_TRIES) {
+            return res.status(400).json({ msg: INVALID });
+        }
+
+        // Counted before the comparison, so a failure part-way through cannot
+        // be replayed for unlimited guesses.
+        await db.run('UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ?', [row.id]);
+        if (!(await bcrypt.compare(code, row.code_hash))) return res.status(400).json({ msg: INVALID });
+
+        // Re-check ownership: someone else may have claimed this address while
+        // the code was in flight.
+        const clash = await db.get(
+            'SELECT id FROM users WHERE (email = ? OR username = ?) AND id <> ?',
+            [row.email, row.email, req.user.id]
+        );
+        if (clash) return res.status(409).json({ msg: 'That email is now in use on another account.' });
+
+        const now = Date.now();
+        await db.run('UPDATE users SET email = ?, email_verified_at = ? WHERE id = ?', [row.email, now, req.user.id]);
+        await db.run('UPDATE email_verifications SET used_at = ? WHERE id = ?', [now, row.id]);
+        await db.run('DELETE FROM email_verifications WHERE user_id = ? AND used_at IS NULL', [req.user.id]);
+
+        res.json({ msg: 'Email confirmed. You can now reset your password with it.',
+                   email: row.email, emailVerified: true, pendingEmail: null });
+    } catch (err) {
+        console.error('[USER] email verify failed:', err.message);
+        res.status(500).json({ msg: 'Could not confirm the email. Please try again.' });
     }
 });
 

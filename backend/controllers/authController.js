@@ -91,7 +91,7 @@ router.post('/register', registerLimit, async (req, res) => {
 // Both routes answer the same way whether or not the account exists. That is
 // the whole point: sign-in used to reveal which addresses were registered, and
 // a reset form is exactly the same oracle if it says "no such account".
-const RESET_SENT = 'If that account exists and has a recovery email, a 6-digit code is on its way. It expires in 10 minutes.';
+const RESET_SENT = 'If that account exists and has a confirmed recovery email, a 6-digit code is on its way. It expires in 10 minutes.';
 
 const forgotLimit = rateLimit({
     name: 'auth-forgot', windowMs: 15 * 60_000, max: 5,
@@ -103,11 +103,16 @@ const resetLimit = rateLimit({
 });
 
 // An account is found by username or by its recovery email, so someone who has
-// forgotten which they used can enter either.
+// forgotten which they used can enter either. An UNverified address does not
+// identify an account: anyone can type any address into their own profile, so
+// honouring one here would let them pull a stranger's account into the flow.
 async function findAccount(identifier) {
     const value = String(identifier || '').trim();
     if (!value || value.length > 254) return null;
-    return db.get('SELECT * FROM users WHERE username = ? OR email = ?', [value, value]);
+    return db.get(
+        'SELECT * FROM users WHERE username = ? OR (email = ? AND email_verified_at IS NOT NULL)',
+        [value, value]
+    );
 }
 
 // @route   POST api/auth/forgot-password
@@ -119,8 +124,12 @@ router.post('/forgot-password', forgotLimit, async (req, res) => {
         res.json({ msg: RESET_SENT, emailConfigured: mailer.isConfigured() });
 
         if (!user) return;
-        const recipient = user.email || (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(user.username) ? user.username : null);
-        if (!recipient) return;   // nothing on file to send to
+        // Only a confirmed address, and never the username as a fallback: having
+        // registered with an address is not proof of being able to read it,
+        // and a code sent to the wrong inbox is the exact failure verification
+        // exists to prevent.
+        if (!user.email || !user.email_verified_at) return;
+        const recipient = user.email;
 
         // Six digits from a cryptographic source, never Math.random.
         const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');

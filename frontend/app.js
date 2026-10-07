@@ -1143,16 +1143,8 @@ function updateDashboardUI() {
     const sBio = document.getElementById('settings-bio');
     if (sBio) sBio.value = currentUserData?.bio || '';
     const sEmail = document.getElementById('settings-email');
-    if (sEmail) sEmail.value = currentUserData?.email || '';
-    // Say plainly when there is no way back into the account yet.
-    const emailHint = document.getElementById('settings-email-hint');
-    if (emailHint) {
-        const hasEmail = Boolean(currentUserData?.email);
-        emailHint.textContent = hasEmail
-            ? 'Where we send your code if you forget your password.'
-            : 'No recovery email set. Without one there is no way back into this account if you forget your password.';
-        emailHint.classList.toggle('field-hint-warn', !hasEmail);
-    }
+    if (sEmail && document.activeElement !== sEmail) sEmail.value = currentUserData?.email || '';
+    renderEmailState();
 
     // XP Progress Bar
     const xpPerLevel = 100;
@@ -1715,28 +1707,123 @@ document.getElementById('settings-avatar-file').addEventListener('change', (e) =
     }
 });
 
+// ── Recovery email ────────────────────────────────────────────────
+// An address only counts once a code sent to it has come back, so the screen
+// has to say which of the three states it is in: none, awaiting confirmation,
+// or confirmed. Only a confirmed one receives password reset codes.
+function renderEmailState() {
+    const hint = document.getElementById('settings-email-hint');
+    const badge = document.getElementById('settings-email-badge');
+    const sendBtn = document.getElementById('settings-email-send');
+    if (!hint || !badge) return;
+
+    const email = currentUserData?.email || '';
+    const verified = Boolean(currentUserData?.email_verified_at);
+
+    badge.hidden = !email;
+    badge.textContent = verified ? 'Confirmed' : 'Not confirmed';
+    badge.className = 'email-badge ' + (verified ? 'email-badge-verified' : 'email-badge-unverified');
+
+    if (!email) {
+        hint.textContent = 'No recovery email set. Without one there is no way back into this account if you forget your password.';
+        hint.classList.add('field-hint-warn');
+    } else if (!verified) {
+        hint.textContent = 'This address has not been confirmed yet, so it cannot receive a reset code. Send a code and enter it below.';
+        hint.classList.add('field-hint-warn');
+    } else {
+        hint.textContent = 'Confirmed. This is where your code goes if you forget your password.';
+        hint.classList.remove('field-hint-warn');
+    }
+    if (sendBtn) sendBtn.textContent = email && !verified ? 'Send code' : (email ? 'Change' : 'Send code');
+}
+
+function showEmailCodeStep(message, warn) {
+    const panel = document.getElementById('settings-email-verify');
+    const hint = document.getElementById('settings-email-verify-hint');
+    if (panel) panel.hidden = false;
+    if (hint) {
+        hint.textContent = message || '';
+        hint.classList.toggle('field-hint-warn', Boolean(warn));
+    }
+    document.getElementById('settings-email-code')?.focus();
+}
+
+safeOn('settings-email-send', 'click', async () => {
+    const btn = document.getElementById('settings-email-send');
+    const value = document.getElementById('settings-email').value.trim();
+    const hint = document.getElementById('settings-email-hint');
+    btn.disabled = true;
+    try {
+        const out = await api.requestEmailVerification(authToken, value);
+        if (!value) {
+            // Removing it needs no code, so reflect it straight away.
+            currentUserData.email = null;
+            currentUserData.email_verified_at = null;
+            document.getElementById('settings-email-verify').hidden = true;
+            renderEmailState();
+            showToast(out.msg, 'info');
+            return;
+        }
+        if (out.emailVerified) {
+            currentUserData.email = out.email;
+            currentUserData.email_verified_at = Date.now();
+            renderEmailState();
+            showToast(out.msg, 'success');
+            return;
+        }
+        showEmailCodeStep(out.msg, out.emailConfigured === false);
+    } catch (err) {
+        hint.textContent = err.message;
+        hint.classList.add('field-hint-warn');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+safeOn('settings-email-confirm', 'click', async () => {
+    const btn = document.getElementById('settings-email-confirm');
+    const code = document.getElementById('settings-email-code').value.trim();
+    btn.disabled = true;
+    try {
+        const out = await api.confirmEmailVerification(authToken, code);
+        currentUserData.email = out.email;
+        currentUserData.email_verified_at = Date.now();
+        document.getElementById('settings-email-verify').hidden = true;
+        document.getElementById('settings-email-code').value = '';
+        document.getElementById('settings-email').value = out.email;
+        renderEmailState();
+        showToast(out.msg, 'success');
+    } catch (err) {
+        const hint = document.getElementById('settings-email-verify-hint');
+        hint.textContent = err.message;
+        hint.classList.add('field-hint-warn');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
 document.getElementById('save-profile-btn').addEventListener('click', async (e) => {
     const btn = document.getElementById('save-profile-btn');
     const msg = document.getElementById('profile-status-msg');
     const newUsername = document.getElementById('settings-username').value.trim();
     const newAvatar = document.getElementById('settings-avatar-url').value;
     const newBio = document.getElementById('settings-bio').value;
-    const newEmail = document.getElementById('settings-email')?.value.trim() ?? '';
 
     msg.textContent = '';
     btn.disabled = true;
 
     try {
+        // Email is deliberately absent: it is changed through its own verified
+        // flow above, so an ordinary save cannot replace a confirmed address.
         const saved = await api.updateProfile(authToken, {
             username: newUsername,
             profile_picture: newAvatar,
-            bio: newBio,
-            email: newEmail
+            bio: newBio
         });
         // Take what the server stored, not what was typed: it lowercases the
         // address and may have rejected part of the change.
         Object.assign(currentUserData, saved.user || {
-            username: newUsername, profile_picture: newAvatar, bio: newBio, email: newEmail || null
+            username: newUsername, profile_picture: newAvatar, bio: newBio
         });
         updateDashboardUI();
         loadLeaderboard(); // Update leaderboard with new avatar
