@@ -159,3 +159,138 @@
     line-height: 1.65;
 }
 #plus .plus-role-note strong { font-weight: 750; }
+
+/* ── Usage meter ─────────────────────────────────────────────────── */
+.usage-meter {
+    background: var(--surface, var(--card-bg));
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 18px;
+}
+.usage-meter-top {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.usage-meter-plan { font-size: 14px; font-weight: 800; color: var(--text-primary); }
+.usage-meter-count { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.usage-meter-track {
+    height: 8px; border-radius: 999px; overflow: hidden;
+    background: color-mix(in srgb, var(--text-secondary) 18%, transparent);
+}
+.usage-meter-fill {
+    height: 100%; width: 0; border-radius: 999px;
+    background: linear-gradient(90deg, #2563EB, #60A5FA);
+    transition: width .6s cubic-bezier(.22,.8,.3,1);
+}
+.usage-meter-fill.is-low  { background: linear-gradient(90deg, #B45309, #F59E0B); }
+.usage-meter-fill.is-spent{ background: linear-gradient(90deg, #991B1B, #EF4444); }
+.usage-meter-note { margin: 9px 0 0; font-size: 12.5px; color: var(--text-secondary); }
+
+/* ── Secure checkout hand-off ────────────────────────────────────── */
+.gw-overlay {
+    position: fixed; inset: 0; z-index: 10000;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    background: color-mix(in srgb, #0A1120 72%, transparent);
+    backdrop-filter: blur(6px);
+    animation: gw-fade .25s ease-out;
+}
+@keyframes gw-fade { from { opacity: 0 } to { opacity: 1 } }
+
+.gw-card {
+    width: min(420px, 100%);
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 30px 26px 22px;
+    text-align: center;
+    box-shadow: 0 24px 70px -20px rgba(8,15,35,.5);
+    animation: gw-rise .35s cubic-bezier(.22,.8,.3,1);
+}
+@keyframes gw-rise { from { transform: translateY(14px) scale(.97); opacity: 0 } to { transform: none; opacity: 1 } }
+
+.gw-shield { position: relative; width: 74px; height: 74px; margin: 0 auto 16px; }
+.gw-shield-svg { width: 100%; height: 100%; overflow: visible; }
+.gw-shield-body {
+    fill: color-mix(in srgb, #2563EB 12%, transparent);
+    stroke: #2563EB; stroke-width: 2.5; stroke-linejoin: round;
+    stroke-dasharray: 200; stroke-dashoffset: 200;
+    animation: gw-draw 1.1s cubic-bezier(.4,0,.2,1) forwards;
+}
+@keyframes gw-draw { to { stroke-dashoffset: 0 } }
+.gw-shield-tick {
+    fill: none; stroke: #2563EB; stroke-width: 4;
+    stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 40; stroke-dashoffset: 40;
+    opacity: 0;
+}
+/* The tick only completes once the hand-off actually succeeds. */
+.gw-overlay.is-ready .gw-shield-tick { opacity: 1; animation: gw-draw .45s ease-out forwards; }
+.gw-overlay.is-ready .gw-shield-body { stroke: #047857; fill: color-mix(in srgb, #047857 12%, transparent); }
+.gw-overlay.is-ready .gw-shield-tick { stroke: #047857; }
+
+.gw-pulse {
+    position: absolute; inset: -6px; border-radius: 50%;
+    border: 2px solid color-mix(in srgb, #2563EB 40%, transparent);
+    animation: gw-ping 1.8s ease-out infinite;
+}
+@keyframes gw-ping {
+    0%   { transform: scale(.82); opacity: .8 }
+    70%  { transform: scale(1.18); opacity: 0 }
+    100% { opacity: 0 }
+}
+.gw-overlay.is-ready .gw-pulse { animation: none; opacity: 0; }
+
+.gw-card h2 { font-size: 19px; font-weight: 800; color: var(--text-primary); margin: 0 0 4px; }
+.gw-plan { font-size: 14px; font-weight: 700; color: var(--accent-primary); margin: 0 0 18px; }
+
+.gw-steps { list-style: none; margin: 0 0 18px; padding: 0; text-align: left; }
+.gw-steps li {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13.5px; padding: 7px 0;
+    color: var(--text-secondary);
+    opacity: .45;
+    transition: opacity .3s ease, color .3s ease;
+}
+.gw-steps li.is-active { opacity: 1; color: var(--text-primary); font-weight: 600; }
+.gw-steps li.is-done   { opacity: 1; color: var(--text-secondary); }
+.gw-dot {
+    width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto;
+    background: color-mix(in srgb, var(--text-secondary) 40%, transparent);
+    transition: background .3s ease, box-shadow .3s ease;
+}
+.gw-steps li.is-active .gw-dot {
+    background: #2563EB;
+    box-shadow: 0 0 0 4px color-mix(in srgb, #2563EB 20%, transparent);
+    animation: gw-throb 1s ease-in-out infinite;
+}
+.gw-steps li.is-done .gw-dot { background: #047857; }
+@keyframes gw-throb { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, #2563EB 8%, transparent) } }
+
+.gw-track {
+    height: 4px; border-radius: 999px; overflow: hidden; margin-bottom: 16px;
+    background: color-mix(in srgb, var(--text-secondary) 16%, transparent);
+}
+.gw-fill {
+    height: 100%; width: 0; border-radius: 999px;
+    background: linear-gradient(90deg, #2563EB, #60A5FA);
+    transition: width .5s cubic-bezier(.22,.8,.3,1);
+}
+.gw-overlay.is-ready .gw-fill { background: linear-gradient(90deg, #047857, #34D399); }
+
+.gw-foot { font-size: 12px; line-height: 1.5; color: var(--text-secondary); margin: 0 0 6px; }
+.gw-error { font-size: 12.5px; color: #B91C1C; margin: 8px 0 0; min-height: 1em; }
+[data-theme="dark"] .gw-error { color: #FCA5A5; }
+.gw-cancel {
+    margin-top: 10px; background: none; border: 0;
+    color: var(--text-secondary); font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.gw-cancel:hover { color: var(--text-primary); text-decoration: underline; }
+
+/* Someone who prefers less motion still gets the states, just not the motion. */
+@media (prefers-reduced-motion: reduce) {
+    .gw-overlay, .gw-card, .gw-shield-body, .gw-shield-tick, .gw-pulse,
+    .gw-steps li .gw-dot, .gw-fill, .usage-meter-fill { animation: none !important; transition: none !important; }
+    .gw-shield-body, .gw-shield-tick { stroke-dashoffset: 0; }
+}

@@ -89,3 +89,45 @@ test('the plan is read from the entitlement, never from the client', () => {
     assert.match(usageSrc, /FROM payment_entitlements WHERE user_id=\? AND mode=\? AND revoked=0/);
     assert.ok(!/req\.body/.test(usageSrc), 'nothing about the plan may come from the request');
 });
+
+const fe = p => fs.readFileSync(path.join(__dirname, '../../frontend', p), 'utf8');
+
+test('the checkout hand-off reports real steps, not a loading animation', () => {
+    const app = fe('app.js');
+    const handoff = app.slice(app.indexOf('function startCheckoutHandoff'), app.indexOf('async function loadUsageMeter'));
+    // The price is re-read from the server before anything is charged, so the
+    // card on screen -- which may be minutes old -- cannot set the amount.
+    assert.match(handoff, /api\.getPaymentCatalog/);
+    assert.match(handoff, /confirmed\.amount !== plan\.amount/);
+    // Each failure stops the sequence instead of running on to "done".
+    assert.match(handoff, /no longer available/);
+    assert.match(handoff, /not enabled yet/);
+    assert.match(handoff, /could not reach the payment service/);
+    assert.match(handoff, /You have not been charged/);
+    // Cancellable, and a cancel actually stops the redirect.
+    assert.match(handoff, /cancelled = true/);
+    assert.ok((handoff.match(/if \(cancelled\) return/g) || []).length >= 3);
+    assert.ok(fe('index.html').includes('id="gateway-overlay"'));
+});
+
+test('the meter shows the same numbers the server enforces', () => {
+    const app = fe('app.js');
+    assert.match(app, /async function loadUsageMeter/);
+    assert.match(app, /api\.getUsage\(authToken\)/);
+    // A meter that cannot load must not take the page down with it.
+    const meter = app.slice(app.indexOf('async function loadUsageMeter'), app.indexOf('async function loadPlusPlans'));
+    assert.match(meter, /catch\s*\{[\s\S]{0,120}box\.hidden = true/);
+});
+
+test('the pricing page no longer claims nothing is locked', () => {
+    // It said "nothing in the app is locked behind a plan". That was true when
+    // written, is now false, and is the one line a buyer would feel misled by.
+    const app = fe('app.js');
+    assert.ok(!/nothing in the app is locked behind a plan/i.test(app));
+    assert.ok(!/already available to\s*\n?\s*every account at no cost/i.test(app));
+    assert.ok(!fe('index.html').includes('Two monthly plans'));
+});
+
+test('motion is optional', () => {
+    assert.match(fe('plus.css'), /@media \(prefers-reduced-motion: reduce\)/);
+});

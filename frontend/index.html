@@ -85,6 +85,39 @@
         </div>
     </div>
 
+    <!-- Secure checkout hand-off. Each line is a real step: the plan and
+         price are re-read from the server before anything is charged, so this
+         is a progress indicator rather than a loading animation for show. -->
+    <div id="gateway-overlay" class="gw-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="gw-title">
+        <div class="gw-card">
+            <div class="gw-shield">
+                <svg viewBox="0 0 64 64" class="gw-shield-svg" aria-hidden="true">
+                    <path class="gw-shield-body" d="M32 4 L56 14 V32 C56 46 45 56 32 60 C19 56 8 46 8 32 V14 Z"/>
+                    <path class="gw-shield-tick" d="M22 32 L29 39 L43 25"/>
+                </svg>
+                <span class="gw-pulse"></span>
+            </div>
+
+            <h2 id="gw-title">Preparing secure checkout</h2>
+            <p class="gw-plan" id="gw-plan"></p>
+
+            <ol class="gw-steps" id="gw-steps">
+                <li data-gw-step="verify"><span class="gw-dot"></span>Confirming the plan and price</li>
+                <li data-gw-step="secure"><span class="gw-dot"></span>Opening an encrypted connection</li>
+                <li data-gw-step="handoff"><span class="gw-dot"></span>Handing over to the payment gateway</li>
+            </ol>
+
+            <div class="gw-track"><div class="gw-fill" id="gw-fill"></div></div>
+
+            <p class="gw-foot">
+                <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                Your card details are entered on the gateway, never here. We never see or store them.
+            </p>
+            <p class="gw-error" id="gw-error"></p>
+            <button type="button" class="gw-cancel" id="gw-cancel">Cancel</button>
+        </div>
+    </div>
+
     <!-- Password reset: ask for a code, then set a new password. -->
     <div id="reset-modal" class="auth-overlay" style="display:none;">
         <div class="auth-container glass">
@@ -1543,7 +1576,18 @@
             <section id="plus" class="section-container">
                 <div class="section-header">
                     <h2>StudyHub Plus</h2>
-                    <p>Two monthly plans. Prices come from the server, and renewal is manual — nothing is charged automatically.</p>
+                    <p>Four monthly plans. Prices come from the server, and renewal is manual — nothing is charged automatically.</p>
+                </div>
+
+                <!-- What this account has spent this month, from the same
+                     numbers the server enforces. -->
+                <div class="usage-meter" id="usage-meter" hidden>
+                    <div class="usage-meter-top">
+                        <span class="usage-meter-plan" id="usage-meter-plan">Free</span>
+                        <span class="usage-meter-count" id="usage-meter-count"></span>
+                    </div>
+                    <div class="usage-meter-track"><div class="usage-meter-fill" id="usage-meter-fill"></div></div>
+                    <p class="usage-meter-note" id="usage-meter-note"></p>
                 </div>
 
                 <div class="plus-banner" id="plus-banner"></div>

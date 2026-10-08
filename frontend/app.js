@@ -1417,6 +1417,23 @@ function refreshDashboardPanels() {
 // features is currently free for everyone. The card says so rather than
 // implying a paywall that does not exist.
 const PLUS_FEATURE_STATUS = {
+    // The tier features — each one is enforced server-side, not aspirational.
+    '10 core AI tools':                         { state: 'working', note: 'Live' },
+    '25 AI tools':                              { state: 'working', note: 'Live' },
+    'All 50 AI tools':                          { state: 'working', note: 'Live' },
+    'All 50 AI tools and every feature':        { state: 'working', note: 'Live' },
+    'AI Companion with memory':                 { state: 'working', note: 'Live' },
+    'Detailed answers and study plans':         { state: 'working', note: 'Live' },
+    '1,200 credits a month':                    { state: 'working', note: 'Live' },
+    '12,000 credits a month \u2014 10x Starter':    { state: 'working', note: 'Live' },
+    '24,000 credits a month \u2014 20x Starter':    { state: 'working', note: 'Live' },
+    '48,000 credits a month':                   { state: 'working', note: 'Live' },
+    'Everything in Starter':                    { state: 'working', note: 'Live' },
+    'Everything in Plus':                       { state: 'working', note: 'Live' },
+    'PDF, image and video summarising':         { state: 'working', note: 'Live' },
+    'Exam prep, roadmaps and the Developer Hub':{ state: 'working', note: 'Live' },
+    'Priority routing \u2014 the strongest model, first in the queue': { state: 'working', note: 'Live' },
+    'Highest limits on uploads and generation': { state: 'working', note: 'Live' },
     'AI Companion and conversation memory':     { state: 'working', note: 'Live' },
     'Exam preparation and study roadmaps':      { state: 'working', note: 'Live' },
     'All 50 AI tools':                          { state: 'working', note: 'Live' },
@@ -1433,6 +1450,116 @@ function formatMoney(paise, currency) {
     try {
         return new Intl.NumberFormat('en-IN', { style: 'currency', currency: currency || 'INR', maximumFractionDigits: 0 }).format(amount);
     } catch (e) { return `₹${amount.toLocaleString('en-IN')}`; }
+}
+
+// ── Secure checkout hand-off ──────────────────────────────────────
+// An animated interstitial, but not a decorative one: each step is a real
+// thing happening, and the sequence stops on the step that fails rather than
+// running to the end regardless. The price is re-read from the server here,
+// so what the person sees confirmed is what the server will charge.
+function startCheckoutHandoff(plan, catalog) {
+    const overlay = document.getElementById('gateway-overlay');
+    if (!overlay || !plan) {
+        // No overlay in the page for some reason: go straight there rather
+        // than leaving the button dead.
+        if (plan) window.location.href = `/checkout?plan=${encodeURIComponent(plan.id)}`;
+        return;
+    }
+
+    const fill = document.getElementById('gw-fill');
+    const errorEl = document.getElementById('gw-error');
+    const steps = [...overlay.querySelectorAll('[data-gw-step]')];
+    let cancelled = false;
+
+    const reset = () => {
+        overlay.classList.remove('is-ready');
+        steps.forEach(li => li.classList.remove('is-active', 'is-done'));
+        fill.style.width = '0%';
+        errorEl.textContent = '';
+    };
+    const close = () => { cancelled = true; overlay.style.display = 'none'; reset(); };
+    const at = (name, pct) => {
+        const index = steps.findIndex(li => li.dataset.gwStep === name);
+        steps.forEach((li, i) => {
+            li.classList.toggle('is-done', i < index);
+            li.classList.toggle('is-active', i === index);
+        });
+        fill.style.width = pct + '%';
+    };
+    const fail = (message) => {
+        errorEl.textContent = message;
+        steps.forEach(li => li.classList.remove('is-active'));
+    };
+    // Long enough to read, short enough not to feel like waiting.
+    const beat = (ms) => new Promise(r => setTimeout(r, ms));
+
+    document.getElementById('gw-plan').textContent =
+        `${plan.name} — ${formatMoney(plan.amount, plan.currency)} / ${plan.interval}`;
+    document.getElementById('gw-cancel').onclick = close;
+    reset();
+    overlay.style.display = 'flex';
+
+    (async () => {
+        try {
+            at('verify', 18);
+            // Re-read the catalogue rather than trusting the card on screen,
+            // which may have been rendered minutes ago at a different price.
+            const fresh = await api.getPaymentCatalog(authToken);
+            if (cancelled) return;
+            const confirmed = (fresh.plans || []).find(p => p.id === plan.id);
+            if (!confirmed) return fail('That plan is no longer available.');
+            if (!fresh.enabled) return fail('Checkout is not enabled yet. You have not been charged.');
+            if (confirmed.amount !== plan.amount) {
+                document.getElementById('gw-plan').textContent =
+                    `${confirmed.name} — ${formatMoney(confirmed.amount, confirmed.currency)} / ${confirmed.interval}`;
+            }
+            steps[0].classList.add('is-done');
+
+            await beat(420); if (cancelled) return;
+            at('secure', 62);
+            // The gateway is only ever reached over TLS; say so when it is true
+            // rather than claiming it unconditionally.
+            if (location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(location.hostname)) {
+                return fail('This page is not on a secure connection, so checkout was stopped.');
+            }
+
+            await beat(420); if (cancelled) return;
+            at('handoff', 100);
+            overlay.classList.add('is-ready');
+            document.getElementById('gw-title').textContent = 'Opening the payment gateway';
+
+            await beat(520); if (cancelled) return;
+            window.location.href = `/checkout?plan=${encodeURIComponent(confirmed.id)}`;
+        } catch (err) {
+            if (!cancelled) fail('We could not reach the payment service. You have not been charged.');
+        }
+    })();
+}
+
+// ── Usage meter ───────────────────────────────────────────────────
+// The same numbers the server enforces, so the bar and the limit can never
+// disagree about how much is left.
+async function loadUsageMeter() {
+    const box = document.getElementById('usage-meter');
+    if (!box || !authToken) return;
+    try {
+        const u = await api.getUsage(authToken);
+        if (!u.enforced) { box.hidden = true; return; }
+        const pct = u.allowance ? Math.min(100, Math.round(u.used / u.allowance * 100)) : 0;
+        document.getElementById('usage-meter-plan').textContent = `${u.label} plan · ${u.toolCount} tools`;
+        document.getElementById('usage-meter-count').textContent =
+            `${u.used.toLocaleString()} of ${u.allowance.toLocaleString()} credits used`;
+        const fill = document.getElementById('usage-meter-fill');
+        fill.style.width = pct + '%';
+        fill.classList.toggle('is-low', pct >= 80 && pct < 100);
+        fill.classList.toggle('is-spent', pct >= 100);
+        document.getElementById('usage-meter-note').textContent = u.remaining === 0
+            ? 'You have used this month\u2019s allowance. It resets at the start of next month, or upgrade for more.'
+            : `${u.remaining.toLocaleString()} credits left this month. Resets at the start of ${new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1)).toLocaleString(undefined, { month: 'long' })}.`;
+        box.hidden = false;
+    } catch {
+        box.hidden = true;   // never let a meter failure block the page
+    }
 }
 
 async function loadPlusPlans() {
@@ -1472,15 +1599,15 @@ async function loadPlusPlans() {
     const roleNote = document.getElementById('plus-role-note');
     if (roleNote) {
         if (myRole && !anyPlanForMe) {
-            roleNote.innerHTML = `You are signed in as a <strong>${escapeHtml(myRole)}</strong> account.
-                Plus is sold to student and developer workspaces, so neither plan can be bought from here.
-                Nothing in StudyHub is locked behind a plan, so this account already has every feature —
-                sign in to your student account if you want a Plus subscription on it.`;
+            roleNote.innerHTML = `You are signed in as a <strong>${escapeHtml(myRole)}</strong> account,
+                and no plan on sale here applies to it. Sign in to the account you want the plan on.`;
             roleNote.style.display = '';
         } else {
             roleNote.style.display = 'none';
         }
     }
+
+    loadUsageMeter();
 
     grid.innerHTML = '';
     for (const plan of catalog.plans || []) {
@@ -1519,20 +1646,22 @@ async function loadPlusPlans() {
 
     grid.querySelectorAll('[data-plus-plan]').forEach(btn => {
         btn.addEventListener('click', () => {
-            // The billing page owns checkout; it reads the plan from the URL.
             const plan = btn.getAttribute('data-plus-plan');
             // An active plan goes to the history page; anything else starts checkout.
-            window.location.href = currentPlan === plan
-                ? '/billing'
-                : `/checkout?plan=${encodeURIComponent(plan)}`;
+            if (currentPlan === plan) { window.location.href = '/billing'; return; }
+            const chosen = (catalog.plans || []).find(p => p.id === plan);
+            startCheckoutHandoff(chosen, catalog);
         });
     });
 
     if (note) {
-        note.innerHTML = `<strong>What Plus does today.</strong> Every feature listed above is already available to
-            every account at no cost — nothing in the app is locked behind a plan. Plus is a way to support the
-            project and keep a monthly subscription record; it does not unlock features that are currently
-            restricted, because none are. Renewal is manual: you are never charged automatically.
+        // This used to say nothing was locked behind a plan. That was true when
+        // it was written and is not any more, and it is the one sentence a
+        // buyer would feel misled by.
+        note.innerHTML = `<strong>What a plan gives you.</strong> Each tier opens a set of AI tools and a monthly
+            credit allowance, both enforced by the server. Credits are spent according to how much work a
+            request takes: a short answer costs 1, a detailed one 8, an image 15. Unused credits do not carry
+            over. Renewal is manual — you are never charged automatically, and nothing is stored from your card.
             ${catalog.mode === 'test' ? ' Checkout is not live yet.' : ''}`;
     }
 
