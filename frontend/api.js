@@ -439,6 +439,52 @@ const api = {
         return res.json();
     },
 
+    // The answer as it is written. onDelta fires per fragment; the promise
+    // resolves with the finished text. It REJECTS before any text has arrived
+    // so the caller can fall back to the whole-answer route; once words are on
+    // screen, restarting the answer in front of the student would be worse
+    // than finishing with what came through.
+    streamAI: async (token, { prompt, systemMessage, threadId }, { onStart, onDelta, onSuggestions } = {}) => {
+        const res = await fetch(`${API_BASE_URL}/ai/stream`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, systemMessage, threadId })
+        });
+        if (!res.ok || !res.body) throw new Error('stream unavailable');
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '', answer = '', threadOut = threadId, failedEarly = false;
+
+        for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            // SSE frames are separated by a blank line; a partial frame stays
+            // in the buffer until the rest of it arrives.
+            let cut;
+            while ((cut = buffer.indexOf('\n\n')) !== -1) {
+                const frame = buffer.slice(0, cut);
+                buffer = buffer.slice(cut + 2);
+                let event = 'message', data = '';
+                for (const line of frame.split('\n')) {
+                    if (line.startsWith('event:')) event = line.slice(6).trim();
+                    else if (line.startsWith('data:')) data += line.slice(5);
+                }
+                if (!data) continue;
+                let payload; try { payload = JSON.parse(data); } catch { continue; }
+                if (event === 'start') onStart && onStart(payload);
+                else if (event === 'delta') { answer += payload.t; onDelta && onDelta(payload.t, answer); }
+                else if (event === 'suggestions') onSuggestions && onSuggestions(payload.questions || []);
+                else if (event === 'done') threadOut = payload.threadId || threadOut;
+                else if (event === 'error') failedEarly = true;
+            }
+        }
+        if (failedEarly && !answer) throw new Error('stream failed before any output');
+        if (!answer) throw new Error('stream produced nothing');
+        return { result: answer, threadId: threadOut, streamed: true };
+    },
+
     generateAIChat: async (token, messages, systemMessage, model) => {
         const res = await fetch(`${API_BASE_URL}/ai/generate`, {
             method: 'POST',

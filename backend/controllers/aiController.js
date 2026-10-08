@@ -1231,4 +1231,166 @@ router.post('/tts', auth, async (req, res) => {
     }
 });
 
+// ── POST /api/ai/stream ───────────────────────────────────────────
+// The answer as it is written, rather than after it is finished.
+//
+// /generate waits for the whole reply, and the client then ran a typewriter
+// animation over text it already had — so a student sat looking at nothing for
+// about eight seconds and then watched a pretend one. The words are predicted
+// one at a time either way; this sends them out as they arrive, which is both
+// the honest version of that animation and the largest speed improvement
+// available without changing models.
+//
+// Deliberately separate from /generate. That route carries the tool router,
+// the library, video suggestions and a multi-model fallback ladder, and
+// threading streaming through all of it would put every one of those paths at
+// risk for one feature. The client falls back to /generate whenever this
+// cannot serve, so nothing is lost when it does.
+router.post('/stream', auth, async (req, res) => {
+    const { prompt, systemMessage, threadId, useMemory = true } = req.body || {};
+    if (typeof prompt !== 'string' || !prompt.trim()) {
+        return res.status(400).json({ msg: 'Prompt is required' });
+    }
+
+    // Same gate and the same charge as the non-streaming route: a cheaper code
+    // path must not be a cheaper price.
+    const brainDepth = aiBrain.depthOf(prompt);
+    if (await meter(req, res, { depth: brainDepth }) === false) return;
+
+    let thread = null;
+    if (threadId) {
+        thread = await db.get('SELECT * FROM chat_threads WHERE id = ? AND user_id = ?', [threadId, req.user.id]);
+        if (!thread) return res.status(404).json({ msg: 'Conversation not found. Start a new chat.' });
+    }
+
+    // The same context the whole app shares: who this student is, what they
+    // have told us before, and what they keep getting wrong.
+    const brainCtx = await (async () => {
+        const [facts, weakTopics] = await Promise.all([
+            getFacts(req.user.id).catch(() => []),
+            require('../services/studyMemory').getWeakTopics(req.user.id).catch(() => [])
+        ]);
+        const fact = k => (facts.find(f => f.mem_key === k) || {}).mem_value || null;
+        const syllabus = new Set(['board', 'class', 'subject']);
+        return {
+            prompt, depth: brainDepth,
+            profile: { classLevel: fact('class'), board: fact('board') },
+            topic: fact('subject') || '',
+            facts: facts.filter(f => !syllabus.has(f.mem_key)).map(f => `${f.mem_key}: ${f.mem_value}`),
+            weakTopics: (weakTopics || []).map(w => typeof w === 'string' ? w : w.topic).filter(Boolean)
+        };
+    })().catch(() => ({ depth: brainDepth, prompt }));
+
+    const apiMessages = buildMessages(prompt, systemMessage, null, brainCtx);
+    if (thread) {
+        const past = await db.all(
+            'SELECT role, content FROM chat_messages WHERE thread_id = ? ORDER BY id DESC LIMIT ?',
+            [thread.id, HISTORY_TURNS]
+        );
+        past.reverse();
+        // History goes between the system message and the new question, so the
+        // model reads the conversation in the order it happened.
+        const system = apiMessages.filter(m => m.role === 'system');
+        const latest = apiMessages.filter(m => m.role !== 'system');
+        apiMessages.length = 0;
+        apiMessages.push(...system, ...past.map(m => ({ role: m.role, content: m.content })), ...latest);
+    }
+
+    const priority = ent.enforced() ? ent.tierOf(await usage.planOf(req.user.id)).priority : false;
+    const budget = aiBrain.BUDGET[brainDepth] || 2000;
+
+    res.set({
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        // nginx buffers proxied responses by default, which would hold every
+        // token back until the end and undo the whole point of this route.
+        'X-Accel-Buffering': 'no'
+    });
+    res.flushHeaders?.();
+
+    const send = (event, data) => {
+        if (res.writableEnded) return;
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    let answer = '';
+    // Whether the STUDENT went away, which is the only reason to stop work.
+    // This watched req's 'close', but in current Node that also fires once the
+    // request body has simply finished being read -- so the flag turned true
+    // while the answer was still streaming and the follow-up suggestions were
+    // silently dropped about half the time. A close on the RESPONSE that we
+    // did not cause is a real disconnect.
+    let closed = false;
+    res.on('close', () => { if (!res.writableEnded) closed = true; });
+
+    try {
+        if (!groq) throw new Error('No streaming provider configured');
+        const model = priority ? (GROQ_TASK_MODELS.reasoning || DEFAULT_GROQ_MODEL) : DEFAULT_GROQ_MODEL;
+        send('start', { model, depth: brainDepth });
+
+        const completion = await groq.chat.completions.create({
+            model,
+            messages: apiMessages.map(m => ({ role: m.role, content: m.content })),
+            max_tokens: budget,
+            temperature: 0.7,
+            stream: true
+        });
+
+        for await (const chunk of completion) {
+            if (closed) break;
+            const delta = chunk.choices?.[0]?.delta?.content || '';
+            if (!delta) continue;
+            answer += delta;
+            send('delta', { t: delta });
+        }
+    } catch (err) {
+        console.warn('[AI] stream failed:', err.message);
+        // Nothing has been shown yet, so the client can fall back cleanly to
+        // /generate. Once tokens are out, falling back would restart the answer
+        // in front of the student, so the partial answer is kept instead.
+        if (!answer) { send('error', { retry: true, msg: 'Streaming unavailable' }); return res.end(); }
+    }
+
+    if (closed) return res.end();
+
+    try {
+        if (thread && answer) await appendTurn(thread, req.user.id, prompt, answer);
+    } catch (err) {
+        console.warn('[AI] stream could not save the turn:', err.message);
+    }
+
+    send('done', { threadId: thread?.id || null, length: answer.length });
+
+    // Suggested next questions, sent AFTER done so they never delay the answer.
+    // A small, cheap call — and if it fails, the answer is already delivered.
+    try {
+        if (groq && answer.length > 120 && !closed) {
+            const s = await groq.chat.completions.create({
+                model: GROQ_TASK_MODELS.fast || DEFAULT_GROQ_MODEL,
+                messages: [
+                    { role: 'system', content: 'Return ONLY a JSON array of exactly 3 short follow-up questions a student would genuinely ask next. Each under 60 characters, no numbering, no markdown.' },
+                    { role: 'user', content: `Question: ${prompt}\n\nAnswer: ${answer.slice(0, 1500)}` }
+                ],
+                // The gpt-oss models spend tokens on hidden reasoning before
+                // they write anything. At 160 the budget was sometimes gone
+                // before the content started, so this returned an empty string
+                // with finish_reason 'length' -- no error, no event, and
+                // suggestions that appeared only about half the time.
+                max_tokens: 600, temperature: 0.4
+            });
+            const raw = s.choices?.[0]?.message?.content || '';
+            const match = raw.match(/\[[\s\S]*\]/);
+            const list = match ? JSON.parse(match[0]) : [];
+            const clean = (Array.isArray(list) ? list : [])
+                .filter(q => typeof q === 'string' && q.trim().length > 4)
+                .map(q => q.trim().slice(0, 90)).slice(0, 3);
+            if (clean.length && !closed) send('suggestions', { questions: clean });
+            else if (!clean.length) console.warn('[AI] no usable follow-ups:', JSON.stringify(raw.slice(0, 80)));
+        }
+    } catch (err) { console.warn('[AI] follow-up suggestions failed:', err.message); }
+
+    res.end();
+});
+
 module.exports = router;

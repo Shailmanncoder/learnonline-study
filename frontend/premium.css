@@ -4123,3 +4123,47 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
 @media (max-width: 640px) {
     .teacher-sidebar { max-height: calc(100dvh - 56px); }
 }
+
+/* ── Predicted next questions ─────────────────────────────────────
+   Generated from the answer that was actually given, so they follow the
+   conversation rather than the topic in the abstract. */
+.grok-next {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+.grok-next-label {
+    font-size: 11px; font-weight: 800; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--text-secondary);
+    margin-right: 2px;
+}
+.grok-next-chip {
+    border: 1px solid var(--border-color);
+    background: var(--surface, var(--card-bg));
+    color: var(--text-primary);
+    border-radius: 999px;
+    padding: 7px 13px;
+    font-size: 12.5px; font-weight: 600;
+    cursor: pointer; text-align: left;
+    transition: border-color .15s ease, transform .15s ease;
+}
+.grok-next-chip:hover { border-color: var(--accent-primary); transform: translateY(-1px); }
+.grok-next-chip:active { transform: none; }
+
+/* The answer while it is still being written. */
+.grok-stream-body {
+    white-space: pre-wrap;
+    animation: grok-stream-in .2s ease-out;
+}
+.grok-stream-body::after {
+    content: '';
+    display: inline-block; width: 7px; height: 1.05em;
+    margin-left: 2px; vertical-align: text-bottom;
+    background: var(--accent-primary);
+    animation: grok-caret 1s steps(2) infinite;
+}
+@keyframes grok-caret { 50% { opacity: 0 } }
+@keyframes grok-stream-in { from { opacity: .4 } to { opacity: 1 } }
+@media (prefers-reduced-motion: reduce) {
+    .grok-stream-body, .grok-stream-body::after, .grok-next-chip { animation: none !important; transition: none !important; }
+}

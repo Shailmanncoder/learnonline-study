@@ -5741,12 +5741,55 @@ async function sendGrokMessage() {
             systemPrompt = "You are a Socratic tutor. Guide the student to understanding by asking insightful leading questions, breaking concepts into smaller pieces, and validating their intuition.";
         }
 
-        const res = await api.generateAI(authToken, promptToSend, systemPrompt, currentModelChoice(), {
-            threadId: sendingThreadId,
-            task: tutorMode === 'research' ? 'research' : undefined,
-            useMemory: true,
-            requestId
-        });
+        // Stream the ordinary case. Research, maths routing, web lookups and
+        // slash commands all run through /generate's tool router, which the
+        // streaming route deliberately does not carry, so those keep the whole
+        // -answer path. Anything that goes wrong before the first word falls
+        // back to it too, so this can only add speed, never take an answer away.
+        let res = null;
+        const canStream = !isSearchCmd && !isStemQuery && tutorMode !== 'research'
+            && !text.trim().startsWith('/') && currentModelChoice() === 'auto';
+        let streamSuggestions = [];
+        if (canStream) {
+            try {
+                res = await api.streamAI(authToken,
+                    { prompt: promptToSend, systemMessage: systemPrompt, threadId: sendingThreadId },
+                    {
+                        onStart: () => {
+                            // The working panel has done its job the moment real
+                            // words start arriving.
+                            const live = document.getElementById(`live-${msgId}`);
+                            if (live) live.style.display = 'none';
+                            const bubble = document.getElementById(msgId);
+                            if (bubble && !bubble.querySelector('.grok-stream-body')) {
+                                const body = document.createElement('div');
+                                body.className = 'grok-response-body grok-stream-body';
+                                bubble.appendChild(body);
+                            }
+                        },
+                        onDelta: (_, whole) => {
+                            const body = document.querySelector(`#${msgId} .grok-stream-body`);
+                            if (!body) return;
+                            // Plain text while it streams: half-written markdown
+                            // renders as broken markup, and re-parsing on every
+                            // fragment is wasteful. It is rendered properly once.
+                            body.textContent = whole;
+                            grokChatStream.scrollTop = grokChatStream.scrollHeight;
+                        },
+                        onSuggestions: (qs) => { streamSuggestions = qs; }
+                    });
+            } catch (streamErr) {
+                res = null;   // fall through to the whole-answer route
+            }
+        }
+        if (!res) {
+            res = await api.generateAI(authToken, promptToSend, systemPrompt, currentModelChoice(), {
+                threadId: sendingThreadId,
+                task: tutorMode === 'research' ? 'research' : undefined,
+                useMemory: true,
+                requestId
+            });
+        }
         // Do not change the selected conversation when an older request finishes.
         clearInterval(timerInterval);
         stopLiveSteps();
@@ -5845,6 +5888,26 @@ async function sendGrokMessage() {
         // The tutor answers maths in LaTeX; without this it renders as raw
         // "$$\frac{\sin i}{\sin r}$$" in the bubble.
         renderChatMath(bubbleEl);
+
+        // Predicted next questions. Generated from the answer that was actually
+        // given, so they follow the conversation rather than the topic in the
+        // abstract. Clicking one asks it.
+        if (streamSuggestions && streamSuggestions.length) {
+            const wrap = document.createElement('div');
+            wrap.className = 'grok-next';
+            wrap.innerHTML = `<span class="grok-next-label">Ask next</span>` +
+                streamSuggestions.map(q =>
+                    `<button type="button" class="grok-next-chip">${escapeHtml(q)}</button>`).join('');
+            wrap.querySelectorAll('.grok-next-chip').forEach((chip, i) => {
+                chip.addEventListener('click', () => {
+                    if (companionSending) return;
+                    grokChatInput.value = streamSuggestions[i];
+                    grokChatInput.focus();
+                    sendGrokMessage();
+                });
+            });
+            bubbleEl.appendChild(wrap);
+        }
         if (window.SourceLibraryUI) window.SourceLibraryUI.wire(bubbleEl);
         if (window.ChatToolsUI) window.ChatToolsUI.wire(bubbleEl);
 
