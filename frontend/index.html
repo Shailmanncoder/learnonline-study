@@ -756,6 +756,15 @@
 
                 <div class="topbar-actions">
 
+                    <!-- Always visible, because a credit you cannot see is one
+                         you cannot plan around. Opens the plans. -->
+                    <button type="button" class="credit-chip" id="credit-chip" hidden
+                            title="Credits left this month">
+                        <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+                        <span class="credit-chip-num" id="credit-chip-num">—</span>
+                        <span class="credit-chip-unit">credits</span>
+                    </button>
+
                     <button class="icon-btn theme-toggle-btn" id="theme-toggle" title="Toggle Theme">
                         <i class="fa-solid fa-sun" id="theme-icon"></i>
                     </button>
@@ -1590,6 +1599,7 @@
                     <p class="usage-meter-note" id="usage-meter-note"></p>
                 </div>
 
+                <p class="plus-free-note" id="plus-free-note" hidden></p>
                 <div class="plus-banner" id="plus-banner"></div>
                 <div class="plus-role-note" id="plus-role-note" style="display:none;"></div>
 

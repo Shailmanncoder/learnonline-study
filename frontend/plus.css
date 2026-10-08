@@ -294,3 +294,18 @@
     .gw-steps li .gw-dot, .gw-fill, .usage-meter-fill { animation: none !important; transition: none !important; }
     .gw-shield-body, .gw-shield-tick { stroke-dashoffset: 0; }
 }
+
+/* What a plan actually grants, stated next to the price rather than buried
+   inside a feature sentence. */
+.plus-grant {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 10px 12px; margin: 2px 0 10px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+}
+.plus-grant-main { font-size: 15px; font-weight: 800; color: var(--text-primary); }
+.plus-grant-sub  { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.plus-free-note {
+    margin: 0 0 14px; font-size: 13px; line-height: 1.55;
+    color: var(--text-secondary);
+}

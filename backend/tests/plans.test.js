@@ -159,3 +159,31 @@ test('Max actually gets the priority routing it is sold', () => {
     const aiSrc = fs.readFileSync(path.join(__dirname, '../controllers/aiController.js'), 'utf8');
     assert.match(aiSrc, /ent\.tierOf\(await usage\.planOf\(req\.user\.id\)\)\.priority/);
 });
+
+test('credits are visible without going to the pricing page', () => {
+    // The balance lived only on the plans screen, so it was invisible exactly
+    // while it was being spent.
+    const app = fe('app.js');
+    assert.ok(fe('index.html').includes('id="credit-chip"'), 'the topbar needs the balance');
+    assert.match(app, /async function refreshCredits/);
+    // Refreshed after the things that actually cost credits, not only at load.
+    assert.match(app, /refreshCredits\(\{ pulse: true \}\);\s*\n\s*const xpRes = await api\.addXp/, 'after a tool run');
+    assert.match(app, /companionSending = false;\s*\n\s*refreshCredits\(\{ pulse: true \}\)/, 'after a chat turn');
+    assert.ok((app.match(/refreshCredits\(\)/g) || []).length >= 2, 'and on sign-in');
+    // A balance that cannot load must never take a page down with it.
+    const fn = app.slice(app.indexOf('async function refreshCredits'), app.indexOf('safeOn(\'credit-chip\''));
+    assert.match(fn, /catch \{[\s\S]{0,120}chip\.hidden = true/);
+});
+
+test('the catalogue states what each plan grants, not just its price', () => {
+    // The credit figures existed only inside a feature sentence, so nothing on
+    // screen could state them exactly or turn them into questions.
+    const service = fs.readFileSync(path.join(__dirname, '../payments/service.js'), 'utf8');
+    assert.match(service, /credits:tier\.credits/);
+    assert.match(service, /questions:Math\.floor\(tier\.credits\/perQuestion\)/);
+    assert.match(service, /freeCredits:ent\.tiers\(\)\.free\.credits/);
+    // Derived from entitlements, so the advertised figure cannot drift from
+    // the one that is enforced.
+    assert.match(service, /require\('\.\.\/services\/entitlements'\)/);
+    assert.match(fe('app.js'), /plan\.credits\.toLocaleString\(\)/);
+});

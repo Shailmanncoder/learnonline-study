@@ -243,6 +243,7 @@ async function initApp() {
             // Needs the account loaded first: the remembered choice is keyed
             // per account so one student's preference is not another's.
             loadAiModelPicker();
+            refreshCredits();
         } catch (err) {
             console.error(err);
             if (err.status === 401 || err.status === 403) {
@@ -279,7 +280,7 @@ function showApp() {
     // routes and shows the splash but never rendered the account — so a new
     // account saw the markup's placeholder name for the whole session, and it
     // only corrected itself if they happened to refresh.
-    updateDashboardUI();renderActivity();loadTools();loadNotes();loadAiModelPicker();
+    updateDashboardUI();renderActivity();loadTools();loadNotes();loadAiModelPicker();refreshCredits();
     refreshDashboardPanels();
     loadPlusPlans();
     showWelcomeSplash();
@@ -1536,6 +1537,48 @@ function startCheckoutHandoff(plan, catalog) {
     })();
 }
 
+// ── Credits, wherever you are ─────────────────────────────────────
+// The balance lived only on the pricing page, so it was invisible exactly
+// while it was being spent. This sits in the topbar on every screen and is
+// refreshed after anything that costs credits.
+let creditState = null;
+
+async function refreshCredits({ pulse = false } = {}) {
+    const chip = document.getElementById('credit-chip');
+    if (!chip || !authToken) return;
+    try {
+        const u = await api.getUsage(authToken);
+        creditState = u;
+        if (!u.enforced) { chip.hidden = true; return; }
+
+        const num = document.getElementById('credit-chip-num');
+        if (num) num.textContent = u.remaining.toLocaleString();
+        const spent = u.remaining === 0;
+        const low = !spent && u.allowance > 0 && u.remaining / u.allowance <= 0.2;
+        chip.classList.toggle('is-low', low);
+        chip.classList.toggle('is-spent', spent);
+
+        const perQuestion = (u.costs && u.costs.question) || 10;
+        chip.title = spent
+            ? `No credits left on ${u.label}. They reset at the start of next month.`
+            : `${u.remaining.toLocaleString()} of ${u.allowance.toLocaleString()} credits left on ${u.label}` +
+              ` — about ${Math.floor(u.remaining / perQuestion)} more questions. A question costs ${perQuestion}.`;
+        chip.hidden = false;
+
+        if (pulse) {
+            chip.classList.remove('is-pulse');
+            void chip.offsetWidth;          // restart the animation
+            chip.classList.add('is-pulse');
+        }
+        // Keep the fuller meter on the plans page in step with the chip.
+        if (typeof loadUsageMeter === 'function' && !document.getElementById('usage-meter')?.hidden) loadUsageMeter();
+    } catch {
+        chip.hidden = true;   // never let the balance break a page
+    }
+}
+
+safeOn('credit-chip', 'click', () => navigateToSection('plus', true));
+
 // ── Usage meter ───────────────────────────────────────────────────
 // The same numbers the server enforces, so the bar and the limit can never
 // disagree about how much is left.
@@ -1609,6 +1652,16 @@ async function loadPlusPlans() {
 
     loadUsageMeter();
 
+    // What you get without paying anything, stated next to what you would be
+    // buying. Taken from the server so it can never drift from what is enforced.
+    const freeNote = document.getElementById('plus-free-note');
+    if (freeNote && Number.isFinite(catalog.freeCredits)) {
+        freeNote.textContent = `Without a plan you get ${catalog.freeCredits.toLocaleString()} credits a month`
+            + ` — about ${catalog.freeQuestions} questions — and ${catalog.freeTools} tools.`
+            + ` A question costs ${catalog.perQuestion} credits on every plan.`;
+        freeNote.hidden = false;
+    }
+
     grid.innerHTML = '';
     for (const plan of catalog.plans || []) {
         const card = document.createElement('div');
@@ -1632,6 +1685,11 @@ async function loadPlusPlans() {
                 ${currentPlan === plan.id ? '<span class="plus-current-pill">Your plan</span>' : ''}
             </div>
             <div class="plus-price">${escapeHtml(formatMoney(plan.amount, plan.currency))}<small>/ ${escapeHtml(plan.interval)}</small></div>
+            ${Number.isFinite(plan.credits) ? `
+            <div class="plus-grant">
+                <span class="plus-grant-main">${plan.credits.toLocaleString()} credits</span>
+                <span class="plus-grant-sub">about ${plan.questions.toLocaleString()} questions · ${plan.toolCount} tools</span>
+            </div>` : ''}
             <p class="plus-renewal">Renew manually each month. No automatic charge, no saved mandate.</p>
             <ul class="plus-features">${features}</ul>
             <button class="plus-cta${currentPlan === plan.id ? ' is-secondary' : ''}" data-plus-plan="${escapeHtml(plan.id)}"
@@ -2501,6 +2559,7 @@ document.getElementById('run-tool-btn').addEventListener('click', async () => {
         // Keep newest content visible for long solutions.
         outputArea.scrollTop = 0;
         
+        refreshCredits({ pulse: true });
         const xpRes = await api.addXp(authToken, 10, 1, currentActiveTool.name);
         applyXpResult(xpRes);
         recordActivity(currentActiveTool.name, currentActiveTool.icon, 10);
@@ -6005,6 +6064,7 @@ async function sendGrokMessage() {
     }
 
     companionSending = false;
+    refreshCredits({ pulse: true });
     grokChatStream.scrollTop = grokChatStream.scrollHeight;
 }
 

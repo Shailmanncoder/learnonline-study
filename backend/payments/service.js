@@ -33,7 +33,19 @@ async function catalog(user) {
  await ready();
  const subscription = user ? await db.get('SELECT id,plan_id,status,starts_at,ends_at,cancel_at_period_end FROM payment_subscriptions WHERE user_id=? AND mode=?',[user.id,c.mode]) : null;
  const entitlement = user ? await db.get('SELECT plan_id,ends_at FROM payment_entitlements WHERE user_id=? AND mode=? AND revoked=0 AND ends_at>? ORDER BY ends_at DESC LIMIT 1',[user.id,c.mode,now()]) : null;
- return {mode:c.mode,enabled:c.enabled,plans:Object.values(plans),taxBps:c.taxBps,taxIncluded:true,seller:c.seller,renewal:c.renewal,emailEnabled:c.emailEnabled,isAdmin:admin(user),
+ // What each plan GRANTS, alongside what it costs. The pricing page used to
+ // carry the credit figures only inside a feature sentence, so nothing on
+ // screen could state them exactly or convert them into questions.
+ const ent=require('../services/entitlements');
+ const perQuestion=ent.costOf('question');
+ const priced=Object.values(plans).map(p=>{
+  const tier=ent.tierOf(p.tier||p.id);
+  return {...p, credits:tier.credits, questions:Math.floor(tier.credits/perQuestion),
+          toolCount:tier.tools==='all'?ent.TOOL_ORDER.length:tier.tools, priority:tier.priority};
+ });
+ return {mode:c.mode,enabled:c.enabled,plans:priced,perQuestion,
+  freeCredits:ent.tiers().free.credits, freeQuestions:Math.floor(ent.tiers().free.credits/perQuestion),
+  freeTools:ent.tiers().free.tools, taxBps:c.taxBps,taxIncluded:true,seller:c.seller,renewal:c.renewal,emailEnabled:c.emailEnabled,isAdmin:admin(user),
   provider:c.provider, simulated:c.simulated, environmentLabel:c.environmentLabel,
   subscription: subscription || null,
   entitlement: entitlement || null,
