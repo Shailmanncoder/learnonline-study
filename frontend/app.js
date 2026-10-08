@@ -2,6 +2,7 @@
 let authToken = localStorage.getItem('authToken');
 let currentUserData = null;
 let currentActiveTool = null;
+let lastToolInputs = null;
 
 // DOM Elements
 const authModal = document.getElementById('auth-modal');
@@ -2269,6 +2270,10 @@ function optionForClass(options, classValue) {
 
 function openTool(tool, updateUrl = true) {
     currentActiveTool = tool;
+    lastToolInputs = null;
+    // Past runs of THIS tool, loaded as it opens.
+    document.getElementById('tool-runs')?.setAttribute('hidden', '');
+    loadToolRuns();
     sections.forEach(s => s.classList.remove('active'));
     document.getElementById('active-tool').classList.add('active');
     if (updateUrl) syncUrl(`/tool/${tool.id}`);
@@ -2460,6 +2465,81 @@ document.getElementById('back-to-tools').addEventListener('click', () => {
     document.querySelector('.nav-item[data-target="tools"]').classList.add('active');
 });
 
+// ── Past runs of a tool ───────────────────────────────────────────
+// The inputs kept beside the output, so a run can be reopened and repeated
+// without retyping the form. This is the thing a tool has that asking the
+// same question in the Companion does not.
+async function loadToolRuns() {
+    const box = document.getElementById('tool-runs');
+    const list = document.getElementById('tool-runs-list');
+    if (!box || !list || !currentActiveTool || !authToken) return;
+    const toolId = currentActiveTool.id;
+    try {
+        const { runs } = await api.getToolRuns(authToken, toolId);
+        // The tool may have been switched while this was in flight.
+        if (!currentActiveTool || currentActiveTool.id !== toolId) return;
+        list.innerHTML = '';
+        if (!runs.length) {
+            list.innerHTML = '<p class="tool-runs-empty">Nothing yet. Runs of this tool are saved here so you can reopen or repeat them.</p>';
+            box.hidden = false;
+            return;
+        }
+        for (const run of runs) {
+            // Summarise by the first input the person actually filled in.
+            const firstValue = run.inputs
+                ? Object.values(run.inputs).map(v => String(v || '').trim()).find(v => v.length > 1)
+                : null;
+            const summary = (firstValue || run.output || '').replace(/\s+/g, ' ').slice(0, 80) || 'Untitled run';
+
+            const row = document.createElement('div');
+            row.className = 'tool-run';
+            row.innerHTML = `
+                <div class="tool-run-main" role="button" tabindex="0">
+                    <span class="tool-run-summary">${escapeHtml(summary)}</span>
+                    <span class="tool-run-when">${escapeHtml(new Date(run.createdAt).toLocaleString())}</span>
+                </div>
+                <button type="button" class="tool-run-act" title="Fill the form with these inputs"><i class="fa-solid fa-rotate-right"></i></button>
+                <button type="button" class="tool-run-act is-danger" title="Delete this run"><i class="fa-regular fa-trash-can"></i></button>`;
+
+            const reopen = () => {
+                const out = document.getElementById('tool-output');
+                if (out) renderOutputWithMath(out, run.output);
+                applyRunInputs(run.inputs);
+            };
+            const main = row.querySelector('.tool-run-main');
+            main.addEventListener('click', reopen);
+            main.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); reopen(); } });
+
+            const [again, remove] = row.querySelectorAll('.tool-run-act');
+            again.addEventListener('click', () => {
+                applyRunInputs(run.inputs);
+                document.getElementById('run-tool-btn')?.click();
+            });
+            remove.addEventListener('click', async () => {
+                remove.disabled = true;
+                try { await api.deleteToolRun(authToken, run.id); row.remove();
+                      if (!list.children.length) loadToolRuns(); }
+                catch { remove.disabled = false; showToast('Could not delete that run.', 'error'); }
+            });
+            list.appendChild(row);
+        }
+        box.hidden = false;
+    } catch {
+        box.hidden = true;   // never let history break the tool itself
+    }
+}
+
+// Put a saved run's values back into the form.
+function applyRunInputs(inputs) {
+    if (!inputs || typeof inputs !== 'object') return;
+    for (const [id, value] of Object.entries(inputs)) {
+        const el = document.getElementById(`input-${id}`);
+        // A file input cannot be refilled from saved text, and setting .value
+        // on one throws in every browser.
+        if (el && el.type !== 'file') el.value = value ?? '';
+    }
+}
+
 // Run AI Tool
 document.getElementById('run-tool-btn').addEventListener('click', async () => {
     if (!currentActiveTool || !authToken) return;
@@ -2482,10 +2562,12 @@ document.getElementById('run-tool-btn').addEventListener('click', async () => {
             }
         }
         fullPrompt = currentActiveTool.promptTemplate(vals);
+        lastToolInputs = vals;
     } else {
         const input = document.getElementById('tool-input').value;
         if (!input) return;
         fullPrompt = `${currentActiveTool.prompt} ${input}`;
+        lastToolInputs = { input };
     }
 
     const outputArea = document.getElementById('tool-output');
@@ -2550,7 +2632,7 @@ document.getElementById('run-tool-btn').addEventListener('click', async () => {
                     // Which tool this is, so the server can check it against
                     // the plan. Sent as data, never trusted as permission:
                     // the plan itself is read from the entitlement row.
-                    { toolId: currentActiveTool.id }
+                    { toolId: currentActiveTool.id, toolInputs: lastToolInputs }
                 );
                 await renderWithTyping(outputArea, response.result, { renderMath: false });
             }
@@ -2560,6 +2642,7 @@ document.getElementById('run-tool-btn').addEventListener('click', async () => {
         outputArea.scrollTop = 0;
         
         refreshCredits({ pulse: true });
+        loadToolRuns();
         const xpRes = await api.addXp(authToken, 10, 1, currentActiveTool.name);
         applyXpResult(xpRes);
         recordActivity(currentActiveTool.name, currentActiveTool.icon, 10);
@@ -5809,6 +5892,7 @@ async function sendGrokMessage() {
         const canStream = !isSearchCmd && !isStemQuery && tutorMode !== 'research'
             && !text.trim().startsWith('/') && currentModelChoice() === 'auto';
         let streamSuggestions = [];
+        let streamToolHint = null;
         if (canStream) {
             try {
                 res = await api.streamAI(authToken,
@@ -5835,7 +5919,8 @@ async function sendGrokMessage() {
                             body.textContent = whole;
                             grokChatStream.scrollTop = grokChatStream.scrollHeight;
                         },
-                        onSuggestions: (qs) => { streamSuggestions = qs; }
+                        onSuggestions: (qs) => { streamSuggestions = qs; },
+                        onDone: (d) => { streamToolHint = d && d.toolHint ? d.toolHint : null; }
                     });
             } catch (streamErr) {
                 res = null;   // fall through to the whole-answer route
@@ -5966,6 +6051,25 @@ async function sendGrokMessage() {
                 });
             });
             bubbleEl.appendChild(wrap);
+        }
+
+        // The question was squarely one tool's job, and that tool is not open
+        // on this plan. The answer was given anyway — what is offered is the
+        // workflow, which is what a plan actually sells.
+        if (streamToolHint) {
+            const tool = (typeof toolsData !== 'undefined' ? toolsData : []).find(t => t.id === streamToolHint.toolId);
+            const card = document.createElement('div');
+            card.className = 'grok-tool-hint';
+            card.innerHTML = `
+                <i class="fa-solid ${escapeHtml((tool && tool.icon) || 'fa-solid fa-wand-magic-sparkles')}" aria-hidden="true"></i>
+                <div class="grok-tool-hint-body">
+                    <strong>${escapeHtml((tool && tool.name) || streamToolHint.toolId)}</strong> does this as a tool${
+                        streamToolHint.adds ? ` — ${escapeHtml(streamToolHint.adds)}` : ''}.
+                    <span class="grok-tool-hint-plan">Part of ${escapeHtml(streamToolHint.requiredPlanLabel)}.</span>
+                </div>
+                <button type="button" class="grok-tool-hint-cta">See plans</button>`;
+            card.querySelector('.grok-tool-hint-cta').addEventListener('click', () => navigateToSection('plus', true));
+            bubbleEl.appendChild(card);
         }
         if (window.SourceLibraryUI) window.SourceLibraryUI.wire(bubbleEl);
         if (window.ChatToolsUI) window.ChatToolsUI.wire(bubbleEl);

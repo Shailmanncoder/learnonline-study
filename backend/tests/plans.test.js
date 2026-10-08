@@ -167,7 +167,9 @@ test('credits are visible without going to the pricing page', () => {
     assert.ok(fe('index.html').includes('id="credit-chip"'), 'the topbar needs the balance');
     assert.match(app, /async function refreshCredits/);
     // Refreshed after the things that actually cost credits, not only at load.
-    assert.match(app, /refreshCredits\(\{ pulse: true \}\);\s*\n\s*const xpRes = await api\.addXp/, 'after a tool run');
+    // Saving the run now sits between these two; what matters is that the
+    // balance is refreshed on the tool-run path at all.
+    assert.match(app, /refreshCredits\(\{ pulse: true \}\);[\s\S]{0,120}const xpRes = await api\.addXp/, 'after a tool run');
     assert.match(app, /companionSending = false;\s*\n\s*refreshCredits\(\{ pulse: true \}\)/, 'after a chat turn');
     assert.ok((app.match(/refreshCredits\(\)/g) || []).length >= 2, 'and on sign-in');
     // A balance that cannot load must never take a page down with it.

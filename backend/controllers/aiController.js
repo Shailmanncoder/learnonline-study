@@ -484,6 +484,35 @@ router.post('/generate', auth, async (req, res) => {
         });
         if (metered === false) { progress.finish(rid); return; }
 
+        // Keep the run so the tool has something a conversation does not: the
+        // inputs beside the output, reopenable and repeatable without
+        // retyping. Saved after the answer, and never allowed to fail it.
+        const runTool = typeof req.body.toolId === 'string' ? req.body.toolId : null;
+        const runInputs = req.body.toolInputs && typeof req.body.toolInputs === 'object'
+            ? req.body.toolInputs : null;
+        const saveToolRun = async (output) => {
+            if (!runTool || !output) return;
+            try {
+                await require('../migrations/006_tool_runs')(db);
+                await db.run(
+                    'INSERT INTO tool_runs (id, user_id, tool_id, inputs, output, created_at) VALUES (?,?,?,?,?,?)',
+                    [require('node:crypto').randomUUID(), req.user.id, runTool.slice(0, 60),
+                     runInputs ? JSON.stringify(runInputs).slice(0, 8000) : null,
+                     String(output).slice(0, 60000), Date.now()]
+                );
+                // Twenty per tool is enough to find the one you want without
+                // the table growing without bound.
+                await db.run(
+                    `DELETE FROM tool_runs WHERE user_id = ? AND tool_id = ? AND id NOT IN (
+                        SELECT id FROM (SELECT id FROM tool_runs WHERE user_id = ? AND tool_id = ?
+                                        ORDER BY created_at DESC LIMIT 20) keep)`,
+                    [req.user.id, runTool, req.user.id, runTool]
+                );
+            } catch (err) {
+                console.warn('[AI] could not save the tool run:', err.message);
+            }
+        };
+
         // ── Memory ─────────────────────────────────────────────────
         // Replay the thread so follow-ups like "now do the same for the
         // next one" actually resolve, and ground the tutor in what this
@@ -825,6 +854,7 @@ router.post('/generate', auth, async (req, res) => {
         const finishAnswer = async (answer, modelId, extra = {}) => {
             const payload = { ...extra, model: modelId, result: stripThinkBlocks(answer), threadId: thread?.id, sources: textbookSources || [], webSources, webSource, lockedChapter, selectedBook, memoryDoc, modelUsed: { id: modelId, label: (GEMINI_MODELS.find(m => m.id === modelId) || {}).label || modelId, auto: chosen.auto } };
             if (thread) await appendTurn(thread, req.user.id, prompt, payload.result, { webSources, steps: progress.stepsOf(rid), seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)) });
+            await saveToolRun(payload.result);
             progress.finish(rid);
             payload.steps = progress.stepsOf(rid);
             return res.json(payload);
@@ -1377,7 +1407,27 @@ router.post('/stream', auth, async (req, res) => {
         console.warn('[AI] stream could not save the turn:', err.message);
     }
 
-    send('done', { threadId: thread?.id || null, length: answer.length });
+    // When the question was squarely one tool's job and that tool is not open
+    // on this plan, say which tool does it properly. The answer is given
+    // either way: gating knowledge in a chat is neither possible nor kind.
+    // What a plan sells is the packaged workflow, so that is what is offered.
+    let hint = null;
+    try {
+        if (ent.enforced()) {
+            const hints = require('../services/toolHints');
+            const toolId = hints.match(prompt);
+            if (toolId) {
+                const tier = ent.tierOf(await usage.planOf(req.user.id));
+                if (!ent.toolAllowed(tier, toolId)) {
+                    const needed = ent.requiredTierFor(toolId);
+                    hint = { toolId, requiredPlan: needed.id, requiredPlanLabel: needed.label,
+                             adds: hints.ADDS[toolId] || null };
+                }
+            }
+        }
+    } catch { /* a hint is never worth failing an answer for */ }
+
+    send('done', { threadId: thread?.id || null, length: answer.length, toolHint: hint });
 
     // Suggested next questions, sent AFTER done so they never delay the answer.
     // A small, cheap call — and if it fails, the answer is already delivered.

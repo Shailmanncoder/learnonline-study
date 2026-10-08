@@ -245,6 +245,46 @@ router.get('/usage', auth, async (req, res) => {
     }
 });
 
+// @route   GET api/user/tool-runs
+// @desc    Past runs of one tool: the inputs you gave, with the output.
+// This is what a tool has that a conversation does not — a run you can reopen
+// and repeat without retyping the form.
+router.get('/tool-runs', auth, async (req, res) => {
+    try {
+        await require('../migrations/006_tool_runs')(db);
+        const toolId = String(req.query.tool || '').slice(0, 60);
+        if (!toolId) return res.status(400).json({ msg: 'Which tool?' });
+        const rows = await db.all(
+            'SELECT id, tool_id, inputs, output, created_at FROM tool_runs WHERE user_id = ? AND tool_id = ? ORDER BY created_at DESC LIMIT 20',
+            [req.user.id, toolId]
+        );
+        res.json({
+            runs: rows.map(r => ({
+                id: r.id, toolId: r.tool_id, createdAt: Number(r.created_at),
+                inputs: (() => { try { return r.inputs ? JSON.parse(r.inputs) : null; } catch { return null; } })(),
+                output: r.output || ''
+            }))
+        });
+    } catch (err) {
+        console.error('[USER] tool runs failed:', err.message);
+        res.status(500).json({ msg: 'Could not load your past runs.' });
+    }
+});
+
+// @route   DELETE api/user/tool-runs/:id
+router.delete('/tool-runs/:id', auth, async (req, res) => {
+    try {
+        await require('../migrations/006_tool_runs')(db);
+        // Scoped by user_id, so another account's run id is a 404, not a delete.
+        const result = await db.run('DELETE FROM tool_runs WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+        if (!result.changes) return res.status(404).json({ msg: 'Run not found.' });
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[USER] delete run failed:', err.message);
+        res.status(500).json({ msg: 'Could not delete that run.' });
+    }
+});
+
 // ── Recovery email ────────────────────────────────────────────────
 // Changing it is two steps: ask for a code, then confirm it. The new address
 // is held in email_verifications until confirmed, so a half-finished change

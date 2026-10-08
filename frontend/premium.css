@@ -4167,3 +4167,29 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
 @media (prefers-reduced-motion: reduce) {
     .grok-stream-body, .grok-stream-body::after, .grok-next-chip { animation: none !important; transition: none !important; }
 }
+
+/* "That is a tool's job". Shown under an answer that was given anyway —
+   knowledge is not what a plan gates, the workflow is. */
+.grok-tool-hint {
+    display: flex; align-items: flex-start; gap: 11px;
+    margin-top: 12px; padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
+}
+.grok-tool-hint > i { color: var(--accent-primary); font-size: 15px; margin-top: 2px; flex: 0 0 auto; }
+.grok-tool-hint-body { flex: 1; min-width: 0; font-size: 13px; line-height: 1.55; color: var(--text-secondary); }
+.grok-tool-hint-body strong { color: var(--text-primary); }
+.grok-tool-hint-plan { display: block; margin-top: 2px; font-weight: 700; color: var(--text-primary); }
+.grok-tool-hint-cta {
+    flex: 0 0 auto; align-self: center;
+    border: 1px solid var(--accent-primary);
+    background: transparent; color: var(--accent-primary);
+    border-radius: 999px; padding: 6px 13px;
+    font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.grok-tool-hint-cta:hover { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); }
+@media (max-width: 600px) {
+    .grok-tool-hint { flex-wrap: wrap; }
+    .grok-tool-hint-cta { width: 100%; margin-top: 4px; }
+}

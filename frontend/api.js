@@ -172,6 +172,22 @@ const api = {
         return res.json();
     },
 
+    // Past runs of one tool: inputs kept with output, so a run can be reopened
+    // and repeated without retyping.
+    getToolRuns: async (token, toolId) => {
+        const res = await fetch(`${API_BASE_URL}/user/tool-runs?tool=${encodeURIComponent(toolId)}`,
+            { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Could not load past runs');
+        return res.json();
+    },
+
+    deleteToolRun: async (token, id) => {
+        const res = await fetch(`${API_BASE_URL}/user/tool-runs/${encodeURIComponent(id)}`,
+            { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Could not delete that run');
+        return res.json();
+    },
+
     getLeaderboard: async (token) => {
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         const res = await fetch(`${API_BASE_URL}/user/leaderboard`, { headers });
@@ -444,7 +460,7 @@ const api = {
     // so the caller can fall back to the whole-answer route; once words are on
     // screen, restarting the answer in front of the student would be worse
     // than finishing with what came through.
-    streamAI: async (token, { prompt, systemMessage, threadId }, { onStart, onDelta, onSuggestions } = {}) => {
+    streamAI: async (token, { prompt, systemMessage, threadId }, { onStart, onDelta, onSuggestions, onDone } = {}) => {
         const res = await fetch(`${API_BASE_URL}/ai/stream`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -476,7 +492,7 @@ const api = {
                 if (event === 'start') onStart && onStart(payload);
                 else if (event === 'delta') { answer += payload.t; onDelta && onDelta(payload.t, answer); }
                 else if (event === 'suggestions') onSuggestions && onSuggestions(payload.questions || []);
-                else if (event === 'done') threadOut = payload.threadId || threadOut;
+                else if (event === 'done') { threadOut = payload.threadId || threadOut; onDone && onDone(payload); }
                 else if (event === 'error') failedEarly = true;
             }
         }

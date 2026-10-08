@@ -153,6 +153,7 @@ await require('./migrations/004_email_verification')(require('./config/db'));
 // Usage counters gate every AI request, so the table must exist before the
 // first one is served rather than on first use.
 await require('./migrations/005_usage_metering')(require('./config/db'));
+await require('./migrations/006_tool_runs')(require('./config/db'));
 await require('./services/studioStore').ready();
 await require('./controllers/teachingStudioController').ready();
 require('./services/studioSources').start().catch(e => console.warn('[SOURCE]',e.message));
