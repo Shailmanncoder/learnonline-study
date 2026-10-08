@@ -621,3 +621,53 @@
 .tool-run-act.is-danger:hover { border-color: #B91C1C; color: #B91C1C; }
 [data-theme="dark"] .tool-run-act.is-danger:hover { border-color: #FCA5A5; color: #FCA5A5; }
 .tool-runs-empty { font-size: 12.5px; color: var(--text-secondary); margin: 0; }
+
+/* ── A tool the plan does not open ────────────────────────────────
+   Said before the form is filled in, not after Generate is pressed. Every
+   account is on Free, so without this 47 of the 50 tools answered with
+   "Error connecting to AI service". */
+.tool-lock-note {
+    display: flex; align-items: center; gap: 12px;
+    margin: 0 0 16px; padding: 13px 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent-primary) 7%, transparent);
+    font-size: 13px; line-height: 1.5; color: var(--text-secondary);
+}
+.tool-lock-note > i { color: var(--accent-primary); flex: 0 0 auto; }
+.tool-lock-note strong { display: block; color: var(--text-primary); }
+.tool-lock-cta {
+    flex: 0 0 auto; border: 1px solid var(--accent-primary);
+    background: transparent; color: var(--accent-primary);
+    border-radius: 999px; padding: 7px 14px;
+    font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.tool-lock-cta:hover { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); }
+
+/* A locked card in the list. Still openable — you can read what it does. */
+.tool-card.is-locked { opacity: .82; }
+.tool-lock-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+    color: var(--accent-primary);
+    font-size: 10.5px; font-weight: 800; white-space: nowrap;
+}
+.tool-lock-badge i { font-size: 9px; }
+
+/* The refusal, when it does happen. */
+.tool-locked {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 34px 22px; text-align: center;
+}
+.tool-locked > i { font-size: 24px; color: var(--accent-primary); }
+.tool-locked p { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary); max-width: 460px; }
+.tool-locked-cta {
+    border: 0; border-radius: 999px; padding: 9px 20px;
+    background: linear-gradient(135deg, #2563EB, #1D4ED8); color: #fff;
+    font-size: 13px; font-weight: 700; cursor: pointer;
+}
+@media (max-width: 600px) {
+    .tool-lock-note { flex-wrap: wrap; }
+    .tool-lock-cta { width: 100%; }
+}

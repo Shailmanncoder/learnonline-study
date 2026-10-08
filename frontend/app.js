@@ -1573,6 +1573,8 @@ async function refreshCredits({ pulse = false } = {}) {
         }
         // Keep the fuller meter on the plans page in step with the chip.
         if (typeof loadUsageMeter === 'function' && !document.getElementById('usage-meter')?.hidden) loadUsageMeter();
+        // And the locks, so buying a plan opens the tool you are looking at.
+        if (currentActiveTool) applyToolLock(currentActiveTool);
     } catch {
         chip.hidden = true;   // never let the balance break a page
     }
@@ -2117,6 +2119,44 @@ function updateCategoryCounts() {
 }
 
 // Load Tools UI with Filtering & Search
+// Which plan a tool needs, or null when this account already has it. Read from
+// /user/usage, so the badge on a card and the server's answer cannot disagree.
+// Show the lock on the tool itself: a line above the form and a disabled
+// Generate button. Re-applied whenever the plan is re-read, so buying a plan
+// unlocks the open tool without a reload.
+function applyToolLock(tool) {
+    const pane = document.getElementById('active-tool');
+    const run = document.getElementById('run-tool-btn');
+    if (!pane || !tool) return;
+
+    document.getElementById('tool-lock-note')?.remove();
+    const needsPlan = toolLockedBy(tool.id);
+    if (run) {
+        run.disabled = Boolean(needsPlan);
+        run.title = needsPlan ? `${tool.name} opens with ${needsPlan}` : '';
+    }
+    if (!needsPlan) return;
+
+    const note = document.createElement('div');
+    note.id = 'tool-lock-note';
+    note.className = 'tool-lock-note';
+    note.innerHTML = `
+        <i class="fa-solid fa-lock" aria-hidden="true"></i>
+        <div>
+            <strong>${escapeHtml(tool.name)} opens with ${escapeHtml(needsPlan)}.</strong>
+            Your plan is ${escapeHtml(creditState?.label || 'Free')}. You can still ask the AI Companion about this.
+        </div>
+        <button type="button" class="tool-lock-cta">See plans</button>`;
+    note.querySelector('.tool-lock-cta').addEventListener('click', () => navigateToSection('plus', true));
+    const form = pane.querySelector('.tool-input-area, .tool-form, form') || pane.firstElementChild;
+    (form?.parentElement || pane).insertBefore(note, form || pane.firstChild);
+}
+
+function toolLockedBy(toolId) {
+    if (!creditState || !creditState.enforced || !creditState.locked) return null;
+    return creditState.locked[toolId] || null;
+}
+
 function loadTools() {
     const container = document.getElementById('tools-container');
     const recommended = document.getElementById('recommended-tools');
@@ -2183,13 +2223,16 @@ function createToolCard(tool) {
     const favs = getFavoritesList();
     const isFav = favs.includes(tool.id);
 
+    const needsPlan = toolLockedBy(tool.id);
+
     const card = document.createElement('div');
-    card.className = 'tool-card glass';
-    
+    card.className = 'tool-card glass' + (needsPlan ? ' is-locked' : '');
+
     card.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
             <div class="tool-icon"><i class="${tool.icon}"></i></div>
             <div style="display: flex; align-items: center; gap: 6px;">
+                ${needsPlan ? `<span class="tool-lock-badge" title="Opens with ${escapeHtml(needsPlan)}"><i class="fa-solid fa-lock"></i> ${escapeHtml(needsPlan)}</span>` : ''}
                 <button class="tool-fav-star" title="${isFav ? 'Favorited' : 'Add to Favorites'}" style="background: none; border: none; font-size: 14px; cursor: pointer; color: ${isFav ? '#f59e0b' : '#cbd5e1'}; padding: 4px;">
                     <i class="${isFav ? 'fa-solid' : 'fa-regular'} fa-star"></i>
                 </button>
@@ -2274,6 +2317,9 @@ function openTool(tool, updateUrl = true) {
     // Past runs of THIS tool, loaded as it opens.
     document.getElementById('tool-runs')?.setAttribute('hidden', '');
     loadToolRuns();
+    // And say straight away if the plan does not open it, rather than letting
+    // someone fill in the whole form and find out when they press Generate.
+    applyToolLock(tool);
     sections.forEach(s => s.classList.remove('active'));
     document.getElementById('active-tool').classList.add('active');
     if (updateUrl) syncUrl(`/tool/${tool.id}`);
@@ -2647,9 +2693,26 @@ document.getElementById('run-tool-btn').addEventListener('click', async () => {
         applyXpResult(xpRes);
         recordActivity(currentActiveTool.name, currentActiveTool.icon, 10);
     } catch (err) {
+        // "Error connecting to AI service" was shown for everything, including
+        // the two cases that are not failures at all: a tool the plan does not
+        // open, and an allowance that has run out. Every account is on Free, so
+        // that message was what 47 of the 50 tools said.
+        if (err.code === 'TOOL_LOCKED' || err.code === 'QUOTA_EXCEEDED') {
+            outputArea.innerHTML = '';
+            const box = document.createElement('div');
+            box.className = 'tool-locked';
+            box.innerHTML = `
+                <i class="fa-solid ${err.code === 'TOOL_LOCKED' ? 'fa-lock' : 'fa-bolt'}" aria-hidden="true"></i>
+                <p>${escapeHtml(err.message)}</p>
+                <button type="button" class="tool-locked-cta">See plans</button>`;
+            box.querySelector('.tool-locked-cta').addEventListener('click', () => navigateToSection('plus', true));
+            outputArea.appendChild(box);
+            refreshCredits();
+            return;
+        }
         outputArea.textContent = currentActiveTool?.id === 'ai-tutor' && window.ncertTutor.active()
             ? (err.message || 'Textbook answers are temporarily unavailable.')
-            : 'Error connecting to AI service.';
+            : (err.message || 'Error connecting to AI service.');
     }
 });
 

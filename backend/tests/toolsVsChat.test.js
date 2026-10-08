@@ -68,3 +68,29 @@ test('a saved run can be reopened and repeated', () => {
     // And a slow response must not land on a tool the person has since left.
     assert.match(fn, /currentActiveTool\.id !== toolId/);
 });
+
+test('a locked tool says so, and says it before the form is filled in', () => {
+    // Every account is on Free, so 47 of the 50 tools answered "Error
+    // connecting to AI service" — the gate worked, the message was nonsense,
+    // and it only appeared after someone had typed everything and pressed
+    // Generate.
+    const feApp = read('../../frontend/app.js');
+
+    // The real reason reaches the screen.
+    assert.match(read('../../frontend/api.js'), /err\.code = e\.code/);
+    assert.match(feApp, /err\.code === 'TOOL_LOCKED' \|\| err\.code === 'QUOTA_EXCEEDED'/);
+    assert.ok(!/: 'Error connecting to AI service\.';\s*\n\s*\}\s*\n\s*\}\);/.test(feApp),
+        'the generic message must no longer be the only outcome');
+
+    // And the lock is shown up front, on the tool and on its card.
+    assert.match(feApp, /function applyToolLock/);
+    assert.match(feApp, /function toolLockedBy/);
+    assert.match(feApp, /run\.disabled = Boolean\(needsPlan\)/, 'Generate must be disabled');
+    assert.match(feApp, /tool-lock-badge/, 'the list needs a badge too');
+    // Re-applied when the plan is re-read, so buying one opens the tool in place.
+    assert.match(feApp, /if \(currentActiveTool\) applyToolLock\(currentActiveTool\)/);
+
+    // Which plan opens each tool comes from the server, so a badge cannot
+    // disagree with the gate.
+    assert.match(userCtl, /if \(!ent\.toolAllowed\(tier, id\)\) unlocks\[id\] = ent\.requiredTierFor\(id\)\.label/);
+});

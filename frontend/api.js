@@ -202,7 +202,17 @@ const api = {
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt, systemMessage, model, ...opts })
         });
-        if (!res.ok) { const e = await res.json(); throw new Error(e.msg || 'AI generation failed'); }
+        if (!res.ok) {
+            const e = await res.json().catch(() => ({}));
+            const err = new Error(e.msg || 'AI generation failed');
+            // A locked tool and a spent allowance are ordinary, explainable
+            // answers, not failures. Carry the reason so the screen can say
+            // which one it was instead of blaming the connection.
+            err.code = e.code;
+            err.requiredPlanLabel = e.requiredPlanLabel;
+            err.status = res.status;
+            throw err;
+        }
         return res.json();
     },
 

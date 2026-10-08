@@ -232,11 +232,19 @@ router.get('/usage', auth, async (req, res) => {
         const planId = await usage.planOf(req.user.id);
         const state = await usage.balance(req.user.id, planId);
         const tier = ent.tierOf(planId);
+        // Which plan opens each tool, for every tool — so a locked one can be
+        // marked before someone fills in its form, rather than only after they
+        // press Generate.
+        const unlocks = {};
+        for (const id of ent.TOOL_ORDER) {
+            if (!ent.toolAllowed(tier, id)) unlocks[id] = ent.requiredTierFor(id).label;
+        }
         res.json({
             ...state,
             enforced: ent.enforced(),
             toolCount: tier.tools === 'all' ? ent.TOOL_ORDER.length : tier.tools,
             tools: ent.toolsFor(tier),
+            locked: unlocks,
             costs: ent.COST
         });
     } catch (err) {
