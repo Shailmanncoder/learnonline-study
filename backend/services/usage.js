@@ -58,45 +58,64 @@ async function charge(userId, { kind, depth, units = 1 }) {
     const cost = costOf(kind, depth) * Math.max(1, units);
     const period = periodOf();
 
-    const { credits } = await usedThisPeriod(userId, period);
-    if (credits + cost > tier.credits) {
-        throw new QuotaError({ plan: tier.id, allowance: tier.credits, used: credits, needed: cost });
-    }
-
     const bucket = kind || depth || 'normal';
     const now = Date.now();
-    // UPSERT, written for both dialects: a user making two requests at once
-    // must not have one of them silently overwrite the other's count.
-    if (db.dialect() === 'mysql') {
-        await db.run(
-            `INSERT INTO usage_counters (user_id, period, kind, credits, calls, updated_at)
-             VALUES (?,?,?,?,1,?)
-             ON DUPLICATE KEY UPDATE credits = credits + VALUES(credits), calls = calls + 1, updated_at = VALUES(updated_at)`,
-            [userId, period, bucket, cost, now]
-        );
-    } else {
-        await db.run(
-            `INSERT INTO usage_counters (user_id, period, kind, credits, calls, updated_at)
-             VALUES (?,?,?,?,1,?)
-             ON CONFLICT(user_id, period, kind) DO UPDATE SET
-                credits = credits + excluded.credits, calls = calls + 1, updated_at = excluded.updated_at`,
-            [userId, period, bucket, cost, now]
-        );
-    }
-    return { charged: cost, remaining: Math.max(0, tier.credits - credits - cost) };
+
+    // Reading the total and then writing it leaves a gap: several requests
+    // sent at once all read the same figure, all decide they fit, and all
+    // record. It held most of the time and then did not, letting a free
+    // account reach 370 credits against an allowance of 350.
+    //
+    // Recording first and checking afterwards is worse, not better: with
+    // fifty at once every request sees itself over the line and gives its
+    // charge back, so all fifty are refused and nothing is charged at all.
+    //
+    // What is needed is for one account's requests to take their turn. The
+    // transaction takes a row lock on the user on MySQL, and SQLite runs its
+    // statements through one serialized queue, so on both the read and the
+    // write of a single account happen together.
+    return db.transaction(async () => {
+        await db.get(`SELECT id FROM users WHERE id = ?${db.dialect() === 'mysql' ? ' FOR UPDATE' : ''}`, [userId]);
+
+        const { credits } = await usedThisPeriod(userId, period);
+        if (credits + cost > tier.credits) {
+            throw new QuotaError({ plan: tier.id, allowance: tier.credits, used: credits, needed: cost });
+        }
+
+        if (db.dialect() === 'mysql') {
+            await db.run(
+                `INSERT INTO usage_counters (user_id, period, kind, credits, calls, updated_at)
+                 VALUES (?,?,?,?,1,?)
+                 ON DUPLICATE KEY UPDATE credits = credits + VALUES(credits), calls = calls + 1, updated_at = VALUES(updated_at)`,
+                [userId, period, bucket, cost, now]
+            );
+        } else {
+            await db.run(
+                `INSERT INTO usage_counters (user_id, period, kind, credits, calls, updated_at)
+                 VALUES (?,?,?,?,1,?)
+                 ON CONFLICT(user_id, period, kind) DO UPDATE SET
+                    credits = credits + excluded.credits, calls = calls + 1, updated_at = excluded.updated_at`,
+                [userId, period, bucket, cost, now]
+            );
+        }
+        return { charged: cost, remaining: Math.max(0, tier.credits - credits - cost) };
+    });
+}
+
+// Give a specific charge back to the bucket it came from, never below zero.
+async function refundBucket(userId, period, bucket, cost) {
+    await db.run(
+        `UPDATE usage_counters SET credits = CASE WHEN credits > ? THEN credits - ? ELSE 0 END,
+                                   calls = CASE WHEN calls > 0 THEN calls - 1 ELSE 0 END
+         WHERE user_id = ? AND period = ? AND kind = ?`,
+        [cost, cost, userId, period, bucket]
+    );
 }
 
 // A charge for work that never happened is a charge the person did not make.
 async function refund(userId, { kind, depth, units = 1 }) {
     await ready();
-    const cost = costOf(kind, depth) * Math.max(1, units);
-    const bucket = kind || depth || 'normal';
-    await db.run(
-        `UPDATE usage_counters SET credits = CASE WHEN credits > ? THEN credits - ? ELSE 0 END,
-                                   calls = CASE WHEN calls > 0 THEN calls - 1 ELSE 0 END
-         WHERE user_id = ? AND period = ? AND kind = ?`,
-        [cost, cost, userId, periodOf(), bucket]
-    );
+    await refundBucket(userId, periodOf(), kind || depth || 'normal', costOf(kind, depth) * Math.max(1, units));
 }
 
 // The active paid plan, or 'free'. Read from the entitlement the payment

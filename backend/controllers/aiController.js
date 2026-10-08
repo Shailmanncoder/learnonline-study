@@ -1247,21 +1247,31 @@ router.post('/tts', auth, async (req, res) => {
 // risk for one feature. The client falls back to /generate whenever this
 // cannot serve, so nothing is lost when it does.
 router.post('/stream', auth, async (req, res) => {
-    const { prompt, systemMessage, threadId, useMemory = true } = req.body || {};
+    const { prompt, systemMessage, threadId, toolId, useMemory = true } = req.body || {};
     if (typeof prompt !== 'string' || !prompt.trim()) {
         return res.status(400).json({ msg: 'Prompt is required' });
     }
 
-    // Same gate and the same charge as the non-streaming route: a cheaper code
-    // path must not be a cheaper price.
-    const brainDepth = aiBrain.depthOf(prompt);
-    if (await meter(req, res, { depth: brainDepth }) === false) return;
-
+    // Everything that can refuse the request happens BEFORE the charge. This
+    // used to meter first and then look the thread up, so an unknown thread id
+    // took credits for work that was never attempted.
     let thread = null;
     if (threadId) {
         thread = await db.get('SELECT * FROM chat_threads WHERE id = ? AND user_id = ?', [threadId, req.user.id]);
         if (!thread) return res.status(404).json({ msg: 'Conversation not found. Start a new chat.' });
     }
+
+    // Same gate and the same charge as the non-streaming route: a cheaper code
+    // path must not be a cheaper price.
+    const brainDepth = aiBrain.depthOf(prompt);
+    // toolId is checked here as well as on /generate. The Companion sends
+    // none -- a general assistant is on every tier -- but a route that
+    // silently ignored it would be a way around the gate the moment anything
+    // started routing a tool through streaming.
+    if (await meter(req, res, {
+        toolId: typeof toolId === 'string' ? toolId : null,
+        depth: brainDepth
+    }) === false) return;
 
     // The same context the whole app shares: who this student is, what they
     // have told us before, and what they keep getting wrong.
@@ -1349,7 +1359,14 @@ router.post('/stream', auth, async (req, res) => {
         // Nothing has been shown yet, so the client can fall back cleanly to
         // /generate. Once tokens are out, falling back would restart the answer
         // in front of the student, so the partial answer is kept instead.
-        if (!answer) { send('error', { retry: true, msg: 'Streaming unavailable' }); return res.end(); }
+        if (!answer) {
+            // The client falls back to /generate, which charges again. Without
+            // this refund one question cost twice, and half of it bought
+            // nothing at all.
+            await usage.refund(req.user.id, { depth: brainDepth }).catch(() => {});
+            send('error', { retry: true, msg: 'Streaming unavailable' });
+            return res.end();
+        }
     }
 
     if (closed) return res.end();

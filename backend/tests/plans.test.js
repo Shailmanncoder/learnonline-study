@@ -58,12 +58,24 @@ test('a plan sold before the tiers existed still resolves', () => {
     assert.equal(ent.tierOf('nonsense').id, 'free');
 });
 
-test('cost follows the token budget, not the request count', () => {
+test('a question costs the same whatever its length', () => {
+    // Pricing by answer length tracked the bill more closely but meant nobody
+    // could tell what a question would cost before asking it. A flat price is
+    // worth more to a student than a precise one.
+    assert.equal(ent.costOf(null, 'brief'), 10);
+    assert.equal(ent.costOf(null, 'normal'), 10);
+    assert.equal(ent.costOf(null, 'deep'), 10);
+    assert.equal(ent.costOf('question'), 10);
+    // The free allowance is therefore a plain number of questions.
+    assert.equal(ent.tiers().free.credits / ent.costOf('question'), 35);
+});
+
+test('heavier work still costs more than a question', () => {
     // A one-line answer and a forty-day roadmap are not the same purchase.
-    assert.ok(ent.costOf(null, 'brief') < ent.costOf(null, 'normal'));
-    assert.ok(ent.costOf(null, 'normal') < ent.costOf(null, 'deep'));
-    assert.ok(ent.costOf('image') > ent.costOf(null, 'deep'));
-    assert.ok(ent.costOf('roadmap') > ent.costOf('image'));
+    const q = ent.costOf('question');
+    assert.ok(ent.costOf('json') > q, 'a generated document');
+    assert.ok(ent.costOf('image') > ent.costOf('json'), 'the most expensive single action');
+    assert.ok(ent.costOf('roadmap') > ent.costOf('image'), 'many calls behind one button');
 });
 
 test('every generating endpoint is metered', () => {

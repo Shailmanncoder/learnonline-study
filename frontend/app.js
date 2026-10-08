@@ -1659,9 +1659,9 @@ async function loadPlusPlans() {
         // it was written and is not any more, and it is the one sentence a
         // buyer would feel misled by.
         note.innerHTML = `<strong>What a plan gives you.</strong> Each tier opens a set of AI tools and a monthly
-            credit allowance, both enforced by the server. Credits are spent according to how much work a
-            request takes: a short answer costs 1, a detailed one 8, an image 15. Unused credits do not carry
-            over. Renewal is manual — you are never charged automatically, and nothing is stored from your card.
+            credit allowance, both enforced by the server. A question costs 10 credits whatever its length,
+            so the allowance is simply a number of questions. Heavier work costs more: a generated worksheet
+            15, a page of document reading 10, speech 15, an image 50. Unused credits do not carry over. Renewal is manual — you are never charged automatically, and nothing is stored from your card.
             ${catalog.mode === 'test' ? ' Checkout is not live yet.' : ''}`;
     }
 

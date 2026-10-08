@@ -46,7 +46,7 @@ const envInt = (name, fallback) => {
 
 function tiers() {
     return Object.freeze({
-        free:    { id:'free',    rank:0, label:'Free',    tools:3,     credits: envInt('PLAN_CREDITS_FREE', 150),     priority:false, deep:false },
+        free:    { id:'free',    rank:0, label:'Free',    tools:3,     credits: envInt('PLAN_CREDITS_FREE', 350),     priority:false, deep:false },
         starter: { id:'starter', rank:1, label:'Starter', tools:10,    credits: envInt('PLAN_CREDITS_STARTER', 1200),  priority:false, deep:true },
         plus:    { id:'plus',    rank:2, label:'Plus',    tools:25,    credits: envInt('PLAN_CREDITS_PLUS', 12000),    priority:false, deep:true },
         pro:     { id:'pro',     rank:3, label:'Pro',     tools:'all', credits: envInt('PLAN_CREDITS_PRO', 24000),     priority:false, deep:true },
@@ -67,13 +67,22 @@ function tierOf(planId) {
 
 // What one action costs. These follow aiBrain's token budgets, so a request
 // that is allowed more output is charged more.
+// A question costs 10, whatever its length. The previous scale charged 1, 3 or
+// 8 by how long the answer was allowed to be, which tracked the bill more
+// closely but meant nobody could predict what a question would cost before
+// asking it. A flat price is worth more to a student than a precise one: 350
+// free credits is plainly 35 questions.
+//
+// The heavier actions stay above it, in proportion to what they actually cost
+// to serve rather than as round numbers.
 const COST = Object.freeze({
-    brief: 1, normal: 3, deep: 8,
-    json: 10,          // worksheets, quizzes, flashcard packs — strict documents
-    image: 15,         // the most expensive thing the app can be asked for
-    speech: 5,         // text to speech
-    page: 3,           // one page of OCR or document extraction
-    roadmap: 60        // many model calls behind one button
+    question: 10,      // any answer, brief or detailed
+    brief: 10, normal: 10, deep: 10,   // depth no longer changes the price
+    json: 15,          // worksheets, quizzes, flashcard packs — strict documents
+    speech: 15,        // text to speech
+    page: 10,          // one page of OCR or document extraction
+    image: 50,         // the most expensive single thing the app can be asked for
+    roadmap: 150       // many model calls behind one button
 });
 
 function costOf(kind, depth) {

@@ -17,7 +17,9 @@ test('streaming is charged and gated like every other generation', () => {
     // A cheaper code path must not become a cheaper price, or the quota is
     // trivially avoided by using the faster route.
     const route = streamRoute();
-    assert.match(route, /await meter\(req, res, \{ depth: brainDepth \}\) === false/);
+    // The call now also carries toolId -- see metering.test.js, where the gate
+    // itself is pinned.
+    assert.match(route, /await meter\(req, res, \{[\s\S]{0,160}depth: brainDepth\s*\}\) === false/);
 });
 
 test('the stream carries the same context the rest of the app uses', () => {
