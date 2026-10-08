@@ -131,3 +131,19 @@ test('the pricing page no longer claims nothing is locked', () => {
 test('motion is optional', () => {
     assert.match(fe('plus.css'), /@media \(prefers-reduced-motion: reduce\)/);
 });
+
+test('Max actually gets the priority routing it is sold', () => {
+    // The tier carried a `priority` flag that nothing read, so the strongest
+    // model was advertised on a paid plan and never delivered.
+    const { chooseModel } = require('../services/geminiModels');
+    const normal = chooseModel({ prompt: 'what is 2+2' });
+    const priority = chooseModel({ prompt: 'what is 2+2', priority: true });
+    assert.notEqual(priority.id, normal.id, 'priority must change the model actually used');
+    assert.equal(chooseModel({ prompt: 'x', task: 'reasoning' }).id, priority.id,
+        'priority should land on the same model a deep question gets');
+    // A deliberate routing decision about correctness still wins.
+    assert.match(chooseModel({ prompt: 'x', hasImages: true, priority: true }).reason, /image/);
+    // And it is read from the entitlement, not asked for by the client.
+    const aiSrc = fs.readFileSync(path.join(__dirname, '../controllers/aiController.js'), 'utf8');
+    assert.match(aiSrc, /ent\.tierOf\(await usage\.planOf\(req\.user\.id\)\)\.priority/);
+});

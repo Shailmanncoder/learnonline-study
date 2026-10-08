@@ -48,7 +48,7 @@ const QUICK_CUES = /^\s*(what\s+is|what\s+are|who\s+is|who\s+was|when\s+(is|was|
 
 // Which model answers, and a reason plain enough to show the student. An
 // explicit choice always wins — 'auto' is the only value that routes.
-function chooseModel({ requested, prompt, task, hasImages } = {}) {
+function chooseModel({ requested, prompt, task, hasImages, priority = false } = {}) {
     const asked = String(requested || '').trim();
     if (asked && asked !== 'auto') {
         const picked = MODEL_BY_ID.get(asked);
@@ -64,6 +64,14 @@ function chooseModel({ requested, prompt, task, hasImages } = {}) {
 
     if (hasImages) {
         return { ...balanced, reason: 'reading the image you attached', auto: true };
+    }
+    // Max buys priority routing. Without this the flag was decoration on a
+    // paid plan, which is the same sin as advertising a feature that is not
+    // there. A plan that pays for the strongest model gets it, except where
+    // another branch below is a deliberate routing decision about correctness
+    // (images above, which need the vision model).
+    if (priority) {
+        return { ...deep, reason: 'your plan uses the strongest model first', auto: true };
     }
     if (task === 'reasoning' || DEEP_CUES.test(text)) {
         return { ...deep, reason: 'this needs working through in steps', auto: true };

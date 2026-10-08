@@ -427,7 +427,12 @@ router.post('/generate', auth, async (req, res) => {
         }
 
         const hasImages = Array.isArray(images) && images.length > 0;
-        const chosen = chooseModel({ requested: model, prompt, task, hasImages });
+        // Max pays for the strongest model first; read from the entitlement,
+        // never from the request.
+        const priority = ent.enforced()
+            ? ent.tierOf(await usage.planOf(req.user.id)).priority
+            : false;
+        const chosen = chooseModel({ requested: model, prompt, task, hasImages, priority });
         const safeModel = chosen.id;
 
         // ── Shared brain context ───────────────────────────────────
