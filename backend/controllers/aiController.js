@@ -2,6 +2,38 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const { rateLimit } = require('../middleware/rateLimit');
+const usage = require('../services/usage');
+const ent = require('../services/entitlements');
+
+// Plans were recorded and never checked: every tier, including none, had the
+// whole catalogue and unmetered generation. Both halves are enforced here --
+// whether this tool is open to this plan, and whether the month's allowance
+// still covers the work. Charged BEFORE the model runs, because the tokens are
+// spent whether or not the answer comes back.
+async function meter(req, res, { toolId, kind, depth, units }) {
+    if (!ent.enforced()) return null;
+    const planId = await usage.planOf(req.user.id);
+    const tier = ent.tierOf(planId);
+
+    if (toolId && !ent.toolAllowed(tier, toolId)) {
+        const needed = ent.requiredTierFor(toolId);
+        res.status(403).json({
+            msg: `This tool is part of ${needed.label}. Your plan is ${tier.label}.`,
+            code: 'TOOL_LOCKED', plan: tier.id, requiredPlan: needed.id, requiredPlanLabel: needed.label
+        });
+        return false;
+    }
+    try {
+        return await usage.charge(req.user.id, { kind, depth, units });
+    } catch (err) {
+        if (err.code !== 'QUOTA_EXCEEDED') throw err;
+        res.status(402).json({
+            msg: `You have used this month's ${tier.label} allowance.`,
+            code: 'QUOTA_EXCEEDED', plan: tier.id, allowance: err.state.allowance, used: err.state.used
+        });
+        return false;
+    }
+}
 const db = require('../config/db');
 const { providerOrder, geminiKey, geminiModel } = require('../services/ai');
 const {
@@ -438,6 +470,14 @@ router.post('/generate', auth, async (req, res) => {
         const answerBudget = wantsJson
             ? (task === 'reasoning' ? 6000 : 4096)
             : (aiBrain.BUDGET[brainCtx.depth] || 2000);
+
+        // ── Plan and allowance ─────────────────────────────────────
+        const metered = await meter(req, res, {
+            toolId: typeof req.body.toolId === 'string' ? req.body.toolId : null,
+            kind: wantsJson ? 'json' : null,
+            depth: brainCtx.depth
+        });
+        if (metered === false) { progress.finish(rid); return; }
 
         // ── Memory ─────────────────────────────────────────────────
         // Replay the thread so follow-ups like "now do the same for the
@@ -1062,6 +1102,7 @@ router.get('/image', auth, rateLimit({
     try {
         const { prompt, model, width, height, enhance } = req.query;
         if (!prompt) return res.status(400).json({ msg: 'Prompt required' });
+        if (await meter(req, res, { kind: 'image' }) === false) return;
 
         const clampInt = (val, def, min, max) => {
             const n = Number.parseInt(String(val ?? ''), 10);
@@ -1091,6 +1132,7 @@ router.get('/image', auth, rateLimit({
 router.post('/tts', auth, async (req, res) => {
     try {
         const { text, target_language_code = 'hi-IN', speaker = 'shubh', pace = 1.05, student_name } = req.body;
+        if (text && await meter(req, res, { kind: 'speech' }) === false) return;
         if (!text) {
             return res.status(400).json({ error: 'Text is required for TTS' });
         }

@@ -221,6 +221,30 @@ router.post('/profile', auth, async (req, res) => {
     }
 });
 
+// @route   GET api/user/usage
+// @desc    This month's allowance, what is left, and what the plan opens.
+// The screen and the enforcement read the same numbers from the same place,
+// so a meter can never disagree with the limit that actually applies.
+router.get('/usage', auth, async (req, res) => {
+    try {
+        const usage = require('../services/usage');
+        const ent = require('../services/entitlements');
+        const planId = await usage.planOf(req.user.id);
+        const state = await usage.balance(req.user.id, planId);
+        const tier = ent.tierOf(planId);
+        res.json({
+            ...state,
+            enforced: ent.enforced(),
+            toolCount: tier.tools === 'all' ? ent.TOOL_ORDER.length : tier.tools,
+            tools: ent.toolsFor(tier),
+            costs: ent.COST
+        });
+    } catch (err) {
+        console.error('[USER] usage failed:', err.message);
+        res.status(500).json({ msg: 'Could not load your usage.' });
+    }
+});
+
 // ── Recovery email ────────────────────────────────────────────────
 // Changing it is two steps: ask for a code, then confirm it. The new address
 // is held in email_verifications until confirmed, so a half-finished change

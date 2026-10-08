@@ -165,6 +165,13 @@ const api = {
         return res.json();
     },
 
+    // This month's allowance and what the plan opens.
+    getUsage: async (token) => {
+        const res = await fetch(`${API_BASE_URL}/user/usage`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Could not load usage');
+        return res.json();
+    },
+
     getLeaderboard: async (token) => {
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         const res = await fetch(`${API_BASE_URL}/user/leaderboard`, { headers });

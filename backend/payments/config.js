@@ -1,9 +1,18 @@
 'use strict';
 const { createHmac, timingSafeEqual, randomUUID } = require('node:crypto');
 const { getJwtSecret } = require('../config/security');
+// Prices in paise. What each tier GRANTS lives in services/entitlements.js;
+// this file owns only what is billed. The two are joined by the plan id.
+const everyone = ['student','teacher','admin','developer'];
 const plans = Object.freeze({
-    student: { id:'student', name:'Student Plus', amount:99900, currency:'INR', interval:'month', role:'student', roles:['student','teacher','admin'], features:['AI Companion and conversation memory','Exam preparation and study roadmaps','All 50 AI tools','NCERT discovery, notes and practice'] },
-    developer: { id:'developer', name:'Developer Plus', amount:199900, currency:'INR', interval:'month', role:'developer', roles:['developer'], features:['Technical mock tests','AI code review and refactoring','Technical notes and architecture guides','Skills and interview preparation'] }
+    starter: { id:'starter', name:'Starter', amount:49900, currency:'INR', interval:'month', role:'student', roles:everyone, tier:'starter',
+        features:['10 core AI tools','AI Companion with memory','Detailed answers and study plans','1,200 credits a month'] },
+    plus:    { id:'plus',    name:'Plus',    amount:79900, currency:'INR', interval:'month', role:'student', roles:everyone, tier:'plus',
+        features:['25 AI tools','Everything in Starter','PDF, image and video summarising','12,000 credits a month — 10x Starter'] },
+    pro:     { id:'pro',     name:'Pro',     amount:99900, currency:'INR', interval:'month', role:'student', roles:everyone, tier:'pro',
+        features:['All 50 AI tools','Everything in Plus','Exam prep, roadmaps and the Developer Hub','24,000 credits a month — 20x Starter'] },
+    max:     { id:'max',     name:'Max',     amount:149900, currency:'INR', interval:'month', role:'student', roles:everyone, tier:'max',
+        features:['All 50 AI tools and every feature','Priority routing — the strongest model, first in the queue','48,000 credits a month','Highest limits on uploads and generation'] }
 });
 class PaymentError extends Error { constructor(status, message, code='PAYMENT_ERROR') { super(message); this.status=status; this.code=code; } }
 function fail(status, message, code) { throw new PaymentError(status,message,code); }

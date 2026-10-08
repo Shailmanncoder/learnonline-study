@@ -2358,7 +2358,12 @@ document.getElementById('run-tool-btn').addEventListener('click', async () => {
                 response = await api.generateAI(
                     authToken,
                     fullPrompt,
-                    currentActiveTool.systemMessage || `You are an expert in ${currentActiveTool.category}. Provide concise, accurate output.`
+                    currentActiveTool.systemMessage || `You are an expert in ${currentActiveTool.category}. Provide concise, accurate output.`,
+                    null,
+                    // Which tool this is, so the server can check it against
+                    // the plan. Sent as data, never trusted as permission:
+                    // the plan itself is read from the entitlement row.
+                    { toolId: currentActiveTool.id }
                 );
                 await renderWithTyping(outputArea, response.result, { renderMath: false });
             }
