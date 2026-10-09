@@ -13,8 +13,36 @@ const html = read('../../frontend/index.html');
 
 test('codes come from the support address', () => {
     assert.match(mailer, /\|\| 'support@shailmanntech\.com'/);
-    // A defaulted From must not make an unconfigured server look ready to send.
-    assert.match(mailer, /return Boolean\(s\.host && s\.from\)/);
+    // A defaulted From must not make an unconfigured server look ready to
+    // send — only a real provider can.
+    assert.match(mailer, /Boolean\(\(s\.resendKey \|\| s\.host\) && s\.from\)/);
+});
+
+test('Resend is used when its key is set, SMTP otherwise', () => {
+    const { isConfigured, describe, send } = require('../services/mailer');
+    const before = { key: process.env.RESEND_API_KEY, host: process.env.SMTP_HOST };
+    try {
+        process.env.RESEND_API_KEY = ''; process.env.SMTP_HOST = '';
+        assert.equal(isConfigured(), false, 'nothing set is not configured');
+        assert.match(describe(), /not configured/);
+
+        process.env.RESEND_API_KEY = 're_key';
+        assert.equal(isConfigured(), true);
+        assert.match(describe(), /^Resend API/, 'the key takes precedence');
+
+        process.env.RESEND_API_KEY = ''; process.env.SMTP_HOST = 'smtp.example.com';
+        assert.equal(isConfigured(), true);
+        assert.match(describe(), /^SMTP /);
+    } finally {
+        process.env.RESEND_API_KEY = before.key || '';
+        process.env.SMTP_HOST = before.host || '';
+    }
+    // Resend's own reason is passed through: an unverified sending domain is
+    // the usual cause and a generic failure would hide it.
+    assert.match(mailer, /Resend refused the message \(\$\{res\.status\}\)/);
+    assert.match(mailer, /api\.resend\.com\/emails/);
+    assert.match(mailer, /AbortSignal\.timeout/, 'a hung provider must not hang the request');
+    assert.ok(typeof send === 'function');
 });
 
 test('the email requirement only applies when mail can actually be sent', () => {

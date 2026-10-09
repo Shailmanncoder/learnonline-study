@@ -168,6 +168,10 @@ require('./services/sourceLibrary/collector').seedTrustedSources()
 const server = app.listen(PORT, process.env.HOST || '0.0.0.0');
 server.on('listening', () => {
     console.log(`Server running on port ${server.address().port}`);
+    // Say how mail will leave, or that it will not. Password reset, email
+    // confirmation and the AI-tool requirement all hinge on this, and the
+    // requirement stays dormant while it reads "not configured".
+    console.log('Email:', require('./services/mailer').describe());
 
     // Load the embedding model now rather than on the first student question.
     // Loading it lazily meant a cold container answered WITHOUT textbook
