@@ -51,11 +51,66 @@ function isConfigured() {
     return Boolean((s.resendKey || s.host) && s.from);
 }
 
+// ── Does it actually work? ───────────────────────────────────────
+// Being configured and being able to deliver are different things, and the
+// difference matters: the AI-tool requirement switches on when email is
+// available, so a key that is present but wrong would demand a code that can
+// never arrive and lock every account out of every tool.
+//
+// That is not hypothetical — a placeholder key was pasted into production and
+// did exactly that. So the provider is checked once at startup, and until it
+// answers, "configured" means nothing to anything that gates on it.
+let verified = null;          // null = not checked yet, true/false = answer
+let verifying = null;
+
+async function verify() {
+    const s = settings();
+    if (!s.resendKey && !s.host) { verified = false; return false; }
+
+    // SMTP is not probed: a connection test needs the port open from here and
+    // proves little. A Resend key can be checked with one cheap call.
+    if (!s.resendKey) { verified = true; return true; }
+
+    try {
+        const res = await fetch('https://api.resend.com/domains', {
+            headers: { Authorization: `Bearer ${s.resendKey}` },
+            signal: AbortSignal.timeout(8000)
+        });
+        verified = res.ok;
+        if (!res.ok) {
+            const body = await res.text().catch(() => '');
+            console.error(`[MAIL] Resend rejected the key (${res.status}): ${body.slice(0, 160)}`);
+            console.error('[MAIL] Email is treated as unavailable, so nothing will be gated behind a code nobody can receive.');
+        }
+        return verified;
+    } catch (err) {
+        // A network blip at boot should not permanently disable email, but it
+        // must not switch the requirement on either. Unknown means off.
+        console.error('[MAIL] Could not reach Resend to check the key:', err.message);
+        verified = false;
+        return false;
+    }
+}
+
+// Checked once, reused. Callers that cannot await simply see `false` until it
+// resolves, which is the safe direction.
+function ready() {
+    if (verified !== null) return Promise.resolve(verified);
+    return (verifying ||= verify());
+}
+
+// True only when mail is configured AND the provider has accepted the
+// credentials. This is what anything user-facing should gate on.
+function isWorking() {
+    return isConfigured() && verified === true;
+}
+
 // Which route mail is taking, for the operator rather than the student.
 function describe() {
     const s = settings();
-    if (s.resendKey) return `Resend API, from ${s.from}`;
-    if (s.host) return `SMTP ${s.host}:${s.port}, from ${s.from}`;
+    const state = verified === null ? ' (not checked yet)' : verified ? '' : ' — REJECTED, email disabled';
+    if (s.resendKey) return `Resend API, from ${s.from}${state}`;
+    if (s.host) return `SMTP ${s.host}:${s.port}, from ${s.from}${state}`;
     return 'not configured';
 }
 
@@ -94,4 +149,4 @@ async function send({ to, subject, text }) {
     await transport.sendMail({ from: s.from, to, subject, text });
 }
 
-module.exports = { isConfigured, send, settings, describe };
+module.exports = { isConfigured, isWorking, ready, verify, send, settings, describe };

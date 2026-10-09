@@ -21,7 +21,9 @@ async function meter(req, res, { toolId, kind, depth, units }) {
     // Insisting on a code nobody can receive would lock every account out of
     // every tool with no way to satisfy it — so with no SMTP host configured
     // this stays out of the way entirely.
-    if (require('../services/mailer').isConfigured()) {
+    // isWorking(), not isConfigured(): a key that is present but wrong would
+    // demand a code that can never arrive.
+    if (require('../services/mailer').isWorking()) {
         const account = await db.get('SELECT email, email_verified_at FROM users WHERE id = ?', [req.user.id]);
         if (!account?.email_verified_at) {
             res.status(403).json({

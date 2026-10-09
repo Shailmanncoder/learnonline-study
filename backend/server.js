@@ -171,7 +171,10 @@ server.on('listening', () => {
     // Say how mail will leave, or that it will not. Password reset, email
     // confirmation and the AI-tool requirement all hinge on this, and the
     // requirement stays dormant while it reads "not configured".
-    console.log('Email:', require('./services/mailer').describe());
+    // Ask the provider whether the credentials are good before anything gates
+    // on them. Until this answers, email counts as unavailable.
+    const mailer = require('./services/mailer');
+    mailer.ready().then(() => console.log('Email:', mailer.describe()));
 
     // Load the embedding model now rather than on the first student question.
     // Loading it lazily meant a cold container answered WITHOUT textbook

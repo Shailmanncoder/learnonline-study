@@ -49,7 +49,8 @@ test('the email requirement only applies when mail can actually be sent', () => 
     // Insisting on a code nobody can receive would lock every account out of
     // every tool with no way to satisfy it.
     const meter = aiCtl.slice(aiCtl.indexOf('async function meter('), aiCtl.indexOf('async function meter(') + 2200);
-    assert.match(meter, /require\('\.\.\/services\/mailer'\)\.isConfigured\(\)/);
+    // isWorking(), not isConfigured(): a present-but-wrong key must not gate.
+    assert.match(meter, /require\('\.\.\/services\/mailer'\)\.isWorking\(\)/);
     assert.match(meter, /EMAIL_REQUIRED/);
     assert.match(meter, /email_verified_at/, 'an unconfirmed address is not enough');
 });
@@ -90,4 +91,29 @@ test('sign-up asks for the email, sign-in does not', () => {
     assert.ok(html.includes('id="auth-email-group"'));
     assert.match(app, /emailGroup\.style\.display = window\.isLoginMode \? 'none' : ''/);
     assert.match(api, /register: async \(username, password, role = 'student', email = ''\)/);
+});
+
+test('a key that is present but wrong must not gate anything', async () => {
+    // This happened: a placeholder key reached production, isConfigured() went
+    // true, the AI-tool requirement switched on, and no code could ever be
+    // delivered to satisfy it. Being configured and being able to deliver are
+    // different things, and only the second may gate anything.
+    const m = require('../services/mailer');
+    assert.equal(typeof m.isWorking, 'function');
+    assert.equal(typeof m.ready, 'function');
+
+    // Nothing gates on isConfigured() any more.
+    for (const file of ['../controllers/aiController.js', '../controllers/authController.js', '../controllers/userController.js']) {
+        const src = read(file).replace(/\/\/[^\n]*/g, '');
+        assert.ok(!/mailer\.isConfigured\(\)|require\('\.\.\/services\/mailer'\)\.isConfigured\(\)/.test(src),
+            `${file} still decides on isConfigured()`);
+    }
+    assert.match(aiCtl, /require\('\.\.\/services\/mailer'\)\.isWorking\(\)/);
+
+    // Unknown counts as unavailable, which is the safe direction.
+    assert.match(mailer, /verified = false;\s*\n\s*return false;/);
+    assert.match(mailer, /return isConfigured\(\) && verified === true/);
+    // The provider is asked, rather than taken on trust.
+    assert.match(mailer, /api\.resend\.com\/domains/);
+    assert.match(mailer, /AbortSignal\.timeout\(8000\)/);
 });

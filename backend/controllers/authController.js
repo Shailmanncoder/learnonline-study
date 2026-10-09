@@ -47,9 +47,9 @@ async function sendEmailCode(userId, email) {
         'INSERT INTO email_verifications (id, user_id, email, code_hash, created_at, expires_at, attempts) VALUES (?,?,?,?,?,?,0)',
         [crypto.randomUUID(), userId, email, await bcrypt.hash(code, 10), now, now + 15 * 60_000]
     );
-    if (!mailer.isConfigured()) {
+    if (!mailer.isWorking()) {
         if (process.env.NODE_ENV !== 'production') console.log(`[AUTH] email code for user ${userId}: ${code} (SMTP not configured)`);
-        else console.error('[AUTH] email confirmation needed but SMTP is not configured; nothing sent');
+        else console.error('[AUTH] email confirmation needed but mail is unavailable:', mailer.describe());
         return false;
     }
     await mailer.send({
@@ -171,7 +171,7 @@ router.post('/forgot-password', forgotLimit, async (req, res) => {
         await ensureResetSchema();
         const user = await findAccount(req.body && req.body.username);
         // The reply is sent regardless. Everything below is best-effort.
-        res.json({ msg: RESET_SENT, emailConfigured: mailer.isConfigured() });
+        res.json({ msg: RESET_SENT, emailConfigured: mailer.isWorking() });
 
         if (!user) return;
         // Only a confirmed address, and never the username as a fallback: having
@@ -195,14 +195,14 @@ router.post('/forgot-password', forgotLimit, async (req, res) => {
             [crypto.randomUUID(), user.id, codeHash, now, now + RESET_TTL_MS]
         );
 
-        if (!mailer.isConfigured()) {
+        if (!mailer.isWorking()) {
             // In development the code goes to the server log so the flow can be
             // used without a mail account. Never in production: that would put
             // working reset codes into the log file.
             if (process.env.NODE_ENV !== 'production') {
                 console.log(`[AUTH] reset code for user ${user.id}: ${code} (SMTP not configured)`);
             } else {
-                console.error('[AUTH] password reset requested but SMTP is not configured; no email sent');
+                console.error('[AUTH] password reset requested but mail is unavailable:', mailer.describe());
             }
             return;
         }
@@ -218,7 +218,7 @@ router.post('/forgot-password', forgotLimit, async (req, res) => {
         // The response has usually gone already; never turn a mail failure into
         // a signal about whether the account exists.
         console.error('[AUTH] forgot-password failed:', err.message);
-        if (!res.headersSent) res.json({ msg: RESET_SENT, emailConfigured: mailer.isConfigured() });
+        if (!res.headersSent) res.json({ msg: RESET_SENT, emailConfigured: mailer.isWorking() });
     }
 });
 

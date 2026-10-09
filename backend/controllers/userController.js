@@ -359,7 +359,7 @@ router.post('/email', auth, emailSendLimit, async (req, res) => {
             [crypto.randomUUID(), req.user.id, email, codeHash, now, now + VERIFY_TTL_MS]
         );
 
-        if (!mailer.isConfigured()) {
+        if (!mailer.isWorking()) {
             if (process.env.NODE_ENV !== 'production') {
                 console.log(`[USER] email verification code for user ${req.user.id}: ${code} (SMTP not configured)`);
             } else {
