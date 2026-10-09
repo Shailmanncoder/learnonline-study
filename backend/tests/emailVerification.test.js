@@ -12,16 +12,27 @@ const server = read('../server.js');
 const app = read('../../frontend/app.js');
 const html = read('../../frontend/index.html');
 
-test('a reset code only ever goes to a confirmed address', () => {
+test('an unconfirmed address cannot be used to FIND an account', () => {
     // Anyone can type any address into their own profile. Honouring an
-    // unconfirmed one would let them pull a stranger's account into the reset
-    // flow, and send a code to an inbox that never asked for it.
+    // unconfirmed one for lookup would let them pull a stranger's account
+    // into the reset flow.
     assert.match(authCtl, /email = \? AND email_verified_at IS NOT NULL/,
         'an unverified address must not identify an account');
-    assert.match(authCtl, /if \(!user\.email \|\| !user\.email_verified_at\) return;/);
-    // The old fallback to an email-shaped username is gone: registering with
-    // an address is not proof of reading it.
-    assert.ok(!/test\(user\.username\) \? user\.username : null/.test(authCtl));
+});
+
+test('a reset still reaches the address on the account', () => {
+    // Requiring confirmation to RECEIVE was a lockout, not a safeguard:
+    // confirming happens from the profile, the profile needs you signed in,
+    // and if you have forgotten your password you cannot sign in. On
+    // production that left all 8 accounts unable to reset, silently, with no
+    // send even attempted.
+    //
+    // Lookup and delivery are different questions. A stray code is useless to
+    // whoever receives it without the username.
+    assert.ok(!/if \(!user\.email \|\| !user\.email_verified_at\) return;/.test(authCtl),
+        'delivery must not require confirmation');
+    assert.match(authCtl, /const recipient = user\.email \|\| \(EMAIL_SHAPED\.test\(user\.username\)/);
+    assert.match(authCtl, /if \(!recipient\) return;/);
 });
 
 test('a pending address is held apart from the live one', () => {

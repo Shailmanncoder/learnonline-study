@@ -174,12 +174,23 @@ router.post('/forgot-password', forgotLimit, async (req, res) => {
         res.json({ msg: RESET_SENT, emailConfigured: mailer.isWorking() });
 
         if (!user) return;
-        // Only a confirmed address, and never the username as a fallback: having
-        // registered with an address is not proof of being able to read it,
-        // and a code sent to the wrong inbox is the exact failure verification
-        // exists to prevent.
-        if (!user.email || !user.email_verified_at) return;
-        const recipient = user.email;
+        // Send to the address on the account, confirmed or not.
+        //
+        // This used to require a confirmed address, which was wrong in a way
+        // that mattered: confirming happens from the profile, the profile
+        // needs you signed in, and if you have forgotten your password you
+        // cannot sign in. Every account with an unconfirmed address was
+        // therefore permanently unable to reset — the exact outcome this
+        // feature exists to prevent. On production that was all 8 of them.
+        //
+        // The thing confirmation protects against is LOOKUP: being found by
+        // an address someone else typed into their own profile. That is still
+        // enforced in findAccount. Delivering to an address the account holder
+        // put on their own account is a different question, and a stray code
+        // is useless to whoever receives it without the username.
+        const EMAIL_SHAPED = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+        const recipient = user.email || (EMAIL_SHAPED.test(user.username) ? user.username : null);
+        if (!recipient) return;   // nothing on file to send to
 
         // Six digits from a cryptographic source, never Math.random.
         const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
