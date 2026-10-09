@@ -76,13 +76,43 @@ async function verify() {
             headers: { Authorization: `Bearer ${s.resendKey}` },
             signal: AbortSignal.timeout(8000)
         });
-        verified = res.ok;
         if (!res.ok) {
             const body = await res.text().catch(() => '');
             console.error(`[MAIL] Resend rejected the key (${res.status}): ${body.slice(0, 160)}`);
             console.error('[MAIL] Email is treated as unavailable, so nothing will be gated behind a code nobody can receive.');
+            verified = false;
+            return false;
         }
-        return verified;
+
+        // A valid key is not the same as a usable sender. Resend refuses any
+        // message from a domain that has not been verified, so checking the
+        // key alone would let the requirement switch on while every code
+        // still failed to send — the same trap as before, one step further in.
+        const domain = (settings().from.split('@')[1] || '').toLowerCase();
+        try {
+            const list = await res.json();
+            const rows = Array.isArray(list) ? list : (list && list.data) || null;
+            if (Array.isArray(rows)) {
+                const match = rows.find(d => String(d.name || '').toLowerCase() === domain);
+                if (!match) {
+                    console.error(`[MAIL] ${domain} is not added to this Resend account, so nothing can be sent from ${settings().from}.`);
+                    verified = false;
+                    return false;
+                }
+                if (match.status && String(match.status).toLowerCase() !== 'verified') {
+                    console.error(`[MAIL] ${domain} is in Resend but its status is "${match.status}" — add the DNS records to finish verifying it.`);
+                    verified = false;
+                    return false;
+                }
+            }
+            // An unrecognised response shape is not evidence of a problem, so
+            // the valid key stands on its own.
+        } catch {
+            // Same: could not read the list, so judge on the key alone.
+        }
+
+        verified = true;
+        return true;
     } catch (err) {
         // A network blip at boot should not permanently disable email, but it
         // must not switch the requirement on either. Unknown means off.

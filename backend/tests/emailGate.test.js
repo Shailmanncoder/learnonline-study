@@ -144,3 +144,40 @@ test('the email requirement applies to new accounts, not existing ones', async (
     assert.match(schema, /email_exempt INTEGER NOT NULL DEFAULT 0/);
     assert.match(schema, /email_exempt INT NOT NULL DEFAULT 0/);
 });
+
+test('a valid key with an unverified sender does not count as working', async () => {
+    // Resend refuses any message from a domain that has not been verified, so
+    // checking the key alone would let the requirement switch on while every
+    // code still failed to send — the same trap, one step further in.
+    const realFetch = global.fetch;
+    const load = () => { delete require.cache[require.resolve('../services/mailer')]; return require('../services/mailer'); };
+    const before = { key: process.env.RESEND_API_KEY, from: process.env.EMAIL_FROM };
+    process.env.RESEND_API_KEY = 're_stub';
+    process.env.EMAIL_FROM = 'support@shailmanntech.com';
+
+    const stub = (ok, body, status = 200) => {
+        global.fetch = async () => ({ ok, status, json: async () => body, text: async () => JSON.stringify(body) });
+    };
+    try {
+        stub(true, { data: [{ name: 'shailmanntech.com', status: 'verified' }] });
+        assert.equal(await load().ready(), true, 'a verified sender works');
+
+        stub(true, { data: [{ name: 'shailmanntech.com', status: 'pending' }] });
+        assert.equal(await load().ready(), false, 'a pending domain cannot send');
+
+        stub(true, { data: [{ name: 'someoneelse.com', status: 'verified' }] });
+        assert.equal(await load().ready(), false, 'a domain that is not there cannot send');
+
+        stub(false, { message: 'invalid' }, 401);
+        assert.equal(await load().ready(), false, 'a rejected key cannot send');
+
+        // An unrecognised shape is not evidence of a problem; the key stands.
+        stub(true, { weird: 1 });
+        assert.equal(await load().ready(), true);
+    } finally {
+        global.fetch = realFetch;
+        process.env.RESEND_API_KEY = before.key || '';
+        process.env.EMAIL_FROM = before.from || '';
+        delete require.cache[require.resolve('../services/mailer')];
+    }
+});

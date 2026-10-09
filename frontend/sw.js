@@ -10,7 +10,7 @@
 // The visible symptom was new markup rendering against old stylesheets.
 // Bump CACHE_VERSION on any release that changes shell assets.
 
-const CACHE_VERSION = 'v57-email-new-accounts';
+const CACHE_VERSION = 'v58-sender-verified';
 const CACHE_NAME = `studyhub-shell-${CACHE_VERSION}`;
 const APP_SHELL = [
     '/',
