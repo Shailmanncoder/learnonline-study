@@ -445,6 +445,9 @@ authSwitchBtn.addEventListener('click', (e) => {
     authSwitchText.textContent = window.isLoginMode ? "Don't have a student account?" : "Already have an account?";
     authSwitchBtn.textContent = window.isLoginMode ? 'Sign Up' : 'Log In';
     setAuthBtnText(window.isLoginMode ? 'Enter Student Portal' : 'Create Account');
+    // Asked for at sign-up, not at sign-in.
+    const emailGroup = document.getElementById('auth-email-group');
+    if (emailGroup) emailGroup.style.display = window.isLoginMode ? 'none' : '';
     authError.textContent = '';
 });
 
@@ -461,7 +464,8 @@ authForm.addEventListener('submit', async (e) => {
         if (window.isLoginMode) {
             res = await api.login(username, password);
         } else {
-            res = await api.register(username, password);
+            res = await api.register(username, password, 'student',
+                document.getElementById('auth-email')?.value?.trim() || '');
         }
         authToken = res.token;
         localStorage.setItem('authToken', authToken);
@@ -1537,6 +1541,84 @@ function startCheckoutHandoff(plan, catalog) {
         }
     })();
 }
+
+// ── Confirm an email before the AI tools ──────────────────────────
+// An account can be created with a username alone, which leaves no way to
+// reach the person or recover the account. Rather than refusing and stopping
+// there, the refusal opens this: add the address, type the code, carry on.
+// What you were trying to do is one step away, not lost.
+let emailGateRetry = null;
+
+function openEmailGate(serverMessage, knownEmail, retry) {
+    const modal = document.getElementById('email-gate-modal');
+    if (!modal) return;
+    emailGateRetry = typeof retry === 'function' ? retry : null;
+    document.getElementById('email-gate-subtitle').textContent =
+        serverMessage || 'The AI tools need a confirmed email.';
+    document.getElementById('email-gate-address').value = knownEmail || currentUserData?.email || '';
+    document.getElementById('email-gate-code').value = '';
+    document.getElementById('email-gate-error').textContent = '';
+    document.getElementById('email-gate-confirm-error').textContent = '';
+    document.getElementById('email-gate-request').style.display = '';
+    document.getElementById('email-gate-confirm').style.display = 'none';
+    modal.style.display = 'flex';
+    document.getElementById('email-gate-address').focus();
+}
+
+safeOn('email-gate-close', 'click', () => {
+    document.getElementById('email-gate-modal').style.display = 'none';
+    emailGateRetry = null;
+});
+
+document.getElementById('email-gate-request')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('email-gate-send');
+    const err = document.getElementById('email-gate-error');
+    const address = document.getElementById('email-gate-address').value.trim();
+    if (!address) return;
+    btn.disabled = true; err.textContent = '';
+    try {
+        const out = await api.requestEmailVerification(authToken, address);
+        if (out.emailVerified) {
+            // Already confirmed — nothing to type.
+            document.getElementById('email-gate-modal').style.display = 'none';
+            currentUserData.email = out.email;
+            currentUserData.email_verified_at = Date.now();
+            const again = emailGateRetry; emailGateRetry = null;
+            if (again) again();
+            return;
+        }
+        document.getElementById('email-gate-subtitle').textContent = out.msg;
+        document.getElementById('email-gate-request').style.display = 'none';
+        document.getElementById('email-gate-confirm').style.display = '';
+        document.getElementById('email-gate-code').focus();
+        if (out.emailConfigured === false) {
+            document.getElementById('email-gate-confirm-error').textContent =
+                'Email delivery is not set up on this server yet, so no code will arrive.';
+        }
+    } catch (e2) {
+        err.textContent = e2.message;
+    } finally { btn.disabled = false; }
+});
+
+document.getElementById('email-gate-confirm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('email-gate-verify');
+    const err = document.getElementById('email-gate-confirm-error');
+    btn.disabled = true; err.textContent = '';
+    try {
+        const out = await api.confirmEmailVerification(authToken, document.getElementById('email-gate-code').value.trim());
+        currentUserData.email = out.email;
+        currentUserData.email_verified_at = Date.now();
+        document.getElementById('email-gate-modal').style.display = 'none';
+        showToast('Email confirmed.', 'success');
+        // Pick up exactly where they were stopped.
+        const again = emailGateRetry; emailGateRetry = null;
+        if (again) again();
+    } catch (e2) {
+        err.textContent = e2.message;
+    } finally { btn.disabled = false; }
+});
 
 // ── Credits, wherever you are ─────────────────────────────────────
 // The balance lived only on the pricing page, so it was invisible exactly
@@ -2697,6 +2779,14 @@ document.getElementById('run-tool-btn').addEventListener('click', async () => {
         // the two cases that are not failures at all: a tool the plan does not
         // open, and an allowance that has run out. Every account is on Free, so
         // that message was what 47 of the 50 tools said.
+        if (err.code === 'EMAIL_REQUIRED') {
+            // Not a failure — a step. Re-run the tool once it is done. This is
+            // checked before the ai-tutor branch below, because that branch
+            // would otherwise print the message and stop there.
+            openEmailGate(err.message, err.email, () => document.getElementById('run-tool-btn')?.click());
+            outputArea.textContent = '';
+            return;
+        }
         if (err.code === 'TOOL_LOCKED' || err.code === 'QUOTA_EXCEEDED') {
             outputArea.innerHTML = '';
             const box = document.createElement('div');
@@ -6222,12 +6312,26 @@ async function sendGrokMessage() {
     } catch (err) {
         clearInterval(timerInterval);
         stopLiveSteps();
-        console.error(err);
-        bubbleEl.innerHTML = `
-            <div style="color: #EF4444; font-size: 13.5px;">
-                <i class="fa-solid fa-triangle-exclamation"></i> Error communicating with AI: ${escapeHtml(err.message || 'Please check your connection and retry.')}
-            </div>
-        `;
+        // A refusal is not a communication error. Showing "Error communicating
+        // with AI" for a missing email, a locked tool or a spent allowance
+        // tells the student to check their connection, which is no help at all.
+        if (err.code === 'EMAIL_REQUIRED') {
+            bubbleEl.innerHTML = `<div class="grok-blocked"><i class="fa-solid fa-envelope-circle-check"></i> ${escapeHtml(err.message)}</div>`;
+            openEmailGate(err.message, err.email, () => { grokChatInput.value = text; sendGrokMessage(); });
+        } else if (err.code === 'TOOL_LOCKED' || err.code === 'QUOTA_EXCEEDED') {
+            bubbleEl.innerHTML = `<div class="grok-blocked">
+                <i class="fa-solid ${err.code === 'TOOL_LOCKED' ? 'fa-lock' : 'fa-bolt'}"></i> ${escapeHtml(err.message)}
+                <button type="button" class="grok-blocked-cta">See plans</button></div>`;
+            bubbleEl.querySelector('.grok-blocked-cta')?.addEventListener('click', () => navigateToSection('plus', true));
+            refreshCredits();
+        } else {
+            console.error(err);
+            bubbleEl.innerHTML = `
+                <div style="color: #EF4444; font-size: 13.5px;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Error communicating with AI: ${escapeHtml(err.message || 'Please check your connection and retry.')}
+                </div>
+            `;
+        }
     }
 
     companionSending = false;

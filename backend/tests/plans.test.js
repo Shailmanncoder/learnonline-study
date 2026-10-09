@@ -90,7 +90,11 @@ test('every generating endpoint is metered', () => {
     assert.match(aiCtl, /meter\(req, res, \{ kind: 'image' \}\)/);
     assert.match(aiCtl, /meter\(req, res, \{ kind: 'speech' \}\)/);
     // Charged before the model runs: the tokens are spent either way.
-    const fn = aiCtl.slice(aiCtl.indexOf('async function meter('), aiCtl.indexOf('async function meter(') + 1400);
+    // Bounded at the next declaration rather than by a character count, so
+    // adding a check inside meter() does not silently slide the end past the
+    // thing being asserted.
+    const meterAt = aiCtl.indexOf('async function meter(');
+    const fn = aiCtl.slice(meterAt, aiCtl.indexOf("\nrouter.", meterAt));
     assert.match(fn, /usage\.charge/);
     assert.match(fn, /TOOL_LOCKED/);
     assert.match(fn, /QUOTA_EXCEEDED/);

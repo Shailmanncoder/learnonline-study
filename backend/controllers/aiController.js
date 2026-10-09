@@ -12,6 +12,28 @@ const ent = require('../services/entitlements');
 // spent whether or not the answer comes back.
 async function meter(req, res, { toolId, kind, depth, units }) {
     if (!ent.enforced()) return null;
+
+    // A confirmed email before any AI work. Accounts can be created with a
+    // username alone, which leaves no way to reach the person, recover the
+    // account, or tell one signup from fifty.
+    //
+    // The requirement only applies when mail can actually leave the server.
+    // Insisting on a code nobody can receive would lock every account out of
+    // every tool with no way to satisfy it — so with no SMTP host configured
+    // this stays out of the way entirely.
+    if (require('../services/mailer').isConfigured()) {
+        const account = await db.get('SELECT email, email_verified_at FROM users WHERE id = ?', [req.user.id]);
+        if (!account?.email_verified_at) {
+            res.status(403).json({
+                msg: account?.email
+                    ? 'Confirm your email to use the AI tools. We sent a 6-digit code to ' + account.email + '.'
+                    : 'Add an email to use the AI tools. It is how you get your code back if you forget your password.',
+                code: 'EMAIL_REQUIRED', email: account?.email || null
+            });
+            return false;
+        }
+    }
+
     const planId = await usage.planOf(req.user.id);
     const tier = ent.tierOf(planId);
 

@@ -61,6 +61,11 @@
                     <label for="username" id="auth-user-label">Username</label>
                     <input type="text" id="username" required placeholder="Enter username or email" autocomplete="username">
                 </div>
+                <div class="form-group" id="auth-email-group" style="display:none;">
+                    <label for="auth-email">Email</label>
+                    <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email">
+                    <p class="field-hint">We send a 6-digit code here. It is how you use the AI tools and get back in if you forget your password.</p>
+                </div>
                 <div class="form-group">
                     <label for="password">Password</label>
                     <div class="password-wrapper">
@@ -115,6 +120,41 @@
             </p>
             <p class="gw-error" id="gw-error"></p>
             <button type="button" class="gw-cancel" id="gw-cancel">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Confirm an email before using the AI tools. Reached from the tool
+         itself, so the thing you were trying to do is one step away. -->
+    <div id="email-gate-modal" class="auth-overlay" style="display:none;">
+        <div class="auth-container glass">
+            <button class="auth-close-btn" id="email-gate-close"><i class="fa-solid fa-xmark"></i></button>
+            <div class="auth-logo-mini"><i class="fa-solid fa-envelope-circle-check"></i></div>
+
+            <h2 id="email-gate-title">Confirm your email</h2>
+            <p id="email-gate-subtitle">The AI tools need a confirmed email. It takes a moment.</p>
+
+            <form id="email-gate-request">
+                <div class="form-group">
+                    <label for="email-gate-address">Email</label>
+                    <input type="email" id="email-gate-address" required placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div id="email-gate-error" class="error-msg"></div>
+                <button type="submit" class="btn btn-full btn-glow" id="email-gate-send">
+                    <span>Send me a code</span> <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
+
+            <form id="email-gate-confirm" style="display:none;">
+                <div class="form-group">
+                    <label for="email-gate-code">6-digit code</label>
+                    <input type="text" id="email-gate-code" required placeholder="000000" inputmode="numeric"
+                           autocomplete="one-time-code" maxlength="6" pattern="\d{6}">
+                </div>
+                <div id="email-gate-confirm-error" class="error-msg"></div>
+                <button type="submit" class="btn btn-full btn-glow" id="email-gate-verify">
+                    <span>Confirm and continue</span> <i class="fa-solid fa-check"></i>
+                </button>
+            </form>
         </div>
     </div>
 

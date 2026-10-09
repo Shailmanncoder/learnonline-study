@@ -1,11 +1,21 @@
 const API_BASE_URL = '/api';
 
+// A refusal from the AI routes is often not a failure: the plan does not open
+// this tool, the month's allowance is spent, or the account has no confirmed
+// email yet. Each carries a code the screen can act on, so every caller has to
+// preserve it — a bare Error turns an explainable answer into a dead end.
+function aiError(e, fallback) {
+    const err = new Error((e && e.msg) || fallback);
+    if (e) { err.code = e.code; err.requiredPlanLabel = e.requiredPlanLabel; err.email = e.email; }
+    return err;
+}
+
 const api = {
-    register: async (username, password, role = 'student') => {
+    register: async (username, password, role = 'student', email = '') => {
         const res = await fetch(`${API_BASE_URL}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password, role })
+            body: JSON.stringify({ username, password, role, email })
         });
         if (!res.ok) {
             const e = await res.json().catch(() => ({ msg: 'Registration failed' }));
@@ -203,13 +213,7 @@ const api = {
             body: JSON.stringify({ prompt, systemMessage, model, ...opts })
         });
         if (!res.ok) {
-            const e = await res.json().catch(() => ({}));
-            const err = new Error(e.msg || 'AI generation failed');
-            // A locked tool and a spent allowance are ordinary, explainable
-            // answers, not failures. Carry the reason so the screen can say
-            // which one it was instead of blaming the connection.
-            err.code = e.code;
-            err.requiredPlanLabel = e.requiredPlanLabel;
+            const err = aiError(await res.json().catch(() => null), 'AI generation failed');
             err.status = res.status;
             throw err;
         }
@@ -517,7 +521,7 @@ const api = {
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ messages, systemMessage, model })
         });
-        if (!res.ok) { const e = await res.json(); throw new Error(e.msg || 'AI generation failed'); }
+        if (!res.ok) throw aiError(await res.json().catch(() => null), 'AI generation failed');
         return res.json();
     },
 

@@ -24,7 +24,10 @@ function settings() {
         port: Number(read('SMTP_PORT', 'PAYMENTS_SMTP_PORT') || 465),
         user: read('SMTP_USER', 'PAYMENTS_SMTP_USER'),
         pass: read('SMTP_PASSWORD', 'PAYMENTS_SMTP_PASSWORD'),
-        from: read('EMAIL_FROM', 'PAYMENTS_EMAIL_FROM')
+        // The address students see codes come from. Overridable, but defaulted
+        // so it is never accidentally left blank — a blank From is the one
+        // field that makes the send fail outright.
+        from: read('EMAIL_FROM', 'PAYMENTS_EMAIL_FROM') || 'support@shailmanntech.com'
     };
 }
 
@@ -32,6 +35,9 @@ function settings() {
 // send it as, so the caller must be told rather than silently dropping mail.
 function isConfigured() {
     const s = settings();
+    // The From address now has a default, so only the host tells us whether
+    // mail can actually leave this server. Saying "configured" on the strength
+    // of a defaulted From would make every code silently vanish.
     return Boolean(s.host && s.from);
 }
 

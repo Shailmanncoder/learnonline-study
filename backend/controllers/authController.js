@@ -36,11 +36,37 @@ const registerLimit = rateLimit({
 // here -- a list of real users, free, and with no rate limit behind it.
 const SIGNIN_FAILED = 'Those sign-in details did not match an account. Check the username and password, or create an account.';
 
+// Issue an email confirmation code. Shared by sign-up and the profile, so
+// both produce the same thing and there is one place to change it.
+async function sendEmailCode(userId, email) {
+    await require('../migrations/004_email_verification')(db);
+    const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+    const now = Date.now();
+    await db.run('DELETE FROM email_verifications WHERE user_id = ? AND used_at IS NULL', [userId]);
+    await db.run(
+        'INSERT INTO email_verifications (id, user_id, email, code_hash, created_at, expires_at, attempts) VALUES (?,?,?,?,?,?,0)',
+        [crypto.randomUUID(), userId, email, await bcrypt.hash(code, 10), now, now + 15 * 60_000]
+    );
+    if (!mailer.isConfigured()) {
+        if (process.env.NODE_ENV !== 'production') console.log(`[AUTH] email code for user ${userId}: ${code} (SMTP not configured)`);
+        else console.error('[AUTH] email confirmation needed but SMTP is not configured; nothing sent');
+        return false;
+    }
+    await mailer.send({
+        to: email,
+        subject: 'Confirm your email for LearnOnline.study',
+        text: `Your confirmation code is ${code}\n\n`
+            + `Enter it to finish setting up your account. It expires in 15 minutes.\n\n`
+            + `If you did not create an account, you can ignore this email.`
+    });
+    return true;
+}
+
 // @route   POST api/auth/register
 // @desc    Register user with role support
 router.post('/register', registerLimit, async (req, res) => {
     try {
-        const { username, password, role = 'student' } = req.body;
+        const { username, password, email, role = 'student' } = req.body;
         // The username is the person's email. It was logged on every attempt,
         // putting a list of accounts into plain-text server logs.
         console.log('[AUTH] register request', { role });
@@ -64,11 +90,35 @@ router.post('/register', registerLimit, async (req, res) => {
         // the request body, so anyone could register as an administrator.
         const cleanRole = ['teacher', 'developer', 'student'].includes(role) ? role : 'student';
 
+        // An email given at sign-up. Stored unverified: a code is sent straight
+        // away, and nothing treats it as real until that code comes back. If
+        // the username IS an address, it counts as the one supplied.
+        const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+        const supplied = String(email ?? '').trim().toLowerCase()
+            || (EMAIL_RE.test(username.trim()) ? username.trim().toLowerCase() : '');
+        if (supplied && (supplied.length > 254 || !EMAIL_RE.test(supplied))) {
+            return res.status(400).json({ msg: 'Enter a valid email address.' });
+        }
+        if (supplied) {
+            // Must not collide with another account's address or username, for
+            // the same reason a reset lookup must not be ambiguous.
+            const clash = await db.get('SELECT id FROM users WHERE email = ? OR username = ?', [supplied, supplied]);
+            if (clash) return res.status(409).json({ msg: 'That email is already in use on another account.' });
+        }
+
         const result = await db.run(
-            'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
-            [username.trim(), hashedPassword, cleanRole]
+            'INSERT INTO users (username, password, role, email) VALUES (?, ?, ?, ?)',
+            [username.trim(), hashedPassword, cleanRole, supplied || null]
         );
         console.log('[AUTH] register inserted', { id: result.lastID, role: cleanRole });
+
+        // Send the confirmation code now, so the address is usable by the time
+        // they reach anything that needs it. Best effort: a mail failure must
+        // never fail the sign-up itself.
+        if (supplied) {
+            sendEmailCode(result.lastID, supplied).catch(err =>
+                console.warn('[AUTH] sign-up verification email failed:', err.message));
+        }
 
         const payload = {
             user: { id: result.lastID, role: cleanRole }
