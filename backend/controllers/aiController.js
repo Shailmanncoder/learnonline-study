@@ -24,8 +24,11 @@ async function meter(req, res, { toolId, kind, depth, units }) {
     // isWorking(), not isConfigured(): a key that is present but wrong would
     // demand a code that can never arrive.
     if (require('../services/mailer').isWorking()) {
-        const account = await db.get('SELECT email, email_verified_at FROM users WHERE id = ?', [req.user.id]);
-        if (!account?.email_verified_at) {
+        const account = await db.get('SELECT email, email_verified_at, email_exempt FROM users WHERE id = ?', [req.user.id]);
+        // Accounts that existed before the rule are not held to it. They
+        // signed up when a username alone was enough; they can still add an
+        // address from their profile whenever they want one.
+        if (!account?.email_exempt && !account?.email_verified_at) {
             res.status(403).json({
                 msg: account?.email
                     ? 'Confirm your email to use the AI tools. We sent a 6-digit code to ' + account.email + '.'

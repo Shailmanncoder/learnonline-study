@@ -117,3 +117,30 @@ test('a key that is present but wrong must not gate anything', async () => {
     assert.match(mailer, /api\.resend\.com\/domains/);
     assert.match(mailer, /AbortSignal\.timeout\(8000\)/);
 });
+
+test('the email requirement applies to new accounts, not existing ones', async () => {
+    // Everyone who already had an account signed up when a username alone was
+    // enough, and 24 of the 26 have no address on file. Switching the rule on
+    // for them would stop all of them at once, mid-use, over a rule that did
+    // not exist when they joined.
+    const migration = read('../migrations/007_email_exempt.js');
+
+    // Stamped into the data, not compared against a date: a timestamp test
+    // depends on the clock, the column format and an env var all staying right.
+    assert.match(migration, /ALTER TABLE users ADD COLUMN email_exempt/);
+    assert.match(migration, /UPDATE users SET email_exempt = 1/);
+    // Only once. A second run must not exempt accounts made since.
+    assert.match(migration, /if \(columns\.includes\('email_exempt'\)\) return;/);
+    assert.ok(migration.indexOf("includes('email_exempt')) return") < migration.indexOf('UPDATE users SET email_exempt = 1'),
+        'the stamp must be behind the already-run check');
+
+    // And the gate honours it.
+    assert.match(aiCtl, /!account\?\.email_exempt && !account\?\.email_verified_at/);
+    assert.match(aiCtl, /SELECT email, email_verified_at, email_exempt FROM users/);
+
+    // A fresh database has no legacy accounts, so the default is "subject to
+    // the rule" rather than exempt.
+    const schema = read('../config/db.js');
+    assert.match(schema, /email_exempt INTEGER NOT NULL DEFAULT 0/);
+    assert.match(schema, /email_exempt INT NOT NULL DEFAULT 0/);
+});
