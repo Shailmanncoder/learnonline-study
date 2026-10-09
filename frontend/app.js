@@ -451,6 +451,69 @@ authSwitchBtn.addEventListener('click', (e) => {
     authError.textContent = '';
 });
 
+// ── Continue with Google ──────────────────────────────────────────
+// Google renders and owns the button. All this does is hand the signed token
+// it produces to our server and then start the app, exactly as a password
+// sign-in does. The name and picture come back from the server, which read
+// them out of the verified token rather than from anything here.
+async function setupGoogleSignIn() {
+    const wrap = document.getElementById('google-signin');
+    const slot = document.getElementById('google-btn');
+    if (!wrap || !slot) return;
+
+    let config;
+    try { config = await api.googleConfig(); } catch { return; }
+    // No client id means it is not set up on this server. Showing a button
+    // that cannot work is worse than showing none.
+    if (!config.enabled || !config.clientId) { wrap.hidden = true; return; }
+
+    // Google's script is loaded async, so it may not be here yet.
+    const start = () => {
+        if (!window.google?.accounts?.id) return false;
+        window.google.accounts.id.initialize({
+            client_id: config.clientId,
+            callback: onGoogleCredential,
+            // One button for both: an address Google has verified either
+            // matches an account or becomes one.
+            context: 'signin',
+            ux_mode: 'popup'
+        });
+        window.google.accounts.id.renderButton(slot, {
+            theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'filled_black' : 'outline',
+            size: 'large', width: 320, text: 'continue_with', shape: 'pill'
+        });
+        wrap.hidden = false;
+        return true;
+    };
+
+    if (start()) return;
+    // Poll briefly for the script rather than hooking its load event, which
+    // may already have fired.
+    let tries = 0;
+    const timer = setInterval(() => { if (start() || ++tries > 40) clearInterval(timer); }, 150);
+}
+
+async function onGoogleCredential(response) {
+    const err = document.getElementById('auth-error');
+    if (err) err.textContent = '';
+    try {
+        const res = await api.googleSignIn(response.credential);
+        authToken = res.token;
+        localStorage.setItem('authToken', authToken);
+        localStorage.setItem('activePortalMode', 'student');
+        currentUserData = await api.getProfile(authToken);
+        persistStudyUser(res, currentUserData, 'student');
+        if (authModal) authModal.style.display = 'none';
+        showApp();
+        showToast(`Welcome${res.name ? ', ' + res.name.split(' ')[0] : ''}!`, 'success');
+    } catch (e) {
+        if (err) err.textContent = e.message;
+        else showToast(e.message, 'error');
+    }
+}
+
+setupGoogleSignIn();
+
 authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const username = document.getElementById('username').value;
@@ -861,12 +924,20 @@ function isBlank(v) {
     return v == null || String(v).trim().length === 0;
 }
 
+// Google's own photo host. Allowed by name rather than by "any https URL",
+// because profile_picture is a field the account holder can set: opening it
+// to arbitrary addresses would let one be pointed at a tracker that fires
+// whenever another student loads the leaderboard.
+const GOOGLE_PHOTO_HOST = /^https:\/\/[a-z0-9-]+\.googleusercontent\.com\//i;
+
 function resolveAvatarUrl(profilePicture, user) {
-    // Keep ONLY user-uploaded images (data URLs). Everything else falls back to robot.
-    // This prevents random/legacy photo URLs from showing as the default avatar.
+    // Uploaded images (data URLs) and the photo from a linked Google account.
+    // Everything else falls back to the robot — the rule exists to stop
+    // random and legacy photo URLs appearing as if they were avatars.
     if (!isBlank(profilePicture)) {
         const s = String(profilePicture).trim();
         if (s.startsWith('data:image/')) return s;
+        if (GOOGLE_PHOTO_HOST.test(s)) return s;
     }
     return getDefaultAvatarForUser(user);
 }

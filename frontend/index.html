@@ -11,6 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="StudyHub">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/premium.css">
     <link rel="stylesheet" href="/landing.css">
@@ -55,6 +56,14 @@
 
             <h2 id="auth-title">Student Sign In</h2>
             <p id="auth-subtitle">Log in to continue to your AI Study Hub</p>
+
+            <!-- Rendered by Google's own script once the client id loads.
+                 Hidden entirely when Google sign-in is not configured, rather
+                 than showing a button that cannot work. -->
+            <div class="google-signin" id="google-signin" hidden>
+                <div id="google-btn"></div>
+                <div class="auth-divider"><span>or</span></div>
+            </div>
 
             <form id="auth-form">
                 <div class="form-group">

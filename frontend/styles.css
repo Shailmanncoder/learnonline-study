@@ -9823,3 +9823,17 @@ img, video, canvas, svg {
     .credit-chip { padding: 0 10px; }
 }
 @media (prefers-reduced-motion: reduce) { .credit-chip { animation: none !important; } }
+
+/* ── Continue with Google ─────────────────────────────────────────
+   Google renders the button itself; this only places it and separates it
+   from the password form below. */
+.google-signin { margin-bottom: 18px; }
+#google-btn { display: flex; justify-content: center; min-height: 44px; }
+.auth-divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 16px 0 2px;
+    font-size: 12px; font-weight: 600; color: var(--text-secondary);
+}
+.auth-divider::before, .auth-divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border-color);
+}

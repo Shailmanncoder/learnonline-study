@@ -137,6 +137,121 @@ router.post('/register', registerLimit, async (req, res) => {
     }
 });
 
+// ── Continue with Google ──────────────────────────────────────────
+// The browser sends one thing: the ID token Google issued. Every detail used
+// here -- the address, the name, the picture -- is read from that token AFTER
+// its signature has been checked against Google's keys. Nothing the client
+// says about who it is, is believed; a request body claiming an email would
+// otherwise be a way to sign in as anybody.
+const googleClientId = () => String(process.env.GOOGLE_CLIENT_ID || '').trim();
+let googleClient = null;
+
+const googleLimit = rateLimit({
+    name: 'auth-google', windowMs: 15 * 60_000, max: 20,
+    message: 'Too many sign-in attempts. Please wait a few minutes and try again.'
+});
+
+// @route   POST api/auth/google
+router.post('/google', googleLimit, async (req, res) => {
+    try {
+        const clientId = googleClientId();
+        if (!clientId) return res.status(503).json({ msg: 'Google sign-in is not configured on this server.' });
+
+        const credential = String((req.body || {}).credential || '');
+        if (!credential) return res.status(400).json({ msg: 'No Google credential was supplied.' });
+
+        const { OAuth2Client } = require('google-auth-library');
+        googleClient ||= new OAuth2Client(clientId);
+
+        let payload;
+        try {
+            // Checks the signature against Google's published keys, that the
+            // token was issued FOR this application, and that it has not
+            // expired. Any of those failing is a rejection, not a warning.
+            const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: clientId });
+            payload = ticket.getPayload();
+        } catch (err) {
+            console.warn('[AUTH] Google token rejected:', err.message);
+            return res.status(401).json({ msg: 'That Google sign-in could not be verified. Please try again.' });
+        }
+
+        if (!payload || !['accounts.google.com', 'https://accounts.google.com'].includes(payload.iss)) {
+            return res.status(401).json({ msg: 'That Google sign-in could not be verified. Please try again.' });
+        }
+        // Google tells us whether IT has verified the address. An unverified
+        // one proves nothing, and this whole flow rests on the address being
+        // proof of identity.
+        if (!payload.email || payload.email_verified !== true) {
+            return res.status(401).json({ msg: 'Your Google account has no verified email address.' });
+        }
+
+        const email = String(payload.email).toLowerCase();
+        const picture = typeof payload.picture === 'string' && /^https:\/\//.test(payload.picture)
+            ? payload.picture.slice(0, 500) : null;
+        const displayName = String(payload.name || email.split('@')[0]).trim().slice(0, 50);
+        const now = Date.now();
+
+        await require('../migrations/004_email_verification')(db);
+        await require('../migrations/007_email_exempt')(db);
+
+        // An account already holding this address -- as its email or as its
+        // username -- is the same person. Google has just proved they own it.
+        let user = await db.get('SELECT * FROM users WHERE email = ? OR username = ?', [email, email]);
+
+        if (user) {
+            // Fill in only what is missing or newly proved. A display name or
+            // picture the person set here is theirs and is left alone.
+            const sets = ['email = ?', 'email_verified_at = ?'];
+            const values = [email, user.email_verified_at || now];
+            if (!user.profile_picture && picture) { sets.push('profile_picture = ?'); values.push(picture); }
+            values.push(user.id);
+            await db.run(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, values);
+            user = await db.get('SELECT * FROM users WHERE id = ?', [user.id]);
+        } else {
+            // A new account. The address is already proved, so it starts
+            // confirmed and needs no code.
+            let username = email;
+            if (await db.get('SELECT id FROM users WHERE username = ?', [username])) {
+                // crypto, not Math.random. Not because a username suffix is a
+                // secret, but because "no Math.random in the auth controller"
+                // is a rule worth keeping absolute — an exception here is one
+                // more thing to check when reading the next change.
+                username = `${email.split('@')[0]}${crypto.randomInt(1000, 10000)}`.slice(0, 50);
+            }
+            // No password is set. Signing in happens through Google; anyone
+            // who wants a password can create one with "Forgot password",
+            // which now reaches a confirmed address.
+            const placeholder = await bcrypt.hash(crypto.randomUUID() + crypto.randomUUID(), 10);
+            const inserted = await db.run(
+                'INSERT INTO users (username, password, role, email, email_verified_at, profile_picture) VALUES (?,?,?,?,?,?)',
+                [username, placeholder, 'student', email, now, picture]
+            );
+            user = await db.get('SELECT * FROM users WHERE id = ?', [inserted.lastID]);
+            console.log('[AUTH] google sign-up', { id: user.id });
+        }
+
+        refund('auth-google', req);   // a successful sign-in is not an attempt
+
+        const token = jwt.sign({ user: { id: user.id, role: user.role || 'student' } },
+            getJwtSecret(), { expiresIn: '5d', algorithm: 'HS256' });
+        res.json({
+            token,
+            user: { id: user.id, username: user.username, role: user.role || 'student',
+                    email: user.email, profile_picture: user.profile_picture },
+            name: displayName
+        });
+    } catch (err) {
+        console.error('[AUTH] google sign-in failed:', err.message);
+        res.status(500).json({ msg: 'Could not complete Google sign-in. Please try again.' });
+    }
+});
+
+// @route   GET api/auth/google/config
+// @desc    The public client id, so the page can render the button.
+router.get('/google/config', (req, res) => {
+    res.json({ clientId: googleClientId(), enabled: Boolean(googleClientId()) });
+});
+
 // ── Forgot password ───────────────────────────────────────────────
 // Both routes answer the same way whether or not the account exists. That is
 // the whole point: sign-in used to reveal which addresses were registered, and

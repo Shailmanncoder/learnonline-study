@@ -11,6 +11,26 @@ function aiError(e, fallback) {
 }
 
 const api = {
+    googleConfig: async () => {
+        const res = await fetch(`${API_BASE_URL}/auth/google/config`);
+        if (!res.ok) return { enabled: false };
+        return res.json();
+    },
+
+    // Sends only the signed token Google issued. The server reads the address,
+    // name and picture out of it after checking the signature — nothing this
+    // page says about who the user is would be believed.
+    googleSignIn: async (credential) => {
+        const res = await fetch(`${API_BASE_URL}/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credential })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Google sign-in failed');
+        return data;
+    },
+
     register: async (username, password, role = 'student', email = '') => {
         const res = await fetch(`${API_BASE_URL}/auth/register`, {
             method: 'POST',
