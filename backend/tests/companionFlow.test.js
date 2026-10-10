@@ -5,7 +5,12 @@ const {once}=require('node:events');
 test('Companion streams, saves history and passes retrieved sources to every provider',async t=>{
     const db=require('../config/db'), memory=require('../services/studyMemory'), web=require('../services/companionWeb'), progress=require('../services/progress');
     let saved=[], providerInput;
-    t.mock.method(db,'get',async sql=>sql.includes('chat_threads')?{id:91,title:'Cloud chat'}:null);
+    // The Companion is a Plus feature, so this account holds one — otherwise
+    // the request is refused at the gate and the streaming, history and source
+    // behaviour under test here is never reached.
+    t.mock.method(db,'get',async sql=>
+        sql.includes('chat_threads') ? {id:91,title:'Cloud chat'} :
+        sql.includes('payment_entitlements') ? {plan_id:'plus',ends_at:Date.now()+86400000} : null);
     t.mock.method(db,'all',async()=>[{role:'assistant',content:'We studied photosynthesis.'},{role:'user',content:'Explain chapter seven'}]);
     t.mock.method(db,'run',async(sql,args)=>{if(sql.includes('INSERT INTO chat_messages'))saved.push(args);return {};});
     t.mock.method(memory,'buildStudyContext',async()=>{throw new Error('Stale study context must not be read');});

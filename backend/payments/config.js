@@ -6,9 +6,9 @@ const { getJwtSecret } = require('../config/security');
 const everyone = ['student','teacher','admin','developer'];
 const plans = Object.freeze({
     starter: { id:'starter', name:'Starter', amount:49900, currency:'INR', interval:'month', role:'student', roles:everyone, tier:'starter',
-        features:['10 core AI tools','AI Companion with memory','Detailed answers and study plans','1,200 credits a month'] },
+        features:['10 core AI tools','Detailed answers and study plans','Saved runs you can reopen and repeat','1,200 credits a month'] },
     plus:    { id:'plus',    name:'Plus',    amount:79900, currency:'INR', interval:'month', role:'student', roles:everyone, tier:'plus',
-        features:['25 AI tools','Everything in Starter','PDF, image and video summarising','12,000 credits a month — 10x Starter'] },
+        features:['The AI Companion — conversation, memory and follow-ups','25 AI tools','Everything in Starter','12,000 credits a month — 10x Starter'] },
     pro:     { id:'pro',     name:'Pro',     amount:99900, currency:'INR', interval:'month', role:'student', roles:everyone, tier:'pro',
         features:['All 50 AI tools','Everything in Plus','Exam prep, roadmaps and the Developer Hub','24,000 credits a month — 20x Starter'] },
     max:     { id:'max',     name:'Max',     amount:149900, currency:'INR', interval:'month', role:'student', roles:everyone, tier:'max',

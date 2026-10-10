@@ -19,7 +19,9 @@ test('streaming is charged and gated like every other generation', () => {
     const route = streamRoute();
     // The call now also carries toolId -- see metering.test.js, where the gate
     // itself is pinned.
-    assert.match(route, /await meter\(req, res, \{[\s\S]{0,160}depth: brainDepth\s*\}\) === false/);
+    // The call also carries toolId and companion: true — see
+    // companionTier.test.js and metering.test.js, where each is pinned.
+    assert.match(route, /await meter\(req, res, \{[\s\S]{0,400}depth: brainDepth[\s\S]{0,160}\}\) === false/);
 });
 
 test('the stream carries the same context the rest of the app uses', () => {

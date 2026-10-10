@@ -4207,3 +4207,24 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
     padding: 6px 13px; font-size: 12.5px; font-weight: 700; cursor: pointer;
 }
 .grok-blocked-cta:hover { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); }
+
+/* The Companion on a plan that does not include it. Said before anything is
+   typed, rather than after a question has been written. */
+.companion-lock {
+    display: flex; align-items: center; gap: 12px;
+    margin: 14px; padding: 14px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent-primary) 7%, transparent);
+    font-size: 13px; line-height: 1.55; color: var(--text-secondary);
+}
+.companion-lock > i { color: var(--accent-primary); flex: 0 0 auto; }
+.companion-lock strong { display: block; color: var(--text-primary); }
+.companion-lock-cta {
+    flex: 0 0 auto; border: 1px solid var(--accent-primary);
+    background: transparent; color: var(--accent-primary);
+    border-radius: 999px; padding: 7px 14px;
+    font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.companion-lock-cta:hover { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); }
+@media (max-width: 600px) { .companion-lock { flex-wrap: wrap; } .companion-lock-cta { width: 100%; } }

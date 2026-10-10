@@ -10,7 +10,7 @@ const ent = require('../services/entitlements');
 // whether this tool is open to this plan, and whether the month's allowance
 // still covers the work. Charged BEFORE the model runs, because the tokens are
 // spent whether or not the answer comes back.
-async function meter(req, res, { toolId, kind, depth, units }) {
+async function meter(req, res, { toolId, kind, depth, units, companion = false }) {
     if (!ent.enforced()) return null;
 
     // A confirmed email before any AI work. Accounts can be created with a
@@ -41,6 +41,17 @@ async function meter(req, res, { toolId, kind, depth, units }) {
 
     const planId = await usage.planOf(req.user.id);
     const tier = ent.tierOf(planId);
+
+    // The conversational tutor — threads, memory, follow-ups, streaming — is
+    // the most capable part of the app and the most expensive to serve.
+    if (companion && !tier.companion) {
+        const needed = ent.companionTier();
+        res.status(403).json({
+            msg: `The AI Companion is part of ${needed.label}. Your plan is ${tier.label}.`,
+            code: 'COMPANION_LOCKED', plan: tier.id, requiredPlan: needed.id, requiredPlanLabel: needed.label
+        });
+        return false;
+    }
 
     if (toolId && !ent.toolAllowed(tier, toolId)) {
         const needed = ent.requiredTierFor(toolId);
@@ -507,7 +518,11 @@ router.post('/generate', auth, async (req, res) => {
         const metered = await meter(req, res, {
             toolId: typeof req.body.toolId === 'string' ? req.body.toolId : null,
             kind: wantsJson ? 'json' : null,
-            depth: brainCtx.depth
+            depth: brainCtx.depth,
+            // Only the Companion carries a conversation thread. Deriving it
+            // from that rather than from a flag means the gate cannot be
+            // stepped around by leaving the flag out of the request.
+            companion: Boolean(threadId)
         });
         if (metered === false) { progress.finish(rid); return; }
 
@@ -1327,7 +1342,8 @@ router.post('/stream', auth, async (req, res) => {
     // started routing a tool through streaming.
     if (await meter(req, res, {
         toolId: typeof toolId === 'string' ? toolId : null,
-        depth: brainDepth
+        depth: brainDepth,
+        companion: true          // this route serves the Companion and nothing else
     }) === false) return;
 
     // The same context the whole app shares: who this student is, what they

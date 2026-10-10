@@ -245,6 +245,8 @@ router.get('/usage', auth, async (req, res) => {
             toolCount: tier.tools === 'all' ? ent.TOOL_ORDER.length : tier.tools,
             tools: ent.toolsFor(tier),
             locked: unlocks,
+            companion: Boolean(tier.companion),
+            companionPlan: ent.companionTier().label,
             costs: ent.COST
         });
     } catch (err) {

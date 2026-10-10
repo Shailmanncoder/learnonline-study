@@ -46,11 +46,15 @@ const envInt = (name, fallback) => {
 
 function tiers() {
     return Object.freeze({
-        free:    { id:'free',    rank:0, label:'Free',    tools:3,     credits: envInt('PLAN_CREDITS_FREE', 350),     priority:false, deep:false },
-        starter: { id:'starter', rank:1, label:'Starter', tools:10,    credits: envInt('PLAN_CREDITS_STARTER', 1200),  priority:false, deep:true },
-        plus:    { id:'plus',    rank:2, label:'Plus',    tools:25,    credits: envInt('PLAN_CREDITS_PLUS', 12000),    priority:false, deep:true },
-        pro:     { id:'pro',     rank:3, label:'Pro',     tools:'all', credits: envInt('PLAN_CREDITS_PRO', 24000),     priority:false, deep:true },
-        max:     { id:'max',     rank:4, label:'Max',     tools:'all', credits: envInt('PLAN_CREDITS_MAX', 48000),     priority:true,  deep:true }
+        // `companion` is the conversational tutor — threads, memory, follow-ups,
+        // streaming. It is the most capable thing in the app and the most
+        // expensive to serve, so it starts at Plus rather than being the one
+        // part of the product nobody has to pay for.
+        free:    { id:'free',    rank:0, label:'Free',    tools:3,     credits: envInt('PLAN_CREDITS_FREE', 350),     priority:false, deep:false, companion:false },
+        starter: { id:'starter', rank:1, label:'Starter', tools:10,    credits: envInt('PLAN_CREDITS_STARTER', 1200),  priority:false, deep:true,  companion:false },
+        plus:    { id:'plus',    rank:2, label:'Plus',    tools:25,    credits: envInt('PLAN_CREDITS_PLUS', 12000),    priority:false, deep:true,  companion:true },
+        pro:     { id:'pro',     rank:3, label:'Pro',     tools:'all', credits: envInt('PLAN_CREDITS_PRO', 24000),     priority:false, deep:true,  companion:true },
+        max:     { id:'max',     rank:4, label:'Max',     tools:'all', credits: envInt('PLAN_CREDITS_MAX', 48000),     priority:true,  deep:true,  companion:true }
     });
 }
 
@@ -112,8 +116,13 @@ function requiredTierFor(toolId) {
     return ordered.find(t => t.tools === 'all' || index < t.tools) || ordered[ordered.length - 1];
 }
 
+// The cheapest tier that includes the conversational tutor.
+function companionTier() {
+    return Object.values(tiers()).sort((a, b) => a.rank - b.rank).find(t => t.companion);
+}
+
 // A single switch, so enforcement can be turned off without unpicking it.
 // Default on: a plan nobody enforces is not a plan.
 const enforced = () => process.env.PLANS_ENFORCED !== 'false';
 
-module.exports = { TOOL_ORDER, tiers, tierOf, COST, costOf, toolAllowed, toolsFor, requiredTierFor, enforced, LEGACY };
+module.exports = { TOOL_ORDER, tiers, tierOf, COST, costOf, toolAllowed, toolsFor, requiredTierFor, companionTier, enforced, LEGACY };

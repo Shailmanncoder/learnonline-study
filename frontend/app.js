@@ -1499,7 +1499,8 @@ const PLUS_FEATURE_STATUS = {
     '25 AI tools':                              { state: 'working', note: 'Live' },
     'All 50 AI tools':                          { state: 'working', note: 'Live' },
     'All 50 AI tools and every feature':        { state: 'working', note: 'Live' },
-    'AI Companion with memory':                 { state: 'working', note: 'Live' },
+    'The AI Companion \u2014 conversation, memory and follow-ups': { state: 'working', note: 'Live' },
+    'Saved runs you can reopen and repeat':      { state: 'working', note: 'Live' },
     'Detailed answers and study plans':         { state: 'working', note: 'Live' },
     '1,200 credits a month':                    { state: 'working', note: 'Live' },
     '12,000 credits a month \u2014 10x Starter':    { state: 'working', note: 'Live' },
@@ -1726,8 +1727,9 @@ async function refreshCredits({ pulse = false } = {}) {
         }
         // Keep the fuller meter on the plans page in step with the chip.
         if (typeof loadUsageMeter === 'function' && !document.getElementById('usage-meter')?.hidden) loadUsageMeter();
-        // And the locks, so buying a plan opens the tool you are looking at.
+        // And the locks, so buying a plan opens what you are looking at.
         if (currentActiveTool) applyToolLock(currentActiveTool);
+        applyCompanionLock();
     } catch {
         chip.hidden = true;   // never let the balance break a page
     }
@@ -2303,6 +2305,44 @@ function applyToolLock(tool) {
     note.querySelector('.tool-lock-cta').addEventListener('click', () => navigateToSection('plus', true));
     const form = pane.querySelector('.tool-input-area, .tool-form, form') || pane.firstElementChild;
     (form?.parentElement || pane).insertBefore(note, form || pane.firstChild);
+}
+
+// Is the conversational tutor part of this plan? Read from /user/usage, the
+// same source the server gates on.
+function companionOpen() {
+    if (!creditState || !creditState.enforced) return true;
+    return creditState.companion !== false;
+}
+
+// Say it on the Companion screen before anything is typed, and stop the
+// composer, rather than letting someone write a question and then refusing it.
+function applyCompanionLock() {
+    const section = document.getElementById('ai-chat');
+    if (!section) return;
+    document.getElementById('companion-lock-note')?.remove();
+
+    const open = companionOpen();
+    const input = document.getElementById('grok-chat-input');
+    const send = document.getElementById('grok-send-btn');
+    if (input) { input.disabled = !open; input.placeholder = open
+        ? 'Ask anything about your studies or type \'/\' for study commands...'
+        : `The AI Companion is part of ${creditState?.companionPlan || 'Plus'}`; }
+    if (send) send.disabled = !open;
+    if (open) return;
+
+    const note = document.createElement('div');
+    note.id = 'companion-lock-note';
+    note.className = 'companion-lock';
+    note.innerHTML = `
+        <i class="fa-solid fa-lock" aria-hidden="true"></i>
+        <div>
+            <strong>The AI Companion is part of ${escapeHtml(creditState?.companionPlan || 'Plus')}.</strong>
+            Your plan is ${escapeHtml(creditState?.label || 'Free')}. The study tools on your plan still work.
+        </div>
+        <button type="button" class="companion-lock-cta">See plans</button>`;
+    note.querySelector('.companion-lock-cta').addEventListener('click', () => navigateToSection('plus', true));
+    const stream = document.getElementById('grok-chat-stream');
+    (stream?.parentElement || section).insertBefore(note, stream || section.firstChild);
 }
 
 function toolLockedBy(toolId) {
@@ -6389,9 +6429,9 @@ async function sendGrokMessage() {
         if (err.code === 'EMAIL_REQUIRED') {
             bubbleEl.innerHTML = `<div class="grok-blocked"><i class="fa-solid fa-envelope-circle-check"></i> ${escapeHtml(err.message)}</div>`;
             openEmailGate(err.message, err.email, () => { grokChatInput.value = text; sendGrokMessage(); });
-        } else if (err.code === 'TOOL_LOCKED' || err.code === 'QUOTA_EXCEEDED') {
+        } else if (err.code === 'COMPANION_LOCKED' || err.code === 'TOOL_LOCKED' || err.code === 'QUOTA_EXCEEDED') {
             bubbleEl.innerHTML = `<div class="grok-blocked">
-                <i class="fa-solid ${err.code === 'TOOL_LOCKED' ? 'fa-lock' : 'fa-bolt'}"></i> ${escapeHtml(err.message)}
+                <i class="fa-solid ${err.code === 'QUOTA_EXCEEDED' ? 'fa-bolt' : 'fa-lock'}"></i> ${escapeHtml(err.message)}
                 <button type="button" class="grok-blocked-cta">See plans</button></div>`;
             bubbleEl.querySelector('.grok-blocked-cta')?.addEventListener('click', () => navigateToSection('plus', true));
             refreshCredits();

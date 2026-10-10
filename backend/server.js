@@ -155,6 +155,7 @@ await require('./migrations/004_email_verification')(require('./config/db'));
 await require('./migrations/005_usage_metering')(require('./config/db'));
 await require('./migrations/006_tool_runs')(require('./config/db'));
 await require('./migrations/007_email_exempt')(require('./config/db'));
+await require('./migrations/008_require_email_everywhere')(require('./config/db'));
 await require('./services/studioStore').ready();
 await require('./controllers/teachingStudioController').ready();
 require('./services/studioSources').start().catch(e => console.warn('[SOURCE]',e.message));
